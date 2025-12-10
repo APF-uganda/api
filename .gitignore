@@ -1,0 +1,81 @@
+# ============================
+# Django & Python
+# ============================
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.sqlite3
+*.db
+
+# Django specific
+local_settings.py
+settings_local.py
+*.log
+*.pot
+*.pyc
+*.mo
+
+# Media & Static (if generated)
+media/
+staticfiles/
+
+# If using Django collectstatic output
+static/
+
+# ============================
+# Virtual environment
+# ============================
+venv/
+env/
+ENV/
+.venv/
+.python-version
+
+# ============================
+# IDE / Editor
+# ============================
+# VS Code
+.vscode/
+
+# JetBrains / PyCharm
+.idea/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# ============================
+# Build / Packaging
+# ============================
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# ============================
+# Environment variables
+# ============================
+.env
+.env.*
+*.env
+
+# ============================
+# OS Files
+# ============================
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ============================
+# Misc
+# ============================
+*.bak
+*.swp
+*.swo
