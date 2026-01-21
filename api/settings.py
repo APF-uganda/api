@@ -14,11 +14,15 @@ from pathlib import Path
 import environ
 import os
 
-env = environ.Env()
-environ.Env.read_env()
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Initialize environ
+env = environ.Env()
+# Read .env file
+env_file = BASE_DIR / '.env'
+if env_file.exists():
+    environ.Env.read_env(env_file)
 
 
 # Quick-start development settings - unsuitable for production
@@ -42,10 +46,14 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "rest_framework",
+    "corsheaders",
+    "contacts",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -79,8 +87,12 @@ WSGI_APPLICATION = "api.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": env("DB_NAME", default="apf_portal"),
+        "USER": env("DB_USER", default="postgres"),
+        "PASSWORD": env("DB_PASSWORD", default="Nakaye0@#"),
+        "HOST": env("DB_HOST", default="localhost"),
+        "PORT": env("DB_PORT", default="5432"),
     }
 }
 
@@ -125,3 +137,24 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# CORS Settings
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+# REST Framework Settings
+REST_FRAMEWORK = {
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+    ],
+}
+
