@@ -4,6 +4,19 @@ from rest_framework.response import Response
 from .models import ContactMessage
 from .serializers import ContactMessageSerializer
 
+@api_view(['GET'])
+def contacts_root(request):
+    """
+    Contacts API root endpoint
+    """
+    return Response({
+        'message': 'Contacts API',
+        'endpoints': {
+            'submit': '/api/contacts/submit/ [POST]',
+            'list': '/api/contacts/list/ [GET]'
+        }
+    })
+
 @api_view(['POST'])
 def create_contact_message(request):
     """
