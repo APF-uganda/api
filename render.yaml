@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: apf-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn api.wsgi:application
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: apf-db
+          property: connectionString
+      - key: DJANGO_SETTINGS_MODULE
+        value: api.settings
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: False
+      - key: ALLOWED_HOSTS
+        sync: false
+
+databases:
+  - name: apf-db
+    databaseName: apf_database
+    user: apf_user
+    plan: free
