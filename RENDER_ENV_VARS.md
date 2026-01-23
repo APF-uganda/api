@@ -33,6 +33,20 @@ After the code changes, go to your Render service and add these environment vari
 - **Note**: Add this AFTER deploying your frontend
 - **Multiple origins**: Separate with commas: `https://frontend1.com,https://frontend2.com`
 
+### 6. DJANGO_SUPERUSER_USERNAME (Optional)
+- **Value**: Your desired admin username
+- **Default**: `admin`
+- **Note**: Used to auto-create admin user on deployment
+
+### 7. DJANGO_SUPERUSER_EMAIL (Optional)
+- **Value**: Admin email address
+- **Default**: `admin@example.com`
+
+### 8. DJANGO_SUPERUSER_PASSWORD (Optional)
+- **Value**: Strong password for admin user
+- **Default**: `changeme123`
+- **IMPORTANT**: Change this immediately after first login!
+
 ## Optional Environment Variables
 
 ### PYTHON_VERSION
@@ -43,17 +57,26 @@ After the code changes, go to your Render service and add these environment vari
 
 1. **Trigger Manual Deploy**
    - Go to your service → Manual Deploy → Deploy latest commit
+   - Migrations, static files, and admin user will be created automatically during build
 
-2. **Run Migrations** (in Shell tab)
-   ```bash
-   python manage.py migrate
-   python manage.py collectstatic --noinput
-   python manage.py createsuperuser
-   ```
+2. **Verify Deployment**
+   - Check Logs tab for successful migration messages
+   - Look for: "Superuser created successfully"
+   - Verify service is running: "Booting worker" and "Listening at: http://0.0.0.0:10000"
 
-3. **Check Logs**
-   - Go to Logs tab to verify successful startup
-   - Look for: "Booting worker" and "Listening at: http://0.0.0.0:10000"
+3. **Access Admin Panel**
+   - Go to: `https://your-backend-url.onrender.com/admin`
+   - Login with your superuser credentials
+   - Change password immediately if using default
+
+## No Shell Access on Free Tier
+
+The free tier doesn't support Shell access, but we've automated everything:
+- ✅ Migrations run automatically on each deploy
+- ✅ Static files collected automatically
+- ✅ Admin user created automatically (if env vars set)
+
+If you need Shell access for debugging, upgrade to Starter ($7/month).
 
 ## Troubleshooting
 
