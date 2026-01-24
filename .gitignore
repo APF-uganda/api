@@ -79,3 +79,14 @@ Desktop.ini
 *.bak
 *.swp
 *.swo
+
+# ============================
+# Testing
+# ============================
+.pytest_cache/
+.hypothesis/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover

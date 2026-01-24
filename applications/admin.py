@@ -1,0 +1,103 @@
+from django.contrib import admin
+from .models import Application, Document
+
+
+class DocumentInline(admin.TabularInline):
+    """
+    Inline admin for viewing uploaded documents within an application.
+    """
+    model = Document
+    extra = 0
+    readonly_fields = ['file_name', 'file_size', 'file_type', 'uploaded_at', 'file']
+    fields = ['file', 'file_name', 'file_size', 'file_type', 'uploaded_at']
+    can_delete = False
+    
+    def has_add_permission(self, request, obj=None):
+        """Prevent adding documents through admin interface."""
+        return False
+
+
+@admin.register(Application)
+class ApplicationAdmin(admin.ModelAdmin):
+    """
+    Custom admin interface for managing membership applications.
+    Provides comprehensive view with search, filtering, and organized fieldsets.
+    """
+    list_display = [
+        'username',
+        'email',
+        'first_name',
+        'last_name',
+        'payment_method',
+        'status',
+        'submitted_at'
+    ]
+    
+    list_filter = ['status', 'payment_method', 'submitted_at']
+    
+    search_fields = ['username', 'email', 'first_name', 'last_name']
+    
+    readonly_fields = ['submitted_at', 'updated_at', 'password_hash']
+    
+    inlines = [DocumentInline]
+    
+    fieldsets = [
+        ('Account Information', {
+            'fields': ['username', 'email', 'password_hash']
+        }),
+        ('Personal Information', {
+            'fields': ['first_name', 'last_name', 'date_of_birth', 'phone_number', 'address']
+        }),
+        ('Payment Information', {
+            'fields': [
+                'payment_method',
+                'payment_phone',
+                'payment_card_number',
+                'payment_card_expiry',
+                'payment_card_cvv',
+                'payment_cardholder_name',
+                'payment_status',
+                'payment_transaction_reference',
+                'payment_error_message'
+            ]
+        }),
+        ('Status', {
+            'fields': ['status', 'submitted_at', 'updated_at']
+        })
+    ]
+    
+    def get_readonly_fields(self, request, obj=None):
+        """
+        Make all fields except status readonly for existing applications.
+        This prevents accidental modification of submitted application data.
+        """
+        if obj:  # Editing an existing object
+            return self.readonly_fields + [
+                'username', 'email', 'first_name', 'last_name',
+                'date_of_birth', 'phone_number', 'address',
+                'payment_method', 'payment_phone',
+                'payment_card_number', 'payment_card_expiry', 'payment_card_cvv',
+                'payment_cardholder_name', 'payment_status',
+                'payment_transaction_reference', 'payment_error_message'
+            ]
+        return self.readonly_fields
+
+
+@admin.register(Document)
+class DocumentAdmin(admin.ModelAdmin):
+    """
+    Admin interface for viewing documents.
+    Primarily accessed through ApplicationAdmin inline.
+    """
+    list_display = ['file_name', 'application', 'file_type', 'file_size', 'uploaded_at']
+    list_filter = ['file_type', 'uploaded_at']
+    search_fields = ['file_name', 'application__username', 'application__email']
+    readonly_fields = ['application', 'file', 'file_name', 'file_size', 'file_type', 'uploaded_at']
+    
+    def has_add_permission(self, request):
+        """Prevent adding documents through admin interface."""
+        return False
+    
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deleting documents through admin interface."""
+        return False
