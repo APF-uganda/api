@@ -1,6 +1,7 @@
 import re
 from datetime import date, timedelta
 from rest_framework import serializers
+from django.contrib.auth.hashers import make_password
 from .models import Application, Document
 
 
@@ -212,3 +213,16 @@ class ApplicationSerializer(serializers.ModelSerializer):
         
         if errors:
             raise serializers.ValidationError(errors)
+    
+    def create(self, validated_data):
+        """
+        Override create method to hash password before saving
+        
+        Requirements: 12.6
+        """
+        # Hash the password before saving
+        if 'password_hash' in validated_data:
+            validated_data['password_hash'] = make_password(validated_data['password_hash'])
+        
+        # Create and return the application instance
+        return super().create(validated_data)

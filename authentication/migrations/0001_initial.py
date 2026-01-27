@@ -1,0 +1,116 @@
+# Generated migration for authentication app
+
+from django.db import migrations, models
+import django.db.models.deletion
+from django.conf import settings
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        ('auth', '0012_alter_user_first_name_max_length'),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='User',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('password', models.CharField(max_length=128, verbose_name='password')),
+                ('last_login', models.DateTimeField(blank=True, null=True, verbose_name='last login')),
+                ('is_superuser', models.BooleanField(default=False, help_text='Designates that this user has all permissions without explicitly assigning them.', verbose_name='superuser status')),
+                ('email', models.EmailField(db_index=True, max_length=254, unique=True)),
+                ('role', models.CharField(choices=[('1', 'Admin'), ('2', 'Member')], default='2', max_length=10)),
+                ('is_active', models.BooleanField(default=True)),
+                ('is_staff', models.BooleanField(default=False)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.', related_name='user_set', related_query_name='user', to='auth.group', verbose_name='groups')),
+                ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='user_set', related_query_name='user', to='auth.permission', verbose_name='user permissions')),
+            ],
+            options={
+                'db_table': 'auth_users',
+            },
+        ),
+        migrations.CreateModel(
+            name='PasswordResetToken',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('token', models.CharField(db_index=True, max_length=64, unique=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('expires_at', models.DateTimeField()),
+                ('is_used', models.BooleanField(default=False)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='password_reset_tokens', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'db_table': 'auth_password_reset_tokens',
+            },
+        ),
+        migrations.CreateModel(
+            name='OTP',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('code', models.CharField(max_length=6)),
+                ('session_id', models.UUIDField(db_index=True, unique=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('expires_at', models.DateTimeField()),
+                ('is_used', models.BooleanField(default=False)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='otps', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'db_table': 'auth_otps',
+            },
+        ),
+        migrations.CreateModel(
+            name='AuthLog',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('email', models.EmailField(max_length=254)),
+                ('event_type', models.CharField(choices=[('login_attempt', 'Login Attempt'), ('login_success', 'Login Success'), ('login_failure', 'Login Failure'), ('otp_generated', 'OTP Generated'), ('otp_verified', 'OTP Verified'), ('otp_failed', 'OTP Failed'), ('password_reset_requested', 'Password Reset Requested'), ('password_reset_completed', 'Password Reset Completed'), ('rate_limit_triggered', 'Rate Limit Triggered'), ('token_refreshed', 'Token Refreshed'), ('logout', 'Logout')], max_length=30)),
+                ('ip_address', models.GenericIPAddressField()),
+                ('user_agent', models.TextField(blank=True)),
+                ('success', models.BooleanField()),
+                ('details', models.JSONField(blank=True, default=dict)),
+                ('timestamp', models.DateTimeField(auto_now_add=True)),
+                ('user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='auth_logs', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'db_table': 'auth_logs',
+                'ordering': ['-timestamp'],
+            },
+        ),
+        migrations.AddIndex(
+            model_name='user',
+            index=models.Index(fields=['email'], name='auth_users_email_9c7e62_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='user',
+            index=models.Index(fields=['role'], name='auth_users_role_8a5295_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='passwordresettoken',
+            index=models.Index(fields=['token'], name='auth_passwo_token_076a22_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='otp',
+            index=models.Index(fields=['session_id'], name='auth_otps_session_f2f8ca_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='otp',
+            index=models.Index(fields=['user', 'is_used'], name='auth_otps_user_id_2268b5_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='authlog',
+            index=models.Index(fields=['email', 'timestamp'], name='auth_logs_email_3b60db_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='authlog',
+            index=models.Index(fields=['event_type', 'timestamp'], name='auth_logs_event_t_a52c09_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='authlog',
+            index=models.Index(fields=['ip_address', 'timestamp'], name='auth_logs_ip_addr_493cba_idx'),
+        ),
+    ]

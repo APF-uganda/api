@@ -25,6 +25,7 @@ def health_check(request):
         'message': 'APF Backend API is running',
         'endpoints': {
             'admin': '/admin/',
+            'auth': '/api/auth/',
             'contacts': '/api/contacts/',
             'applications': '/api/applications/'
         }
@@ -33,6 +34,7 @@ def health_check(request):
 urlpatterns = [
     path("", health_check, name="health_check"),
     path("admin/", admin.site.urls),
+    path("api/auth/", include("authentication.urls")),
     path("api/contacts/", include("contacts.urls")),
     path("api/applications/", include("applications.urls")),
 ]
