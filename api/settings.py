@@ -59,7 +59,7 @@ INSTALLED_APPS = [
 ]
 
 # URL Configuration
-APPEND_SLASH = False  # Don't automatically append slashes to URLs
+# APPEND_SLASH = False  # Re-enabled to allow Django to redirect URLs without trailing slashes
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
