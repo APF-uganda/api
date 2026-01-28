@@ -57,6 +57,9 @@ INSTALLED_APPS = [
     
 ]
 
+# URL Configuration
+APPEND_SLASH = False  # Don't automatically append slashes to URLs
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # Add WhiteNoise
