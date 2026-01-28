@@ -34,9 +34,18 @@ class AuthenticationService:
         """
         try:
             user = User.objects.get(email=email)
-            if user.is_active and check_password(password, user.password):
+            logger.info(f"User found: {email}, is_active: {user.is_active}")
+            
+            password_valid = user.check_password(password)
+            logger.info(f"Password check result for {email}: {password_valid}")
+            
+            if user.is_active and password_valid:
+                logger.info(f"Authentication successful for {email}")
                 return user
+            else:
+                logger.warning(f"Authentication failed for {email} - active: {user.is_active}, password_valid: {password_valid}")
         except User.DoesNotExist:
+            logger.warning(f"User not found: {email}")
             # Return None to avoid revealing whether email exists
             pass
         return None

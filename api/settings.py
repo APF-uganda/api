@@ -40,6 +40,7 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 # Application definition
 
 INSTALLED_APPS = [
+    "authentication",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -53,9 +54,8 @@ INSTALLED_APPS = [
     "corsheaders",
     "contacts",
     "applications",
-    "authentication",
     "notifications",
-    
+    "dashboard",
 ]
 
 MIDDLEWARE = [
@@ -68,6 +68,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Custom authentication and security middleware
+    "authentication.middleware.JWTAuthenticationMiddleware",
+    "authentication.middleware.SecurityHeadersMiddleware",
+    "authentication.middleware.RequestLoggingMiddleware",
 ]
 
 ROOT_URLCONF = "api.urls"
@@ -95,32 +99,34 @@ WSGI_APPLICATION = "api.wsgi.application"
 
 import dj_database_url
 
-# Use DATABASE_URL if available (production), otherwise use individual env vars (development)
-if env("DATABASE_URL", default=None):
+# Database Configuration - Neon PostgreSQL (Cloud)
+# No localhost fallback - always use Neon database
+database_url = env("DATABASE_URL", default=None)
+if database_url:
+    # Parse the DATABASE_URL
     DATABASES = {
-        "default": dj_database_url.config(
-            default=env("DATABASE_URL"),
+        "default": dj_database_url.parse(
+            database_url,
             conn_max_age=600,
             conn_health_checks=True,
         )
     }
 else:
-    # Get password from env, but if it contains # it will be truncated, so use hardcoded default
-    db_password = env("DB_PASSWORD", default="")
-    # If password is empty or truncated (less than 9 chars), use the full password
-    if not db_password or len(db_password) < 9:
-        db_password = "Nakaye0@#"
-    
+    # Use individual environment variables (required - no defaults)
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
-            "NAME": env("DB_NAME", default="apf_portal"),
-            "USER": env("DB_USER", default="postgres"),
-            "PASSWORD": db_password,
-            "HOST": env("DB_HOST", default="localhost"),
+            "NAME": env("DB_NAME"),  # Required: neondb
+            "USER": env("DB_USER"),  # Required: neondb_owner
+            "PASSWORD": env("DB_PASSWORD"),  # Required
+            "HOST": env("DB_HOST"),  # Required: Neon host
             "PORT": env("DB_PORT", default="5432"),
+            "OPTIONS": {
+                "sslmode": "require",  # Always require SSL for Neon
+            },
         }
     }
+
 
 
 # Password validation
@@ -223,6 +229,8 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'EXCEPTION_HANDLER': 'authentication.exceptions.custom_exception_handler',
+    'UNAUTHENTICATED_USER': None,  # Return None for unauthenticated users instead of AnonymousUser
 }
 
 SWAGGER_SETTINGS = {

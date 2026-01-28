@@ -9,7 +9,7 @@ class Command(MigrateCommand):
     help = 'Safely run migrations by fixing inconsistencies first'
 
     def handle(self, *args, **options):
-        """Clear inconsistent migration history before migrating."""
+        """Clear inconsistent migration history and handle duplicate columns before migrating."""
         self.stdout.write("Checking for migration inconsistencies...")
         
         try:
@@ -49,6 +49,39 @@ class Command(MigrateCommand):
                         )
                     else:
                         self.stdout.write("Migration history is consistent.")
+                    
+                    # Check if user_id column already exists in applications_application
+                    cursor.execute("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.columns 
+                            WHERE table_name = 'applications_application' 
+                            AND column_name = 'user_id'
+                        );
+                    """)
+                    user_id_exists = cursor.fetchone()[0]
+                    
+                    if user_id_exists:
+                        self.stdout.write(
+                            self.style.WARNING(
+                                "user_id column already exists in applications_application. "
+                                "Marking migration as applied..."
+                            )
+                        )
+                        # Mark the migration as applied to avoid duplicate column error
+                        cursor.execute("""
+                            INSERT INTO django_migrations (app, name, applied)
+                            VALUES ('applications', '0002_initial', NOW())
+                            ON CONFLICT DO NOTHING;
+                        """)
+                        cursor.execute("""
+                            INSERT INTO django_migrations (app, name, applied)
+                            VALUES ('applications', '0003_application_user', NOW())
+                            ON CONFLICT DO NOTHING;
+                        """)
+                        self.stdout.write(
+                            self.style.SUCCESS("Migration marked as applied!")
+                        )
+                        
         except Exception as e:
             self.stdout.write(
                 self.style.WARNING(f"Could not check migrations: {e}")

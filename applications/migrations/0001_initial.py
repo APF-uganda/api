@@ -10,8 +10,8 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-    ]
+    migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+]
 
     operations = [
         migrations.CreateModel(
@@ -74,18 +74,18 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ("submitted_at", models.DateTimeField(auto_now_add=True)),
-                ("updated_at", models.DateTimeField(auto_now=True)),
-                (
-                    "user",
-                    models.ForeignKey(
-                        blank=True,
-                        null=True,
-                        on_delete=django.db.models.deletion.SET_NULL,
-                        related_name="applications",
-                        to=settings.AUTH_USER_MODEL,
-                    ),
-                ),
-            ],
+    ("updated_at", models.DateTimeField(auto_now=True)),
+    (
+        "user",
+        models.ForeignKey(
+            blank=True,
+            null=True,
+            on_delete=django.db.models.deletion.SET_NULL,
+            related_name="applications",
+            to=settings.AUTH_USER_MODEL,
+        ),
+    ),
+],
             options={
                 "verbose_name": "Membership Application",
                 "verbose_name_plural": "Membership Applications",
@@ -108,16 +108,16 @@ class Migration(migrations.Migration):
                 ("file_name", models.CharField(max_length=255)),
                 ("file_size", models.IntegerField()),
                 ("file_type", models.CharField(max_length=50)),
-                ("uploaded_at", models.DateTimeField(auto_now_add=True)),
-                (
-                    "application",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE,
-                        related_name="documents",
-                        to="applications.application",
-                    ),
-                ),
-            ],
+    ("uploaded_at", models.DateTimeField(auto_now_add=True)),
+    (
+        "application",
+        models.ForeignKey(
+            on_delete=django.db.models.deletion.CASCADE,
+            related_name="documents",
+            to="applications.application",
+        ),
+    ),
+],
             options={
                 "verbose_name": "Application Document",
                 "verbose_name_plural": "Application Documents",
