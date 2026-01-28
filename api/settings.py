@@ -67,6 +67,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Custom authentication and security middleware
+    "authentication.middleware.JWTAuthenticationMiddleware",
+    "authentication.middleware.SecurityHeadersMiddleware",
+    "authentication.middleware.RequestLoggingMiddleware",
 ]
 
 ROOT_URLCONF = "api.urls"
@@ -221,6 +225,11 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'authentication.permissions.IsAuthenticated',
+    ],
+    'EXCEPTION_HANDLER': 'authentication.exceptions.custom_exception_handler',
+    'UNAUTHENTICATED_USER': None,  # Return None for unauthenticated users instead of AnonymousUser
 }
 
 # JWT Settings

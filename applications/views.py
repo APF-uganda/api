@@ -1,10 +1,11 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from .models import Application, Document
 from .serializers import ApplicationSerializer
+from authentication.permissions import AllowPublicApplicationSubmission
 
 
 class ApplicationViewSet(viewsets.ModelViewSet):
@@ -15,21 +16,21 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     - POST /api/applications/ - Submit a new application (public)
     - GET /api/applications/ - List all applications (admin only)
     - GET /api/applications/{id}/ - Retrieve specific application (admin only)
+    - PUT/PATCH /api/applications/{id}/ - Update application (admin only)
+    - DELETE /api/applications/{id}/ - Delete application (admin only)
+    
+    Security:
+    - Public can submit applications (POST)
+    - Only admins can view, update, or delete applications
+    - JWT authentication required for admin operations
     
     Requirements: 9.2, 9.5, 10.5
     """
     queryset = Application.objects.all()
     serializer_class = ApplicationSerializer
     parser_classes = [JSONParser, MultiPartParser, FormParser]
-    
-    def get_permissions(self):
-        """
-        Allow anyone to create applications (POST).
-        Require admin authentication for list and retrieve (GET).
-        """
-        if self.action == 'create':
-            return [AllowAny()]
-        return [IsAdminUser()]
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [AllowPublicApplicationSubmission]
     
     def create(self, request, *args, **kwargs):
         """
