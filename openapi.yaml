@@ -24,9 +24,9 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: http://localhost:8000/api/auth
+  - url: http://localhost:8000/api/v1/auth
     description: Local development server
-  - url: https://api.apfportal.com/api/auth
+  - url: https://api.apfportal.com/api/v1/auth
     description: Production server
 
 tags:
