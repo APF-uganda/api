@@ -62,8 +62,10 @@ def remove_user_field(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
+    initial = True
+
     dependencies = [
-        ("applications", "0002_initial"),
+        ("applications", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -71,5 +73,15 @@ class Migration(migrations.Migration):
         migrations.RunPython(
             add_user_field_if_not_exists,
             remove_user_field
+        ),
+        # Also add the document foreign key if needed
+        migrations.AddField(
+            model_name="document",
+            name="application",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="documents",
+                to="applications.application",
+            ),
         ),
     ]
