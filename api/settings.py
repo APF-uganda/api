@@ -48,13 +48,14 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "drf_yasg",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "contacts",
     "applications",
+    "notifications",
     "dashboard",
-    
 ]
 
 # URL Configuration
@@ -229,10 +230,22 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'authentication.permissions.IsAuthenticated',
+        'rest_framework.permissions.IsAuthenticated',
     ],
     'EXCEPTION_HANDLER': 'authentication.exceptions.custom_exception_handler',
     'UNAUTHENTICATED_USER': None,  # Return None for unauthenticated users instead of AnonymousUser
+}
+
+SWAGGER_SETTINGS = {
+    "SECURITY_DEFINITIONS": {
+        "Bearer": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header",
+            "description": "JWT Authorization header. Example: 'Bearer <token>'",
+        }
+    },
+    "USE_SESSION_AUTH": False,
 }
 
 # JWT Settings
