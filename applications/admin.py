@@ -21,7 +21,8 @@ class DocumentInline(admin.TabularInline):
 class ApplicationAdmin(admin.ModelAdmin):
     """
     Custom admin interface for managing membership applications.
-    Provides comprehensive view with search, filtering, and organized fieldsets.
+    Provides comprehensive view with search, filtering, organized fieldsets,
+    and bulk actions for approval workflow.
     """
     list_display = [
         'username',
@@ -29,18 +30,33 @@ class ApplicationAdmin(admin.ModelAdmin):
         'first_name',
         'last_name',
         'payment_method',
+        'payment_status',
         'status',
         'submitted_at'
     ]
-    
-    list_filter = ['status', 'payment_method', 'submitted_at']
-    
+    list_filter = ['status', 'payment_method', 'payment_status', 'submitted_at']
     search_fields = ['username', 'email', 'first_name', 'last_name']
-    
     readonly_fields = ['submitted_at', 'updated_at', 'password_hash']
-    
     inlines = [DocumentInline]
-    
+
+    # Allow inline editing of status in list view
+    list_editable = ['status']
+
+    # Bulk actions
+    actions = ["approve_applications", "reject_applications", "reset_applications"]
+
+    def approve_applications(self, request, queryset):
+        queryset.update(status="approved")
+    approve_applications.short_description = "Approve selected applications"
+
+    def reject_applications(self, request, queryset):
+        queryset.update(status="rejected")
+    reject_applications.short_description = "Reject selected applications"
+
+    def reset_applications(self, request, queryset):
+        queryset.update(status="pending")
+    reset_applications.short_description = "Reset selected applications to pending"
+
     fieldsets = [
         ('Account Information', {
             'fields': ['username', 'email', 'password_hash']
@@ -65,11 +81,11 @@ class ApplicationAdmin(admin.ModelAdmin):
             'fields': ['status', 'submitted_at', 'updated_at']
         })
     ]
-    
+
     def get_readonly_fields(self, request, obj=None):
         """
         Make all fields except status readonly for existing applications.
-        This prevents accidental modification of submitted application data.
+        Prevents accidental modification of submitted application data.
         """
         if obj:  # Editing an existing object
             return self.readonly_fields + [
