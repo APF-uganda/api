@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 
 
 class Application(models.Model):
@@ -55,6 +56,15 @@ class Application(models.Model):
     )
     submitted_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    # Link to User model (nullable for backward compatibility)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='applications'
+    )
     
     class Meta:
         ordering = ['-submitted_at']

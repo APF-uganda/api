@@ -1,0 +1,628 @@
+openapi: 3.0.3
+info:
+  title: APF Portal Authentication API
+  description: |
+    Secure authentication and authorization API for the Accountants and Procurement Professionals portal.
+    
+    Features:
+    - Two-factor authentication via email OTP
+    - JWT-based session management
+    - Role-based access control (Admin/Member)
+    - Rate limiting and audit logging
+    - Password reset functionality
+    
+    ## Authentication Flow
+    1. POST /login with email/password → receive session_id
+    2. POST /verify-otp with session_id and OTP → receive JWT tokens
+    3. Use access_token in Authorization header for protected endpoints
+    4. Refresh access_token using refresh_token when expired
+  version: 1.0.0
+  contact:
+    email: support@apfportal.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000/api/auth
+    description: Local development server
+  - url: https://api.apfportal.com/api/auth
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: Login and OTP verification endpoints
+  - name: Token Management
+    description: Token refresh and logout endpoints
+  - name: User
+    description: User information endpoints
+  - name: Password Reset
+    description: Password reset flow endpoints
+  - name: Admin
+    description: Admin-only endpoints
+
+paths:
+  /login:
+    post:
+      tags:
+        - Authentication
+      summary: Login with credentials
+      description: |
+        Verify user email and password, generate OTP and send via email.
+        Returns session_id for OTP verification.
+        
+        **Rate Limiting**: 5 attempts per 15 minutes per IP/email
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  example: securePassword123
+      responses:
+        '200':
+          description: Login successful, OTP sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: OTP sent to your email
+                  session_id:
+                    type: string
+                    format: uuid
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /verify-otp:
+    post:
+      tags:
+        - Authentication
+      summary: Verify OTP and get JWT tokens
+      description: |
+        Verify OTP code and issue JWT access and refresh tokens.
+        OTP expires after 10 minutes and is single-use.
+      operationId: verifyOtp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - session_id
+                - otp
+              properties:
+                session_id:
+                  type: string
+                  format: uuid
+                  example: 550e8400-e29b-41d4-a716-446655440000
+                otp:
+                  type: string
+                  pattern: '^\d{6}$'
+                  example: '123456'
+                remember_me:
+                  type: boolean
+                  default: false
+                  description: If true, refresh token expires in 30 days; otherwise 24 hours
+      responses:
+        '200':
+          description: OTP verified, tokens issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  access_token:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  refresh_token:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/InvalidOTP'
+
+  /refresh:
+    post:
+      tags:
+        - Token Management
+      summary: Refresh access token
+      description: |
+        Generate new access token using valid refresh token.
+        Access tokens expire after 1 hour.
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+                  example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  access_token:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  refresh_token:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/InvalidToken'
+
+  /logout:
+    post:
+      tags:
+        - Token Management
+      summary: Logout and invalidate refresh token
+      description: Invalidate refresh token and log out user
+      operationId: logout
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+                  example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Logged out successfully
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /me:
+    get:
+      tags:
+        - User
+      summary: Get current user information
+      description: Retrieve information about the currently authenticated user
+      operationId: getCurrentUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User information retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /password-reset-request:
+    post:
+      tags:
+        - Password Reset
+      summary: Request password reset
+      description: |
+        Request password reset token via email.
+        Always returns success for security (prevents email enumeration).
+      operationId: requestPasswordReset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+      responses:
+        '200':
+          description: Password reset requested
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Password reset instructions sent to your email
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /password-reset-confirm:
+    post:
+      tags:
+        - Password Reset
+      summary: Confirm password reset
+      description: |
+        Reset password using token from email.
+        Invalidates all existing refresh tokens for the user.
+      operationId: confirmPasswordReset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - new_password
+              properties:
+                token:
+                  type: string
+                  example: abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
+                new_password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: newSecurePassword123
+      responses:
+        '200':
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Password reset successfully
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/InvalidResetToken'
+
+  /logs:
+    get:
+      tags:
+        - Admin
+      summary: Get authentication logs
+      description: |
+        Retrieve authentication logs with filtering options.
+        Admin only endpoint.
+      operationId: getAuthLogs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: email
+          in: query
+          description: Filter by email address
+          schema:
+            type: string
+            format: email
+        - name: event_type
+          in: query
+          description: Filter by event type
+          schema:
+            type: string
+            enum:
+              - login_attempt
+              - login_success
+              - login_failure
+              - otp_generated
+              - otp_verified
+              - otp_failed
+              - password_reset_requested
+              - password_reset_completed
+              - rate_limit_triggered
+              - token_refreshed
+              - logout
+        - name: start_date
+          in: query
+          description: Filter by start date (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          description: Filter by end date (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          description: Results per page
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Auth logs retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    example: 150
+                  next:
+                    type: string
+                    nullable: true
+                    example: http://localhost:8000/api/auth/logs?page=2
+                  previous:
+                    type: string
+                    nullable: true
+                    example: null
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuthLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from /verify-otp endpoint
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        role:
+          type: string
+          enum: ['1', '2']
+          description: '1 = Admin, 2 = Member'
+          example: '2'
+
+    UserDetail:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            created_at:
+              type: string
+              format: date-time
+              example: '2024-01-15T10:30:00Z'
+
+    AuthLog:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        event_type:
+          type: string
+          enum:
+            - login_attempt
+            - login_success
+            - login_failure
+            - otp_generated
+            - otp_verified
+            - otp_failed
+            - password_reset_requested
+            - password_reset_completed
+            - rate_limit_triggered
+            - token_refreshed
+            - logout
+          example: login_success
+        ip_address:
+          type: string
+          example: 192.168.1.1
+        user_agent:
+          type: string
+          example: Mozilla/5.0...
+        timestamp:
+          type: string
+          format: date-time
+          example: '2024-01-15T10:30:00Z'
+        success:
+          type: boolean
+          example: true
+        details:
+          type: object
+          additionalProperties: true
+          example: {}
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: ERROR_CODE
+            message:
+              type: string
+              example: Error description
+            details:
+              type: object
+              additionalProperties: true
+
+  responses:
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: VALIDATION_ERROR
+              message: Email and password are required
+
+    InvalidCredentials:
+      description: Invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: INVALID_CREDENTIALS
+              message: Invalid email or password
+
+    InvalidOTP:
+      description: Invalid or expired OTP
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: INVALID_OTP
+              message: Invalid or expired OTP
+
+    InvalidToken:
+      description: Invalid or expired token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: INVALID_TOKEN
+              message: Invalid or expired refresh token
+
+    InvalidResetToken:
+      description: Invalid or expired password reset token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: INVALID_RESET_TOKEN
+              message: Invalid or expired password reset token
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+                example: Authentication credentials were not provided.
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: FORBIDDEN
+              message: You do not have permission to access this resource
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          description: Seconds until rate limit expires
+          schema:
+            type: integer
+            example: 900
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: RATE_LIMIT_EXCEEDED
+              message: Too many login attempts. Please try again in 15 minutes.
