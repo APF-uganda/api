@@ -102,13 +102,9 @@ class LoginView(APIView):
             'message': 'OTP sent to your email',
             'session_id': str(session_id),
             'email': user.email,
-            'user_name': user.email.split('@')[0]
+            'user_name': user.email.split('@')[0],
+            'otp_code': otp.code  # Always include for EmailJS (frontend sends email)
         }
-        
-        # In development mode, include OTP code so frontend can send via EmailJS
-        # In production, remove this or set DEBUG=False
-        if settings.DEBUG:
-            response_data['otp_code'] = otp.code
         
         return Response(response_data, status=status.HTTP_200_OK)
 
