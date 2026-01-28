@@ -99,6 +99,7 @@ if env("DATABASE_URL", default=None):
             default=env("DATABASE_URL"),
             conn_max_age=600,
             conn_health_checks=True,
+            ssl_require=True,  # Required for Neon and other cloud PostgreSQL providers
         )
     }
 else:
@@ -116,6 +117,9 @@ else:
             "PASSWORD": db_password,
             "HOST": env("DB_HOST", default="localhost"),
             "PORT": env("DB_PORT", default="5432"),
+            "OPTIONS": {
+                "sslmode": "require" if env("DB_HOST", default="localhost") != "localhost" else "prefer",
+            },
         }
     }
 
