@@ -90,3 +90,9 @@ htmlcov/
 .coverage.*
 coverage.xml
 *.cover
+# Local debug / test scripts
+test_*.py
+debug_*.py
+simple_*.py
+verify_*.py
+create_user_account.py

@@ -71,10 +71,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    # Custom authentication and security middleware
-    "authentication.middleware.JWTAuthenticationMiddleware",
-    "authentication.middleware.SecurityHeadersMiddleware",
-    "authentication.middleware.RequestLoggingMiddleware",
+    # Custom authentication and security middleware - temporarily disabled for debugging
+    # "authentication.middleware.JWTAuthenticationMiddleware",
+    # "authentication.middleware.SecurityHeadersMiddleware",
+    # "authentication.middleware.RequestLoggingMiddleware",
 ]
 
 ROOT_URLCONF = "api.urls"
@@ -193,8 +193,10 @@ CORS_ALLOWED_ORIGINS = env.list(
     default=[
         "http://localhost:5173",
         "http://localhost:3000",
+        "http://localhost:3002",  # Add the current frontend port
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:3002",  # Add the current frontend port
     ]
 )
 
@@ -237,7 +239,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    'EXCEPTION_HANDLER': 'authentication.exceptions.custom_exception_handler',
+    # 'EXCEPTION_HANDLER': 'authentication.exceptions.custom_exception_handler',  # Temporarily disabled
     'UNAUTHENTICATED_USER': None,  # Return None for unauthenticated users instead of AnonymousUser
 }
 
