@@ -59,6 +59,16 @@ python manage.py runserver
 
 ## API Endpoints
 
+### 📚 Interactive API Documentation
+
+The backend includes comprehensive Swagger/OpenAPI documentation:
+
+- **Swagger UI**: `http://localhost:8000/api/docs/` - Interactive API testing
+- **ReDoc**: `http://localhost:8000/api/redoc/` - Clean documentation view
+- **OpenAPI Schema**: `http://localhost:8000/swagger.json` - Raw schema
+
+See [SWAGGER_DOCUMENTATION.md](./SWAGGER_DOCUMENTATION.md) for detailed usage instructions.
+
 ### Contact Messages
 
 #### Submit Contact Form

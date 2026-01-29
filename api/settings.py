@@ -116,17 +116,22 @@ if database_url:
     }
 else:
     # Use individual environment variables (required - no defaults)
+    # Get SSL mode from environment (disable for local PostgreSQL, require for Neon)
+    ssl_mode = env("DB_SSL_MODE", default="require")
+    
+    db_options = {}
+    if ssl_mode != "disable":
+        db_options["sslmode"] = ssl_mode
+    
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
-            "NAME": env("DB_NAME"),  # Required: neondb
-            "USER": env("DB_USER"),  # Required: neondb_owner
+            "NAME": env("DB_NAME"),  # Required: neondb or apf_portal
+            "USER": env("DB_USER"),  # Required: neondb_owner or postgres
             "PASSWORD": env("DB_PASSWORD"),  # Required
-            "HOST": env("DB_HOST"),  # Required: Neon host
+            "HOST": env("DB_HOST"),  # Required: Neon host or 127.0.0.1
             "PORT": env("DB_PORT", default="5432"),
-            "OPTIONS": {
-                "sslmode": "require",  # Always require SSL for Neon
-            },
+            "OPTIONS": db_options,
         }
     }
 

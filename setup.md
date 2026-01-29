@@ -50,6 +50,16 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
+The server will start at `http://localhost:8000`
+
+### 7. Access API Documentation
+Once the server is running, access the interactive API documentation:
+- **Swagger UI**: http://localhost:8000/api/docs/
+- **ReDoc**: http://localhost:8000/api/redoc/
+
+See [SWAGGER_DOCUMENTATION.md](./SWAGGER_DOCUMENTATION.md) for detailed usage.
+```
+
 The API will be available at: `http://localhost:8000`
 
 ## API Endpoints

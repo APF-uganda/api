@@ -8,6 +8,8 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 from django.conf import settings
 from datetime import datetime
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 from .services import (
     AuthenticationService,
@@ -25,11 +27,40 @@ User = get_user_model()
 
 class LoginView(APIView):
     """
-    POST /api/auth/login
+    POST /api/v1/auth/login
     Verify email and password, generate OTP
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Authenticate user with email and password, then generate and send OTP",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['email', 'password'],
+            properties={
+                'email': openapi.Schema(type=openapi.TYPE_STRING, description='User email address'),
+                'password': openapi.Schema(type=openapi.TYPE_STRING, description='User password'),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="OTP generated successfully",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "message": "OTP sent to your email",
+                        "session_id": "uuid-string",
+                        "email": "user@example.com",
+                        "user_name": "user",
+                        "otp_code": "123456"
+                    }
+                }
+            ),
+            400: "Bad Request - Missing email or password",
+            401: "Unauthorized - Invalid credentials"
+        },
+        tags=['Authentication']
+    )
     @rate_limit
     def post(self, request):
         email = request.data.get('email')
@@ -112,11 +143,43 @@ class LoginView(APIView):
 
 class VerifyOTPView(APIView):
     """
-    POST /api/auth/verify-otp
+    POST /api/v1/auth/verify-otp
     Verify OTP and issue JWT tokens
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Verify OTP code and receive JWT access and refresh tokens",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['session_id', 'otp'],
+            properties={
+                'session_id': openapi.Schema(type=openapi.TYPE_STRING, description='Session ID from login response'),
+                'otp': openapi.Schema(type=openapi.TYPE_STRING, description='6-digit OTP code'),
+                'remember_me': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Extend refresh token lifetime', default=False),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="OTP verified successfully",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "access_token": "jwt-access-token",
+                        "refresh_token": "jwt-refresh-token",
+                        "user": {
+                            "id": 1,
+                            "email": "user@example.com",
+                            "role": "2"
+                        }
+                    }
+                }
+            ),
+            400: "Bad Request - Missing session_id or OTP",
+            401: "Unauthorized - Invalid or expired OTP"
+        },
+        tags=['Authentication']
+    )
     def post(self, request):
         session_id = request.data.get('session_id')
         otp = request.data.get('otp')
@@ -184,11 +247,36 @@ class VerifyOTPView(APIView):
 
 class RefreshTokenView(APIView):
     """
-    POST /api/auth/refresh
+    POST /api/v1/auth/refresh
     Refresh access token using refresh token
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Refresh JWT access token using a valid refresh token",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['refresh_token'],
+            properties={
+                'refresh_token': openapi.Schema(type=openapi.TYPE_STRING, description='JWT refresh token'),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Token refreshed successfully",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "access_token": "new-jwt-access-token",
+                        "refresh_token": "new-jwt-refresh-token"
+                    }
+                }
+            ),
+            400: "Bad Request - Missing refresh token",
+            401: "Unauthorized - Invalid or expired refresh token"
+        },
+        tags=['Authentication']
+    )
     def post(self, request):
         refresh_token = request.data.get('refresh_token')
         
@@ -238,12 +326,37 @@ class RefreshTokenView(APIView):
 
 class LogoutView(APIView):
     """
-    POST /api/auth/logout
+    POST /api/v1/auth/logout
     Invalidate refresh token
     """
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
+    @swagger_auto_schema(
+        operation_description="Logout user by blacklisting the refresh token",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['refresh_token'],
+            properties={
+                'refresh_token': openapi.Schema(type=openapi.TYPE_STRING, description='JWT refresh token to blacklist'),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Logged out successfully",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "message": "Logged out successfully"
+                    }
+                }
+            ),
+            400: "Bad Request - Missing refresh token",
+            401: "Unauthorized - Invalid or missing access token"
+        },
+        tags=['Authentication'],
+        security=[{'Bearer': []}]
+    )
     def post(self, request):
         refresh_token = request.data.get('refresh_token')
         
@@ -289,12 +402,31 @@ class LogoutView(APIView):
 
 class CurrentUserView(APIView):
     """
-    GET /api/auth/me
+    GET /api/v1/auth/me
     Get current authenticated user information
     """
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
+    @swagger_auto_schema(
+        operation_description="Get current authenticated user's profile information",
+        responses={
+            200: openapi.Response(
+                description="User information retrieved successfully",
+                examples={
+                    "application/json": {
+                        "id": 1,
+                        "email": "user@example.com",
+                        "role": "2",
+                        "created_at": "2024-01-01T00:00:00Z"
+                    }
+                }
+            ),
+            401: "Unauthorized - Invalid or missing access token"
+        },
+        tags=['Authentication'],
+        security=[{'Bearer': []}]
+    )
     def get(self, request):
         user = request.user
         
@@ -309,11 +441,34 @@ class CurrentUserView(APIView):
 
 class PasswordResetRequestView(APIView):
     """
-    POST /api/auth/password-reset-request
+    POST /api/v1/auth/password-reset-request
     Request password reset token
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Request a password reset token to be sent to the user's email",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['email'],
+            properties={
+                'email': openapi.Schema(type=openapi.TYPE_STRING, description='User email address'),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Password reset request processed",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "message": "Password reset instructions sent to your email"
+                    }
+                }
+            ),
+            400: "Bad Request - Missing email"
+        },
+        tags=['Authentication']
+    )
     def post(self, request):
         email = request.data.get('email')
         
@@ -352,11 +507,36 @@ class PasswordResetRequestView(APIView):
 
 class PasswordResetConfirmView(APIView):
     """
-    POST /api/auth/password-reset-confirm
+    POST /api/v1/auth/password-reset-confirm
     Complete password reset with token
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Complete password reset using the token received via email",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['token', 'new_password'],
+            properties={
+                'token': openapi.Schema(type=openapi.TYPE_STRING, description='Password reset token from email'),
+                'new_password': openapi.Schema(type=openapi.TYPE_STRING, description='New password (min 8 characters)'),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Password reset successfully",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "message": "Password reset successfully"
+                    }
+                }
+            ),
+            400: "Bad Request - Missing token/password or password too short",
+            401: "Unauthorized - Invalid or expired reset token"
+        },
+        tags=['Authentication']
+    )
     def post(self, request):
         token = request.data.get('token')
         new_password = request.data.get('new_password')
@@ -417,12 +597,50 @@ class PasswordResetConfirmView(APIView):
 
 class AuthLogsView(APIView):
     """
-    GET /api/auth/logs
+    GET /api/v1/auth/logs
     Retrieve authentication logs (admin only)
     """
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
+    @swagger_auto_schema(
+        operation_description="Retrieve authentication logs with filtering and pagination (Admin only)",
+        manual_parameters=[
+            openapi.Parameter('email', openapi.IN_QUERY, description="Filter by email", type=openapi.TYPE_STRING),
+            openapi.Parameter('event_type', openapi.IN_QUERY, description="Filter by event type", type=openapi.TYPE_STRING),
+            openapi.Parameter('start_date', openapi.IN_QUERY, description="Filter by start date (ISO format)", type=openapi.TYPE_STRING),
+            openapi.Parameter('end_date', openapi.IN_QUERY, description="Filter by end date (ISO format)", type=openapi.TYPE_STRING),
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER, default=1),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Items per page", type=openapi.TYPE_INTEGER, default=20),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Authentication logs retrieved successfully",
+                examples={
+                    "application/json": {
+                        "count": 100,
+                        "next": "/api/v1/auth/logs?page=2",
+                        "previous": None,
+                        "results": [
+                            {
+                                "id": 1,
+                                "email": "user@example.com",
+                                "event_type": "LOGIN_ATTEMPT",
+                                "ip_address": "192.168.1.1",
+                                "timestamp": "2024-01-01T00:00:00Z",
+                                "success": True,
+                                "details": {}
+                            }
+                        ]
+                    }
+                }
+            ),
+            401: "Unauthorized - Invalid or missing access token",
+            403: "Forbidden - Admin access required"
+        },
+        tags=['Authentication'],
+        security=[{'Bearer': []}]
+    )
     def get(self, request):
         # Check if user is admin
         if request.user.role != '1':
