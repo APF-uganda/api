@@ -16,8 +16,25 @@ Including another URLconf
 """
 
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.http import JsonResponse
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+
+# Swagger/OpenAPI Schema
+schema_view = get_schema_view(
+    openapi.Info(
+        title="APF Portal API",
+        default_version='v1',
+        description="API documentation for the APF Portal Backend",
+        terms_of_service="https://www.google.com/policies/terms/",
+        contact=openapi.Contact(email="contact@apfportal.com"),
+        license=openapi.License(name="BSD License"),
+    ),
+    public=True,
+    permission_classes=(permissions.AllowAny,),
+)
 
 def health_check(request):
     return JsonResponse({
@@ -28,13 +45,20 @@ def health_check(request):
             'auth': '/api/v1/auth/',
             'contacts': '/api/v1/contacts/',
             'applications': '/api/v1/applications/',
-            'dashboard': '/api/v1/'
+            'dashboard': '/api/v1/',
+            'docs': '/api/docs/'
         }
     })
 
 urlpatterns = [
     path("", health_check, name="health_check"),
     path("admin/", admin.site.urls),
+    
+    # Swagger/OpenAPI Documentation
+    path("api/docs/", schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path("api/redoc/", schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
+    
     # API v1 endpoints
     path("api/v1/contacts/", include("contacts.urls")),
     path("api/v1/applications/", include("applications.urls")),
