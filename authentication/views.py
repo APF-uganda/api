@@ -6,6 +6,7 @@ from django.utils import timezone
 from datetime import timedelta
 import uuid
 from .models import OTP
+from .services import TokenService
 
 User = get_user_model()
 
@@ -136,12 +137,13 @@ class VerifyOTPView(APIView):
         otp_instance.save()
         otp_instance.delete()  # Remove after use for security
         
+        # Generate JWT tokens for the user
+        tokens = TokenService.generate_tokens(otp_instance.user, remember_me)
+        
         return Response({
             "success": True,
             "message": "OTP verified successfully",
-            "user": {
-                "id": otp_instance.user.id,
-                "email": otp_instance.user.email,
-                "role": otp_instance.user.role
-            }
+            "access": tokens['access_token'],
+            "refresh": tokens['refresh_token'],
+            "user": tokens['user']
         })

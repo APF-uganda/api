@@ -1,10 +1,11 @@
 from django.shortcuts import render
-from  .services import get_total_applications,get_total_members
+from  .services import get_total_applications, get_total_members, get_application_statistics, get_recent_applications
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from .serializers import TotalApplicationSerializer, TotalMemberSerializer
+from .serializers import TotalApplicationSerializer, TotalMemberSerializer, ApplicationStatisticsSerializer
 from authentication.permissions import IsAuthenticated, IsAdmin
 from drf_yasg.utils import swagger_auto_schema
+from applications.serializers import ApplicationSerializer
 
 from rest_framework.permissions import AllowAny
 
@@ -32,5 +33,26 @@ class TotalMemberView(APIView):
          serializer = TotalMemberSerializer(data)
 
          return Response(serializer.data)
+
+class ApplicationStatisticsView(APIView):
+    """Enhanced statistics endpoint for admin dashboard."""
+    permission_classes = [AllowAny]  # TODO: Change to [IsAuthenticated, IsAdmin] in production
+    
+    @swagger_auto_schema(tags=["dashboard"])
+    def get(self, request):
+        data = get_application_statistics()
+        serializer = ApplicationStatisticsSerializer(data)
+        return Response(serializer.data)
+
+class RecentApplicationsView(APIView):
+    """Get recent applications for dashboard display."""
+    permission_classes = [AllowAny]  # TODO: Change to [IsAuthenticated, IsAdmin] in production
+    
+    @swagger_auto_schema(tags=["dashboard"])
+    def get(self, request):
+        limit = int(request.query_params.get('limit', 5))
+        applications = get_recent_applications(limit)
+        serializer = ApplicationSerializer(applications, many=True)
+        return Response(serializer.data)
 
 

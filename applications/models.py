@@ -37,6 +37,8 @@ class Application(models.Model):
     )
     phone_number = models.CharField(max_length=20)
     address = models.TextField()
+    national_id_number = models.CharField(max_length=20, blank=True)
+    icpau_certificate_number = models.CharField(max_length=50, blank=True)
     
     # Payment Information
     payment_method = models.CharField(max_length=20)
