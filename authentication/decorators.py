@@ -26,7 +26,16 @@ def rate_limit(func):
     def wrapper(view_instance, request, *args, **kwargs):
         # Extract IP address and email from request
         ip_address = AuthenticationService.get_client_ip(request)
-        email = request.data.get('email', '')
+        
+        # Safely get email from request data
+        email = ''
+        try:
+            if hasattr(request, 'data') and request.data:
+                email = request.data.get('email', '')
+            elif hasattr(request, 'POST') and request.POST:
+                email = request.POST.get('email', '')
+        except:
+            email = ''
         
         # Check if rate limited
         is_limited, retry_after = RateLimitService.is_rate_limited(ip_address, email)
