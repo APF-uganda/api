@@ -1,0 +1,13 @@
+API ENDPOINTS:
+
+  - DOMAIN: http://127.0.0.1:8000/api/v1
+
+  - Applications:
+      -   POST: applications/
+      -    GET: applications/ #Listing many application
+      -    GET: applications/{application_id} #Listing many application
+      - UPDATE: applications/{application_id}
+      -  PATCH: applications/{application_id}/aaprove/
+      -  PATCH: applications/{application_id}/reject/
+      -  PATCH: applications/{application_id}/retry/
+      - DELETE: applications/{application_id}

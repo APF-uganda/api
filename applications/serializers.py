@@ -4,6 +4,13 @@ from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
 from .models import Application, Document
 
+MTN_PREFIXES = (
+    '25677', '25678', '25676'  # MTN Uganda
+)
+
+AIRTEL_PREFIXES = (
+    '25670', '25675', '25674'  # Airtel Uganda
+)
 
 class DocumentSerializer(serializers.ModelSerializer):
     """
@@ -27,7 +34,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
         model = Application
         fields = [
             'id', 'username', 'email', 'password_hash', 'first_name', 'last_name',
-            'date_of_birth', 'phone_number', 'address',
+            'age_range', 'phone_number', 'address',
             'payment_method', 'payment_phone',
             'payment_card_number', 'payment_card_expiry', 'payment_card_cvv',
             'payment_cardholder_name',
@@ -52,22 +59,6 @@ class ApplicationSerializer(serializers.ModelSerializer):
         email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         if not re.match(email_pattern, value):
             raise serializers.ValidationError("Enter a valid email address.")
-        
-        return value
-    
-    def validate_date_of_birth(self, value):
-        """
-        Validate age (must be 18 or older).
-        Requirements: 3.3, 10.4
-        """
-        if not value:
-            raise serializers.ValidationError("Date of birth is required.")
-        
-        today = date.today()
-        age = today.year - value.year - ((today.month, today.day) < (value.month, value.day))
-        
-        if age < 18:
-            raise serializers.ValidationError("You must be at least 18 years old.")
         
         return value
     
@@ -133,6 +124,9 @@ class ApplicationSerializer(serializers.ModelSerializer):
             phone_pattern = r'^256\d{9}$'
             if not re.match(phone_pattern, payment_phone):
                 errors['payment_phone'] = 'Phone number must be in format 256XXXXXXXXX.'
+
+            elif not payment_phone.startswith(MTN_PREFIXES):
+                errors['payment_phone'] = 'Please enter a valid MTN number.'
         
         if errors:
             raise serializers.ValidationError(errors)
@@ -153,6 +147,9 @@ class ApplicationSerializer(serializers.ModelSerializer):
             phone_pattern = r'^256\d{9}$'
             if not re.match(phone_pattern, payment_phone):
                 errors['payment_phone'] = 'Phone number must be in format 256XXXXXXXXX.'
+
+            elif not payment_phone.startswith(AIRTEL_PREFIXES):
+               errors['payment_phone'] = 'Please enter a valid Airtel number.'
         
         if errors:
             raise serializers.ValidationError(errors)

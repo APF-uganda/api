@@ -12,7 +12,17 @@ class Application(models.Model):
         ('approved', 'Approved'),
         ('rejected', 'Rejected')
     ]
-    
+      
+    AGE_RANGE_CHOICES = [
+       ('18 – 24', '18 – 24'),
+       ('25 – 34', '25 – 34'),
+       ('35 – 44', '35 – 44'),
+       ('45 – 54', '45 – 54'),
+       ('55 – 64', '55 – 64'),
+       ('65+', '65+'),
+    ]
+
+
     # Account Details
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
@@ -21,7 +31,10 @@ class Application(models.Model):
     # Personal Information
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    date_of_birth = models.DateField()
+    age_range = models.CharField(
+    max_length=10,
+    choices=AGE_RANGE_CHOICES
+    )
     phone_number = models.CharField(max_length=20)
     address = models.TextField()
     

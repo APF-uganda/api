@@ -9,6 +9,7 @@ from .serializers import ApplicationSerializer
 from . import services
 from notifications.serializers import NotificationSerializer
 from authentication.permissions import AllowPublicApplicationSubmission
+from drf_yasg.utils import swagger_auto_schema
 
 
 class ApplicationViewSet(viewsets.ModelViewSet):
@@ -28,12 +29,13 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     
     Requirements: 9.2, 9.5, 10.5
     """
-    queryset = Application.objects.all()
+    queryset = Application.objects.all().order_by('-submitted_at')
     serializer_class = ApplicationSerializer
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     authentication_classes = [JWTAuthentication]
     permission_classes = [AllowPublicApplicationSubmission]
 
+   
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -80,3 +82,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             "application": app_serializer.data,
             "message": "Application reset to pending"
         }, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=["get"], url_path="recent")
+    def recent(self, request):
+       """
+       Return recent applications for dashboard
+       """
+       recent_apps = Application.objects.order_by('-submitted_at')[:5]
+       serializer = self.get_serializer(recent_apps, many=True)
+       return Response(serializer.data, status=status.HTTP_200_OK)
