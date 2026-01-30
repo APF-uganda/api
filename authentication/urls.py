@@ -1,7 +1,7 @@
 from django.urls import path
-from .views import login_view
+from .views import LoginView, VerifyOTPView
 
 urlpatterns = [
-    path('login/', login_view, name='login'),
-    # Temporarily remove other URLs to isolate the issue
+    path('login/', LoginView.as_view(), name='login'),
+    path('verify-otp/', VerifyOTPView.as_view(), name='verify-otp'),
 ]
