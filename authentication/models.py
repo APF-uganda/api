@@ -49,6 +49,22 @@ class User(AbstractBaseUser, PermissionsMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    # Profile fields
+    first_name = models.CharField(max_length=100, blank=True)
+    last_name = models.CharField(max_length=100, blank=True)
+    phone_number = models.CharField(max_length=20, blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
+    national_id_number = models.CharField(max_length=20, blank=True)
+    
+    # Professional fields
+    icpau_registration_number = models.CharField(max_length=50, blank=True)
+    organization = models.CharField(max_length=200, blank=True)
+    practising_status = models.CharField(max_length=50, default='Active')
+    membership_category = models.CharField(max_length=50, default='Full Member')
+    
+    # Profile picture
+    profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
+    
     objects = UserManager()
     
     USERNAME_FIELD = 'email'
@@ -63,6 +79,23 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+    
+    @property
+    def full_name(self):
+        """Get user's full name"""
+        if self.first_name and self.last_name:
+            return f"{self.first_name} {self.last_name}"
+        return self.email.split('@')[0].title()
+    
+    @property
+    def initials(self):
+        """Get user's initials for avatar"""
+        if self.first_name and self.last_name:
+            return f"{self.first_name[0]}{self.last_name[0]}".upper()
+        email_name = self.email.split('@')[0]
+        if len(email_name) >= 2:
+            return f"{email_name[0]}{email_name[1]}".upper()
+        return email_name[0].upper() if email_name else "U"
 
 
 class OTP(models.Model):
