@@ -18,7 +18,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     # Read-only computed fields
     full_name = serializers.CharField(source='get_full_name', read_only=True)
     initials = serializers.CharField(source='get_initials', read_only=True)
-    profile_picture_url = serializers.CharField(source='get_profile_picture_url', read_only=True)
+    profile_picture_url = serializers.SerializerMethodField(read_only=True)
     
     # User information (read-only)
     email = serializers.EmailField(source='user.email', read_only=True)
@@ -104,6 +104,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'user_role',
             'date_joined',
         ]
+
+    def get_profile_picture_url(self, obj):
+        request = self.context.get('request')
+        url = obj.get_profile_picture_url()
+        if not url:
+            return None
+        if request is not None:
+            return request.build_absolute_uri(url)
+        return url
     
     def validate_profile_picture(self, value):
         """Validate profile picture upload."""
@@ -250,7 +259,7 @@ class ProfileSummarySerializer(serializers.ModelSerializer):
     
     full_name = serializers.CharField(source='get_full_name', read_only=True)
     initials = serializers.CharField(source='get_initials', read_only=True)
-    profile_picture_url = serializers.CharField(source='get_profile_picture_url', read_only=True)
+    profile_picture_url = serializers.SerializerMethodField(read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
     user_role = serializers.CharField(source='user.role', read_only=True)
     
@@ -269,6 +278,15 @@ class ProfileSummarySerializer(serializers.ModelSerializer):
             'is_profile_complete',
             'updated_at',
         ]
+
+    def get_profile_picture_url(self, obj):
+        request = self.context.get('request')
+        url = obj.get_profile_picture_url()
+        if not url:
+            return None
+        if request is not None:
+            return request.build_absolute_uri(url)
+        return url
 
 
 class ProfileActivityLogSerializer(serializers.ModelSerializer):

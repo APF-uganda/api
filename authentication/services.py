@@ -3,7 +3,7 @@ Authentication services for handling authentication logic
 """
 
 from django.contrib.auth import authenticate
-from django.contrib.auth.hashers import check_password
+from django.contrib.auth.hashers import check_password, make_password, identify_hasher
 from django.utils import timezone
 from django.core.cache import cache
 from django.conf import settings
@@ -12,6 +12,8 @@ import uuid
 import requests
 import logging
 from authentication.models import User, OTP, PasswordResetToken, AuthLog, AuthEventType, UserRole
+from profiles.models import UserProfile
+from applications.models import Document
 from rest_framework_simplejwt.tokens import RefreshToken
 
 logger = logging.getLogger(__name__)
@@ -597,17 +599,95 @@ class UserCreationService:
         
         try:
             # Check if User already exists for the Application email
-            if User.objects.filter(email=application.email).exists():
+            existing_user = User.objects.filter(email__iexact=application.email).first()
+            if existing_user:
+                if not existing_user.is_active:
+                    existing_user.is_active = True
+                    existing_user.first_name = application.first_name or existing_user.first_name
+                    existing_user.last_name = application.last_name or existing_user.last_name
+                    existing_user.phone_number = application.phone_number or existing_user.phone_number
+                    existing_user.national_id_number = application.national_id_number or existing_user.national_id_number
+                    existing_user.icpau_registration_number = (
+                        application.icpau_certificate_number or existing_user.icpau_registration_number
+                    )
+                    existing_user.save(update_fields=[
+                        'is_active',
+                        'first_name',
+                        'last_name',
+                        'phone_number',
+                        'national_id_number',
+                        'icpau_registration_number'
+                    ])
+
+                    # Link User to Application via foreign key
+                    application.user = existing_user
+                    application.save(update_fields=['user'])
+
+                    # Create or update profile with application details
+                    profile, _ = UserProfile.objects.get_or_create(user=existing_user)
+                    profile.first_name = application.first_name or profile.first_name
+                    profile.last_name = application.last_name or profile.last_name
+                    profile.phone_number = application.phone_number or profile.phone_number
+                    profile.address_line_1 = application.address or profile.address_line_1
+                    profile.icpau_registration_number = (
+                        application.icpau_certificate_number or profile.icpau_registration_number
+                    )
+                    passport_doc = Document.objects.filter(
+                        application=application,
+                        document_type='passport_photo'
+                    ).first()
+                    if passport_doc and not profile.profile_picture:
+                        profile.profile_picture = passport_doc.file
+                    profile.save()
+
+                    logger.info(
+                        f"Reactivated user {existing_user.id} from application {application.id} for {application.email}"
+                    )
+                    return existing_user, None
+
                 logger.warning(f"User already exists for email {application.email}")
                 return None, "User already exists for this email"
             
+            raw_or_hashed_password = application.password_hash
+            try:
+                identify_hasher(raw_or_hashed_password)
+                password_to_store = raw_or_hashed_password
+            except Exception:
+                password_to_store = make_password(raw_or_hashed_password)
+
             # Create User with email and password_hash from Application
             user = User.objects.create(
                 email=application.email,
-                password=application.password_hash,  # Already hashed
+                password=password_to_store,
                 role=UserRole.MEMBER,  # Set role to 2 (member) by default
-                is_active=True
+                is_active=True,
+                first_name=application.first_name or '',
+                last_name=application.last_name or '',
+                phone_number=application.phone_number or '',
+                national_id_number=application.national_id_number or '',
+                icpau_registration_number=application.icpau_certificate_number or ''
             )
+
+            # Create or update profile with application details
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.first_name = application.first_name or ''
+            profile.last_name = application.last_name or ''
+            profile.phone_number = application.phone_number or ''
+            profile.address_line_1 = application.address or ''
+            profile.icpau_registration_number = application.icpau_certificate_number or ''
+            passport_doc = Document.objects.filter(
+                application=application,
+                document_type='passport_photo'
+            ).first()
+            if not passport_doc:
+                passport_doc = Document.objects.filter(
+                    application=application,
+                    file_name__icontains='passport'
+                ).first()
+            if passport_doc and not profile.profile_picture:
+                if passport_doc.file and passport_doc.file.storage.exists(passport_doc.file.name):
+                    profile.profile_picture = passport_doc.file
+            profile.save()
             
             # Link User to Application via foreign key
             application.user = user

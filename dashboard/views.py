@@ -13,7 +13,7 @@ from rest_framework.permissions import AllowAny
 class TotalApplicationView(APIView):
     # permission_classes = [IsAuthenticated, IsAdmin]
     permission_classes = [AllowAny]
-    @swagger_auto_schema(tags=["applications"])
+    @swagger_auto_schema(tags=["dashboard"])
     def get(self, request):
         data = {
             "total_applications": get_total_applications()
@@ -25,7 +25,7 @@ class TotalApplicationView(APIView):
 class TotalMemberView(APIView):
     #  permission_classes = [IsAuthenticated, IsAdmin]
      permission_classes = [AllowAny]
-     @swagger_auto_schema(tags=["applications"])
+     @swagger_auto_schema(tags=["dashboard"])
      def get(self, request):
          data ={
              "total_members": get_total_members()

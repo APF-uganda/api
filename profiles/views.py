@@ -92,14 +92,15 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         profile = self.get_object()
         
         if request.method == 'GET':
-            serializer = self.get_serializer(profile)
+            serializer = self.get_serializer(profile, context={'request': request})
             return Response(serializer.data)
         
         # Handle updates
         serializer = self.get_serializer(
             profile,
             data=request.data,
-            partial=request.method == 'PATCH'
+            partial=request.method == 'PATCH',
+            context={'request': request}
         )
         
         if serializer.is_valid():
@@ -121,7 +122,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 )
             
             # Return full profile data
-            response_serializer = UserProfileSerializer(updated_profile)
+            response_serializer = UserProfileSerializer(updated_profile, context={'request': request})
             return Response(response_serializer.data)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -133,7 +134,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         """
         profile, created = UserProfile.objects.get_or_create(user=request.user)
         
-        serializer = self.get_serializer(profile, data=request.data, partial=True)
+        serializer = self.get_serializer(profile, data=request.data, partial=True, context={'request': request})
         
         if serializer.is_valid():
             with transaction.atomic():
@@ -153,7 +154,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             
             return Response({
                 'message': 'Profile picture uploaded successfully',
-                'profile_picture_url': updated_profile.get_profile_picture_url(),
+                'profile_picture_url': request.build_absolute_uri(updated_profile.get_profile_picture_url()),
                 'initials': updated_profile.get_initials()
             })
         

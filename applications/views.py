@@ -2,14 +2,21 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.core.files.uploadedfile import InMemoryUploadedFile
+from django.contrib.auth import get_user_model
 from .models import Application, Document
 from .serializers import ApplicationSerializer
 from . import services
 from notifications.serializers import NotificationSerializer
 from authentication.permissions import AllowPublicApplicationSubmission
 from drf_yasg.utils import swagger_auto_schema
+import logging
+
+logger = logging.getLogger(__name__)
+User = get_user_model()
 
 
 class ApplicationViewSet(viewsets.ModelViewSet):
@@ -37,14 +44,42 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
    
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            # Use POST data only to avoid deep-copying file objects in request.data
+            data = request.POST.copy()
+            if 'document_types' in data:
+                data.pop('document_types')
 
-        uploaded_files = request.FILES.getlist('documents')
-        application = services.create_application(serializer.validated_data, uploaded_files)
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
 
-        response_serializer = self.get_serializer(application)
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            # Use serializer.save() so create() handles password hashing.
+            application = serializer.save()
+
+            uploaded_files = request.FILES.getlist('documents')
+            if hasattr(request.data, 'getlist'):
+                document_types = request.data.getlist('document_types')
+            else:
+                document_types = request.data.get('document_types', [])
+                if isinstance(document_types, str):
+                    document_types = [document_types]
+
+            if uploaded_files:
+                services.create_application_documents(application, uploaded_files, document_types)
+
+            response_serializer = self.get_serializer(application)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        except ValidationError as exc:
+            return Response(
+                {"errors": exc.detail},
+                status=status.HTTP_409_CONFLICT
+            )
+        except Exception:
+            logger.exception("Failed to create application")
+            return Response(
+                {"error": {"message": "Failed to submit application"}},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=True, methods=["patch"])
     def approve(self, request, pk=None):
@@ -91,3 +126,25 @@ class ApplicationViewSet(viewsets.ModelViewSet):
        recent_apps = Application.objects.order_by('-submitted_at')[:5]
        serializer = self.get_serializer(recent_apps, many=True)
        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="check-availability", permission_classes=[AllowAny])
+    def check_availability(self, request):
+        email = (request.query_params.get('email') or '').strip().lower()
+        username = (request.query_params.get('username') or '').strip()
+
+        email_exists = False
+        username_exists = False
+
+        if email:
+            email_exists = (
+                Application.objects.filter(email__iexact=email).exclude(status='rejected').exists() or
+                User.objects.filter(email__iexact=email, is_active=True).exists()
+            )
+
+        if username:
+            username_exists = Application.objects.filter(username__iexact=username).exclude(status='rejected').exists()
+
+        return Response({
+            "email_available": not email_exists,
+            "username_available": not username_exists
+        }, status=status.HTTP_200_OK)

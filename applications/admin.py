@@ -46,15 +46,21 @@ class ApplicationAdmin(admin.ModelAdmin):
     actions = ["approve_applications", "reject_applications", "reset_applications"]
 
     def approve_applications(self, request, queryset):
-        queryset.update(status="approved")
+        from . import services
+        for application in queryset:
+            services.approve_application(application.id)
     approve_applications.short_description = "Approve selected applications"
 
     def reject_applications(self, request, queryset):
-        queryset.update(status="rejected")
+        from . import services
+        for application in queryset:
+            services.reject_application(application.id)
     reject_applications.short_description = "Reject selected applications"
 
     def reset_applications(self, request, queryset):
-        queryset.update(status="pending")
+        from . import services
+        for application in queryset:
+            services.retry_application(application.id)
     reset_applications.short_description = "Reset selected applications to pending"
 
     fieldsets = [

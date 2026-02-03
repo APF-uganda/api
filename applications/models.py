@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.conf import settings
 
 
@@ -24,8 +25,8 @@ class Application(models.Model):
 
 
     # Account Details
-    username = models.CharField(max_length=150, unique=True)
-    email = models.EmailField(unique=True)
+    username = models.CharField(max_length=150)
+    email = models.EmailField()
     password_hash = models.CharField(max_length=255)
     
     # Personal Information
@@ -85,6 +86,18 @@ class Application(models.Model):
         ordering = ['-submitted_at']
         verbose_name = 'Membership Application'
         verbose_name_plural = 'Membership Applications'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['email'],
+                condition=~Q(status='rejected'),
+                name='uniq_application_email_not_rejected'
+            ),
+            models.UniqueConstraint(
+                fields=['username'],
+                condition=~Q(status='rejected'),
+                name='uniq_application_username_not_rejected'
+            ),
+        ]
     
     def __str__(self):
         return f"{self.username} - {self.email} ({self.status})"
@@ -104,6 +117,7 @@ class Document(models.Model):
     file_name = models.CharField(max_length=255)
     file_size = models.IntegerField()
     file_type = models.CharField(max_length=50)
+    document_type = models.CharField(max_length=50, blank=True, default='')
     uploaded_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:

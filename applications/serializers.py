@@ -19,7 +19,7 @@ class DocumentSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = Document
-        fields = ['id', 'file', 'file_name', 'file_size', 'file_type', 'uploaded_at']
+        fields = ['id', 'file', 'file_name', 'file_size', 'file_type', 'document_type', 'uploaded_at']
         read_only_fields = ['id', 'uploaded_at']
 
 
@@ -60,6 +60,10 @@ class ApplicationSerializer(serializers.ModelSerializer):
         if not re.match(email_pattern, value):
             raise serializers.ValidationError("Enter a valid email address.")
         
+        # Enforce uniqueness only for non-rejected applications
+        if Application.objects.filter(email__iexact=value).exclude(status='rejected').exists():
+            raise serializers.ValidationError("Membership Application with this email already exists.")
+
         return value
     
     def validate_phone_number(self, value):
@@ -75,6 +79,15 @@ class ApplicationSerializer(serializers.ModelSerializer):
         if not re.match(phone_pattern, value):
             raise serializers.ValidationError("Phone number must be in format 256XXXXXXXXX.")
         
+        return value
+
+    def validate_username(self, value):
+        if not value:
+            raise serializers.ValidationError("Username is required.")
+
+        if Application.objects.filter(username__iexact=value).exclude(status='rejected').exists():
+            raise serializers.ValidationError("Membership Application with this username already exists.")
+
         return value
     
     def validate(self, data):

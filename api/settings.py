@@ -33,6 +33,7 @@ SECRET_KEY = env("SECRET_KEY", default="django-insecure-dev-key-change-in-produc
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool("DEBUG", default=False)
+SERVE_MEDIA = env.bool("SERVE_MEDIA", default=DEBUG)
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
@@ -53,7 +54,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "contacts",
-    "applications",
+    "applications.apps.ApplicationsConfig",
     "notifications",
     "dashboard",
     "profiles",
@@ -317,3 +318,4 @@ EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='APF Portal <noreply@apfportal.com>')
 
+SERVE_MEDIA=True
