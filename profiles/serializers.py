@@ -23,7 +23,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     # User information (read-only)
     email = serializers.EmailField(source='user.email', read_only=True)
     user_role = serializers.CharField(source='user.role', read_only=True)
-    date_joined = serializers.DateTimeField(source='user.date_joined', read_only=True)
+    date_joined = serializers.DateTimeField(source='user.created_at', read_only=True)
     
     class Meta:
         model = UserProfile

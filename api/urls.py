@@ -68,6 +68,7 @@ urlpatterns = [
     path("api/v1/auth/", include("authentication.urls")),
     path("api/v1/", include("dashboard.urls")),
     path("api/v1/", include("profiles.urls")),
+    path("api/v1/reports/", include("reports.urls")),
 ]
 
 # Serve media files in development

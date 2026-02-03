@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "notifications",
     "dashboard",
     "profiles",
+    "reports",
 ]
 
 # URL Configuration
