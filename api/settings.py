@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "dashboard",
     "profiles",
     "reports",
+    "adminForum",
 ]
 
 # URL Configuration
@@ -103,12 +104,16 @@ WSGI_APPLICATION = "api.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-import dj_database_url
+try:
+    import dj_database_url
+    HAS_DJ_DATABASE_URL = True
+except ImportError:
+    HAS_DJ_DATABASE_URL = False
 
 # Database Configuration - Neon PostgreSQL (Cloud)
 # No localhost fallback - always use Neon database
 database_url = env("DATABASE_URL", default=None)
-if database_url:
+if database_url and HAS_DJ_DATABASE_URL:
     # Parse the DATABASE_URL
     DATABASES = {
         "default": dj_database_url.parse(

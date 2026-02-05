@@ -71,6 +71,7 @@ urlpatterns = [
     path("api/v1/", include("profiles.urls")),
     path("media/<path:path>", serve, {"document_root": settings.MEDIA_ROOT}),
     path("api/v1/reports/", include("reports.urls")),
+    path("api/v1/forum/", include("adminForum.urls")),
 ]
 
 # Serve media files in development
