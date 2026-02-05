@@ -17,7 +17,6 @@ settings_local.py
 *.mo
 
 # Media & Static (if generated)
-media/
 staticfiles/
 
 # If using Django collectstatic output
