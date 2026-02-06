@@ -23,3 +23,42 @@ class ApplicationStatisticsSerializer(serializers.Serializer):
     trends = TrendSerializer()
 
 
+class MemberDashboardProfileSerializer(serializers.Serializer):
+    display_name = serializers.CharField()
+    membership_category = serializers.CharField()
+    membership_status = serializers.CharField()
+    member_since = serializers.DateField(allow_null=True)
+    next_renewal_date = serializers.DateField(allow_null=True)
+
+
+class MemberDashboardDocumentSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    document_type = serializers.CharField(allow_blank=True)
+    uploaded_at = serializers.DateTimeField()
+    file_url = serializers.CharField(allow_blank=True, allow_null=True)
+
+
+class MemberDashboardActivitySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    action = serializers.CharField()
+    field_changed = serializers.CharField(allow_blank=True)
+    timestamp = serializers.DateTimeField()
+
+
+class MemberDashboardNotificationSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    message = serializers.CharField()
+    type = serializers.CharField()
+    is_read = serializers.BooleanField()
+    created_at = serializers.DateTimeField()
+    application_id = serializers.IntegerField(allow_null=True)
+
+
+class MemberDashboardSerializer(serializers.Serializer):
+    profile = MemberDashboardProfileSerializer()
+    documents = MemberDashboardDocumentSerializer(many=True)
+    recent_activity = MemberDashboardActivitySerializer(many=True)
+    notifications = MemberDashboardNotificationSerializer(many=True)
+
+
