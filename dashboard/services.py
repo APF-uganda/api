@@ -2,7 +2,8 @@ from applications.models import Application
 from authentication.models import User, UserRole
 from django.utils import timezone
 from datetime import timedelta
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
+from decimal import Decimal
 
 def get_total_applications():
     return Application.objects.count()
@@ -21,6 +22,21 @@ def get_application_statistics():
     approved_applications = Application.objects.filter(status='approved').count()
     rejected_applications = Application.objects.filter(status='rejected').count()
     paid_applications = Application.objects.filter(payment_status='success').count()
+    
+    # Calculate total revenue from successful payments
+    total_revenue = Application.objects.filter(
+        payment_status='success'
+    ).aggregate(
+        total=Sum('payment_amount')
+    )['total'] or Decimal('0.00')
+    
+    # Calculate last month's revenue for trend
+    last_month_revenue = Application.objects.filter(
+        payment_status='success',
+        updated_at__lt=last_month
+    ).aggregate(
+        total=Sum('payment_amount')
+    )['total'] or Decimal('0.00')
     
     # Last month counts for trend calculation
     last_month_total = Application.objects.filter(submitted_at__lt=last_month).count()
@@ -53,12 +69,14 @@ def get_application_statistics():
         'approved_applications': approved_applications,
         'rejected_applications': rejected_applications,
         'paid_applications': paid_applications,
+        'total_revenue': float(total_revenue),
         'trends': {
             'total_change': calculate_change(total_applications, last_month_total),
             'pending_change': calculate_change(pending_applications, last_month_pending),
             'approved_change': calculate_change(approved_applications, last_month_approved),
             'rejected_change': calculate_change(rejected_applications, last_month_rejected),
             'paid_change': calculate_change(paid_applications, last_month_paid),
+            'revenue_change': calculate_change(float(total_revenue), float(last_month_revenue)),
         }
     }
 

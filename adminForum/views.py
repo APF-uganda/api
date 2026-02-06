@@ -2,7 +2,8 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
-from django.db.models import Prefetch
+from rest_framework.pagination import PageNumberPagination
+from django.db.models import Prefetch, Count, Q
 from django.utils import timezone
 from datetime import timedelta
 from .models import ForumPost, Comment, Like, Category, Tag, Report
@@ -12,6 +13,15 @@ from .serializers import (
     TagSerializer, ReportSerializer, ForumStatsSerializer,
     AuthorSerializer
 )
+
+
+class ForumPostPagination(PageNumberPagination):
+    """
+    Pagination class for forum posts
+    """
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -50,6 +60,7 @@ class ForumPostViewSet(viewsets.ModelViewSet):
     Provides CRUD operations, filtering, and statistics
     """
     permission_classes = [IsAuthenticatedOrReadOnly]
+    pagination_class = ForumPostPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'content', 'author__email', 'author__first_name', 'author__last_name']
     ordering_fields = ['created_at', 'updated_at', 'views_count', 'comment_count', 'like_count']
