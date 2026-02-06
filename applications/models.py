@@ -43,6 +43,12 @@ class Application(models.Model):
     
     # Payment Information
     payment_method = models.CharField(max_length=20)
+    payment_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=50000.00,
+        help_text='Payment amount in UGX'
+    )
     # Mobile money fields
     payment_phone = models.CharField(max_length=20, blank=True)
     # Credit card fields
