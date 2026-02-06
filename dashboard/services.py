@@ -26,12 +26,24 @@ def get_application_statistics():
     rejected_applications = Application.objects.filter(status='rejected').count()
     paid_applications = Application.objects.filter(payment_status='success').count()
     
-    # Calculate total revenue from successful payments
-    total_revenue = Application.objects.filter(
+    # Calculate total revenue from all sources
+    # Revenue is generated from successful payments regardless of approval status
+    # This includes application fees, event payments, renewals, etc.
+    application_revenue = Application.objects.filter(
         payment_status='success'
     ).aggregate(
         total=Sum('payment_amount')
     )['total'] or Decimal('0.00')
+    
+    # Debug logging to help troubleshoot revenue calculation
+    print(f'DEBUG: Total applications with successful payments: {paid_applications}')
+    print(f'DEBUG: Calculated application revenue: {application_revenue}')
+    
+    # 2. Other revenue sources can be added here when implemented
+    # For example, event registrations, annual renewals, donations, etc.
+    # For now, we'll just use application revenue
+    # TODO: Add separate models for different payment types (events, renewals, etc.)
+    total_revenue = application_revenue
     
     # Calculate last month's revenue for trend
     last_month_revenue = Application.objects.filter(
