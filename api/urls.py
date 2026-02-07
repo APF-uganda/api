@@ -25,20 +25,6 @@ from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 
-# Swagger/OpenAPI Schema
-schema_view = get_schema_view(
-    openapi.Info(
-        title="APF Portal API",
-        default_version='v1',
-        description="API documentation for the APF Portal Backend",
-        terms_of_service="https://www.google.com/policies/terms/",
-        contact=openapi.Contact(email="contact@apfportal.com"),
-        license=openapi.License(name="BSD License"),
-    ),
-    public=True,
-    permission_classes=(permissions.AllowAny,),
-)
-
 def health_check(request):
     return JsonResponse({
         'status': 'ok',
@@ -48,10 +34,46 @@ def health_check(request):
             'auth': '/api/v1/auth/',
             'contacts': '/api/v1/contacts/',
             'applications': '/api/v1/applications/',
+            'payments': '/api/v1/payments/',
             'dashboard': '/api/v1/',
             'docs': '/api/docs/'
         }
     })
+
+# API v1 URL patterns (for Swagger to scan)
+api_v1_patterns = [
+    path("contacts/", include("contacts.urls")),
+    path("applications/", include("applications.urls")),
+    path("auth/", include("authentication.urls")),
+    path("payments/", include("payments.urls")),
+    path("", include("dashboard.urls")),
+]
+
+# Swagger/OpenAPI Schema - configured to scan only v1 patterns
+schema_view = get_schema_view(
+    openapi.Info(
+        title="APF Portal API",
+        default_version='v1',
+        description="""
+        API documentation for the APF Portal Backend.
+        
+        ## Authentication Flow
+        1. Login with email/password to receive OTP
+        2. Verify OTP to receive JWT tokens
+        3. Use access token in Authorization header: `Bearer <token>`
+        4. Refresh token when access token expires
+        
+        ## Base URL
+        All API endpoints are prefixed with `/api/v1/`
+        """,
+        terms_of_service="https://www.google.com/policies/terms/",
+        contact=openapi.Contact(email="contact@apfportal.com"),
+        license=openapi.License(name="BSD License"),
+    ),
+    public=True,
+    permission_classes=(permissions.AllowAny,),
+    patterns=[path("api/v1/", include(api_v1_patterns))],
+)
 
 urlpatterns = [
     
@@ -73,6 +95,7 @@ urlpatterns = [
     path("api/v1/reports/", include("reports.urls")),
     path("api/v1/forum/", include("adminForum.urls")),
     path("api/v1/notifications/", include("AdminNotifications.urls")),
+    path("api/v1/", include(api_v1_patterns)),
 ]
 
 # Serve media files in development

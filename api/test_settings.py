@@ -5,12 +5,21 @@ Overrides production settings for testing environment
 
 from .settings import *
 
-# Use SQLite for tests (faster and no SSL issues)
+# Use PostgreSQL for tests (same as production - Neon DB)
+# Parse DATABASE_URL from environment
+import dj_database_url
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': ':memory:',  # Use in-memory database for speed
-    }
+    'default': dj_database_url.config(
+        default=os.getenv('DATABASE_URL'),
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
+}
+
+# Override test database name to avoid conflicts
+DATABASES['default']['TEST'] = {
+    'NAME': 'test_' + DATABASES['default']['NAME'].split('/')[-1].split('?')[0],
 }
 
 # Disable Redis cache for tests
