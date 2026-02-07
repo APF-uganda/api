@@ -100,6 +100,29 @@ def get_recent_applications(limit=5):
     return Application.objects.select_related('user').order_by('-submitted_at')[:limit]
 
 
+def get_recent_payments(limit=5):
+    """Get recent successful payments for dashboard display."""
+    from django.db.models import F
+    
+    # Get applications with successful payments, ordered by most recent
+    payments = Application.objects.filter(
+        payment_status='success'
+    ).select_related('user').annotate(
+        member_name=F('first_name'),
+        member_last_name=F('last_name')
+    ).order_by('-updated_at')[:limit]
+    
+    return [{
+        'id': payment.id,
+        'payment_id': payment.payment_transaction_reference or f'PAY-{payment.id}',
+        'member_name': f"{payment.first_name} {payment.last_name}",
+        'amount': float(payment.payment_amount),
+        'payment_method': payment.payment_method,
+        'status': payment.payment_status,
+        'created_at': payment.updated_at,
+    } for payment in payments]
+
+
 def _safe_add_year(input_date):
     if not input_date:
         return None
