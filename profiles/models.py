@@ -153,25 +153,54 @@ class UserProfile(models.Model):
     
     def get_profile_picture_url(self):
         """Return profile picture URL or None."""
-        if self.profile_picture and hasattr(self.profile_picture, 'url'):
-            # Return full URL for API responses
-            from django.conf import settings
-            if settings.DEBUG:
-                # In development, construct full URL
-                return f"http://localhost:8000{self.profile_picture.url}"
-            else:
-                # In production, use the configured domain
-                return self.profile_picture.url
+        if self.profile_picture:
+            try:
+                if hasattr(self.profile_picture, 'url'):
+                    # Return full URL for API responses
+                    from django.conf import settings
+                    if settings.DEBUG:
+                        # In development, construct full URL
+                        return f"http://localhost:8000{self.profile_picture.url}"
+                    else:
+                        # In production, use the configured domain
+                        return self.profile_picture.url
+                else:
+                    print(f"Warning: profile_picture has no url attribute: {self.profile_picture}")
+            except Exception as e:
+                print(f"Error getting profile picture URL: {e}")
         return None
     
     def save(self, *args, **kwargs):
         """Override save to handle image processing and profile completion."""
-        # Process profile picture
-        if self.profile_picture:
-            self._process_profile_picture()
+        # Check if profile_picture field references a non-existent file
+        # BUT only if it's not a new upload (new uploads won't have a path yet)
+        if self.profile_picture and not hasattr(self.profile_picture, 'file'):
+            # This is an existing file reference, check if it exists
+            try:
+                # Try to access the file
+                if hasattr(self.profile_picture, 'path'):
+                    file_path = self.profile_picture.path
+                    if not os.path.exists(file_path):
+                        # File doesn't exist, clear the field
+                        print(f"Warning: Profile picture file not found: {file_path}. Clearing field.")
+                        self.profile_picture = None
+            except (ValueError, AttributeError, FileNotFoundError) as e:
+                # File path can't be determined or doesn't exist
+                print(f"Warning: Issue with profile picture: {e}. Clearing field.")
+                self.profile_picture = None
+        
+        # Process profile picture only if it's a new file upload
+        if self.profile_picture and hasattr(self.profile_picture, 'file'):
+            try:
+                self._process_profile_picture()
+            except Exception as e:
+                print(f"Warning: Failed to process profile picture: {e}")
         
         # Check if profile is complete
-        self._update_profile_completion()
+        try:
+            self._update_profile_completion()
+        except Exception as e:
+            print(f"Warning: Failed to update profile completion: {e}")
         
         super().save(*args, **kwargs)
     
@@ -181,8 +210,27 @@ class UserProfile(models.Model):
             return
         
         try:
+            # Check if this is a new file being uploaded (has a file attribute)
+            # If it's just a reference to an existing file, skip processing
+            if not hasattr(self.profile_picture, 'file'):
+                return
+            
+            # Check if file exists and has a path
+            if not hasattr(self.profile_picture, 'path'):
+                return
+                
+            # For new uploads, the path might not exist yet
+            # Only process if we can actually access the file
+            try:
+                file_path = self.profile_picture.path
+                if not os.path.exists(file_path):
+                    return
+            except (ValueError, AttributeError):
+                # Path doesn't exist yet or can't be determined
+                return
+            
             # Open and process image
-            img = Image.open(self.profile_picture)
+            img = Image.open(self.profile_picture.path)
             
             # Convert to RGB if necessary
             if img.mode in ('RGBA', 'LA', 'P'):

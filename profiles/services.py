@@ -19,21 +19,26 @@ class ProfileService:
         """
         Log profile activity for audit purposes.
         """
-        activity_data = {
-            'profile': profile,
-            'action': action,
-            'field_changed': field_changed or '',
-            'old_value': old_value or '',
-            'new_value': new_value or '',
-        }
-        
-        if request:
-            activity_data.update({
-                'ip_address': ProfileService.get_client_ip(request),
-                'user_agent': request.META.get('HTTP_USER_AGENT', '')[:500],  # Truncate long user agents
-            })
-        
-        return ProfileActivityLog.objects.create(**activity_data)
+        try:
+            activity_data = {
+                'profile': profile,
+                'action': action,
+                'field_changed': field_changed or '',
+                'old_value': str(old_value) if old_value else '',
+                'new_value': str(new_value) if new_value else '',
+            }
+            
+            if request:
+                activity_data.update({
+                    'ip_address': ProfileService.get_client_ip(request),
+                    'user_agent': request.META.get('HTTP_USER_AGENT', '')[:500],  # Truncate long user agents
+                })
+            
+            return ProfileActivityLog.objects.create(**activity_data)
+        except Exception as e:
+            # Log error but don't fail the operation
+            print(f"Warning: Failed to log profile activity: {e}")
+            return None
     
     @staticmethod
     def get_client_ip(request):
