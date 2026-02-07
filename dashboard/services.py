@@ -4,7 +4,8 @@ from profiles.models import UserProfile, ProfileActivityLog
 from notifications.models import Notification
 from django.utils import timezone
 from datetime import timedelta
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
+from decimal import Decimal
 
 
 def get_total_applications():
@@ -24,6 +25,33 @@ def get_application_statistics():
     approved_applications = Application.objects.filter(status='approved').count()
     rejected_applications = Application.objects.filter(status='rejected').count()
     paid_applications = Application.objects.filter(payment_status='success').count()
+    
+    # Calculate total revenue from all sources
+    # Revenue is generated from successful payments regardless of approval status
+    # This includes application fees, event payments, renewals, etc.
+    application_revenue = Application.objects.filter(
+        payment_status='success'
+    ).aggregate(
+        total=Sum('payment_amount')
+    )['total'] or Decimal('0.00')
+    
+    # Debug logging to help troubleshoot revenue calculation
+    print(f'DEBUG: Total applications with successful payments: {paid_applications}')
+    print(f'DEBUG: Calculated application revenue: {application_revenue}')
+    
+    # 2. Other revenue sources can be added here when implemented
+    # For example, event registrations, annual renewals, donations, etc.
+    # For now, we'll just use application revenue
+    # TODO: Add separate models for different payment types (events, renewals, etc.)
+    total_revenue = application_revenue
+    
+    # Calculate last month's revenue for trend
+    last_month_revenue = Application.objects.filter(
+        payment_status='success',
+        updated_at__lt=last_month
+    ).aggregate(
+        total=Sum('payment_amount')
+    )['total'] or Decimal('0.00')
     
     # Last month counts for trend calculation
     last_month_total = Application.objects.filter(submitted_at__lt=last_month).count()
@@ -56,18 +84,43 @@ def get_application_statistics():
         'approved_applications': approved_applications,
         'rejected_applications': rejected_applications,
         'paid_applications': paid_applications,
+        'total_revenue': float(total_revenue),
         'trends': {
             'total_change': calculate_change(total_applications, last_month_total),
             'pending_change': calculate_change(pending_applications, last_month_pending),
             'approved_change': calculate_change(approved_applications, last_month_approved),
             'rejected_change': calculate_change(rejected_applications, last_month_rejected),
             'paid_change': calculate_change(paid_applications, last_month_paid),
+            'revenue_change': calculate_change(float(total_revenue), float(last_month_revenue)),
         }
     }
 
 def get_recent_applications(limit=5):
     """Get recent applications for dashboard display."""
     return Application.objects.select_related('user').order_by('-submitted_at')[:limit]
+
+
+def get_recent_payments(limit=5):
+    """Get recent successful payments for dashboard display."""
+    from django.db.models import F
+    
+    # Get applications with successful payments, ordered by most recent
+    payments = Application.objects.filter(
+        payment_status='success'
+    ).select_related('user').annotate(
+        member_name=F('first_name'),
+        member_last_name=F('last_name')
+    ).order_by('-updated_at')[:limit]
+    
+    return [{
+        'id': payment.id,
+        'payment_id': payment.payment_transaction_reference or f'PAY-{payment.id}',
+        'member_name': f"{payment.first_name} {payment.last_name}",
+        'amount': float(payment.payment_amount),
+        'payment_method': payment.payment_method,
+        'status': payment.payment_status,
+        'created_at': payment.updated_at,
+    } for payment in payments]
 
 
 def _safe_add_year(input_date):

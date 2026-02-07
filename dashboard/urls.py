@@ -4,6 +4,7 @@ from .views import (
     TotalMemberView,
     ApplicationStatisticsView,
     RecentApplicationsView,
+    RecentPaymentsView,
     MemberDashboardView,
 )
 
@@ -12,5 +13,6 @@ urlpatterns = [
     path('total-members/', TotalMemberView.as_view()),
     path('statistics/', ApplicationStatisticsView.as_view()),
     path('recent-applications/', RecentApplicationsView.as_view()),
+    path('recent-payments/', RecentPaymentsView.as_view()),
     path('member/dashboard/', MemberDashboardView.as_view()),
 ]

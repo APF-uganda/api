@@ -39,7 +39,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             'payment_card_number', 'payment_card_expiry', 'payment_card_cvv',
             'payment_cardholder_name',
             'payment_status', 'payment_transaction_reference', 'payment_error_message',
-            'status', 'submitted_at', 'updated_at', 'documents'
+            'payment_amount', 'status', 'submitted_at', 'updated_at', 'documents'
         ]
         read_only_fields = ['id', 'status', 'submitted_at', 'updated_at']
         extra_kwargs = {

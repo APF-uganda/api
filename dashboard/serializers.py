@@ -13,6 +13,7 @@ class TrendSerializer(serializers.Serializer):
     approved_change = serializers.FloatField()
     rejected_change = serializers.FloatField()
     paid_change = serializers.FloatField()
+    revenue_change = serializers.FloatField()
 
 class ApplicationStatisticsSerializer(serializers.Serializer):
     total_applications = serializers.IntegerField()
@@ -20,6 +21,7 @@ class ApplicationStatisticsSerializer(serializers.Serializer):
     approved_applications = serializers.IntegerField()
     rejected_applications = serializers.IntegerField()
     paid_applications = serializers.IntegerField()
+    total_revenue = serializers.FloatField()
     trends = TrendSerializer()
 
 

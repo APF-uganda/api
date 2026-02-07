@@ -4,6 +4,7 @@ from .services import (
     get_total_members,
     get_application_statistics,
     get_recent_applications,
+    get_recent_payments,
     get_member_dashboard_data,
 )
 from rest_framework.views import APIView
@@ -65,6 +66,17 @@ class RecentApplicationsView(APIView):
         applications = get_recent_applications(limit)
         serializer = ApplicationSerializer(applications, many=True)
         return Response(serializer.data)
+
+
+class RecentPaymentsView(APIView):
+    """Get recent successful payments for dashboard display."""
+    permission_classes = [AllowAny]
+    
+    @swagger_auto_schema(tags=["dashboard"])
+    def get(self, request):
+        limit = int(request.query_params.get('limit', 5))
+        payments = get_recent_payments(limit)
+        return Response(payments)
 
 @swagger_auto_schema(tags=["dashboard"])
 class MemberDashboardView(APIView):

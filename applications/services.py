@@ -1,6 +1,9 @@
 from django.shortcuts import get_object_or_404
+from django.contrib.auth import get_user_model
 from .models import Application, Document
 from notifications.services import create_notification
+
+User = get_user_model()
 
 
 def create_application_documents(application, uploaded_files, document_types=None):
@@ -28,12 +31,22 @@ def approve_application(application_id):
         if not app.user.is_active:
             app.user.is_active = True
             app.user.save(update_fields=['is_active'])
+        
+        # Create notification
         create_notification(
             application=app,
             user=app.user,
             message="Your membership application has been approved.",
             type="success"
         )
+        
+        # Send welcome announcement
+        try:
+            from AdminNotifications.services import send_welcome_announcement
+            send_welcome_announcement(app.user)
+        except Exception as e:
+            print(f"Error sending welcome announcement: {e}")
+    
     return app
 
 
