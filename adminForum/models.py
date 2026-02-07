@@ -98,6 +98,39 @@ class ForumPost(models.Model):
         """Get the total number of likes for this post"""
         return self.likes.count()
 
+    @property
+    def replies_count_excluding_author(self):
+        """Get total number of comments excluding the author's own comments"""
+        return self.comments.exclude(author=self.author).count()
+
+
+class PostView(models.Model):
+    """
+    Track unique views for forum posts
+    """
+    post = models.ForeignKey(
+        ForumPost,
+        on_delete=models.CASCADE,
+        related_name='views'
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='forum_post_views'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['post', 'user']
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['post', 'created_at']),
+            models.Index(fields=['user', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} viewed {self.post.title}"
+
 
 class Comment(models.Model):
     """

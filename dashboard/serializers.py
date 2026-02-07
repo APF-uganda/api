@@ -44,6 +44,8 @@ class MemberDashboardActivitySerializer(serializers.Serializer):
     action = serializers.CharField()
     field_changed = serializers.CharField(allow_blank=True)
     timestamp = serializers.DateTimeField()
+    message = serializers.CharField()
+
 
 
 class MemberDashboardNotificationSerializer(serializers.Serializer):
@@ -60,5 +62,4 @@ class MemberDashboardSerializer(serializers.Serializer):
     documents = MemberDashboardDocumentSerializer(many=True)
     recent_activity = MemberDashboardActivitySerializer(many=True)
     notifications = MemberDashboardNotificationSerializer(many=True)
-
 

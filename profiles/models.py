@@ -250,6 +250,7 @@ class ProfileActivityLog(models.Model):
     field_changed = models.CharField(max_length=100, blank=True)
     old_value = models.TextField(blank=True)
     new_value = models.TextField(blank=True)
+    metadata = models.JSONField(blank=True, default=dict)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)

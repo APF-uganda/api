@@ -299,6 +299,7 @@ class ProfileActivityLogSerializer(serializers.ModelSerializer):
         fields = [
             'action',
             'field_changed',
+            'metadata',
             'timestamp',
         ]
-        read_only_fields = ['action', 'field_changed', 'timestamp']
+        read_only_fields = ['action', 'field_changed', 'metadata', 'timestamp']

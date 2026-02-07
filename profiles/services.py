@@ -15,7 +15,7 @@ class ProfileService:
     """
     
     @staticmethod
-    def log_activity(profile, action, field_changed=None, old_value=None, new_value=None, request=None):
+    def log_activity(profile, action, field_changed=None, old_value=None, new_value=None, metadata=None, request=None):
         """
         Log profile activity for audit purposes.
         """
@@ -26,11 +26,29 @@ class ProfileService:
             'old_value': old_value or '',
             'new_value': new_value or '',
         }
+
+        if metadata is None:
+            metadata = {}
+
+        # If old/new are provided, add a basic changes entry
+        if field_changed and (old_value is not None or new_value is not None):
+            metadata = {
+                **metadata,
+                'changes': [
+                    {
+                        'field': field_changed,
+                        'old': old_value,
+                        'new': new_value,
+                    }
+                ]
+            }
+
+        activity_data['metadata'] = metadata
         
         if request:
             activity_data.update({
                 'ip_address': ProfileService.get_client_ip(request),
-                'user_agent': request.META.get('HTTP_USER_AGENT', '')[:500],  # Truncate long user agents
+                'user_agent': request.META.get('HTTP_USER_AGENT', '')[:500],  
             })
         
         return ProfileActivityLog.objects.create(**activity_data)

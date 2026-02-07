@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.db.models import Count, Q
-from .models import ForumPost, Comment, Like, Category, Tag, Report
+from .models import ForumPost, Comment, Like, Category, Tag, Report, PostView
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -39,6 +39,7 @@ class AuthorSerializer(serializers.Serializer):
     last_name = serializers.CharField(required=False, allow_blank=True, default='')
     full_name = serializers.SerializerMethodField()
     initials = serializers.SerializerMethodField()
+    profile_picture_url = serializers.SerializerMethodField()
 
     def get_full_name(self, obj):
         """Get full name from first and last name"""
@@ -62,6 +63,30 @@ class AuthorSerializer(serializers.Serializer):
             # Use first letter of email if no name
             email = getattr(obj, 'email', '')
             return email[0].upper() if email else 'U'
+
+    def get_profile_picture_url(self, obj):
+        """Get absolute profile picture URL if available"""
+        profile_picture = getattr(obj, 'profile_picture', None)
+        if profile_picture:
+            try:
+                url = profile_picture.url
+            except Exception:
+                url = None
+            else:
+                request = self.context.get('request')
+                return request.build_absolute_uri(url) if request else url
+
+        profile = getattr(obj, 'profile', None)
+        if profile:
+            try:
+                url = profile.get_profile_picture_url()
+            except Exception:
+                url = None
+            if url:
+                request = self.context.get('request')
+                return request.build_absolute_uri(url) if request else url
+
+        return None
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -107,20 +132,22 @@ class ForumPostListSerializer(serializers.ModelSerializer):
     comment_count = serializers.SerializerMethodField()
     like_count = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
+    views_count = serializers.SerializerMethodField()
+    viewers = serializers.SerializerMethodField()
 
     class Meta:
         model = ForumPost
         fields = [
             'id', 'title', 'content', 'author', 'category', 'tags',
-            'status', 'views_count', 'comment_count', 'like_count',
+            'status', 'views_count', 'comment_count', 'like_count', 'viewers',
             'is_pinned', 'is_locked', 'is_liked',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'views_count', 'created_at', 'updated_at']
 
     def get_comment_count(self, obj):
-        """Get comment count from annotation or calculate"""
-        return getattr(obj, 'comment_count', obj.comment_count)
+        """Get comment count excluding the author's own comments"""
+        return getattr(obj, 'comment_count', obj.replies_count_excluding_author)
 
     def get_like_count(self, obj):
         """Get like count from annotation or calculate"""
@@ -132,6 +159,20 @@ class ForumPostListSerializer(serializers.ModelSerializer):
         if request and hasattr(request, 'user') and request.user.is_authenticated:
             return Like.objects.filter(post=obj, user=request.user).exists()
         return False
+
+    def get_views_count(self, obj):
+        """Get view count excluding the author's own view"""
+        return PostView.objects.filter(post=obj).exclude(user=obj.author).count()
+
+    def get_viewers(self, obj):
+        """Get recent viewers for display"""
+        views = (
+            PostView.objects.filter(post=obj)
+            .exclude(user=obj.author)
+            .select_related('user')
+            .order_by('-created_at')[:5]
+        )
+        return [AuthorSerializer(view.user, context=self.context).data for view in views]
 
 
 class ForumPostDetailSerializer(serializers.ModelSerializer):
@@ -159,6 +200,8 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
     comment_count = serializers.SerializerMethodField()
     like_count = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
+    views_count = serializers.SerializerMethodField()
+    viewers = serializers.SerializerMethodField()
 
     class Meta:
         model = ForumPost
@@ -167,7 +210,7 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
             'author', 'category', 'category_id',
             'tags', 'tag_ids',
             'status', 'views_count', 
-            'comment_count', 'like_count',
+            'comment_count', 'like_count', 'viewers',
             'is_pinned', 'is_locked', 'is_liked',
             'comments',
             'created_at', 'updated_at'
@@ -182,12 +225,26 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
         return False
 
     def get_comment_count(self, obj):
-        """Get comment count from annotation or calculate"""
-        return getattr(obj, 'comment_count', obj.comment_count)
+        """Get comment count excluding the author's own comments"""
+        return getattr(obj, 'comment_count', obj.replies_count_excluding_author)
 
     def get_like_count(self, obj):
         """Get like count from annotation or calculate"""
         return getattr(obj, 'like_count', obj.like_count)
+
+    def get_views_count(self, obj):
+        """Get view count excluding the author's own view"""
+        return PostView.objects.filter(post=obj).exclude(user=obj.author).count()
+
+    def get_viewers(self, obj):
+        """Get recent viewers for display"""
+        views = (
+            PostView.objects.filter(post=obj)
+            .exclude(user=obj.author)
+            .select_related('user')
+            .order_by('-created_at')[:5]
+        )
+        return [AuthorSerializer(view.user, context=self.context).data for view in views]
 
     def validate_title(self, value):
         """Validate post title"""

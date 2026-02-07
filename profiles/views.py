@@ -11,6 +11,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.utils import timezone
+import os
 
 from .models import UserProfile, ProfileActivityLog
 from .serializers import (
@@ -63,6 +64,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 ProfileService.log_activity(
                     profile=profile,
                     action='created',
+                    metadata={'created': True},
                     request=self.request
                 )
             return profile
@@ -107,17 +109,28 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 # Track changes for logging
                 changed_fields = []
+                original_values = {}
                 if hasattr(serializer, 'validated_data'):
                     changed_fields = list(serializer.validated_data.keys())
+                    for field in changed_fields:
+                        original_values[field] = getattr(profile, field, None)
                 
                 # Save profile
                 updated_profile = serializer.save()
                 
                 # Log activity
+                changes = []
+                for field in changed_fields:
+                    changes.append({
+                        'field': field,
+                        'old': original_values.get(field),
+                        'new': getattr(updated_profile, field, None),
+                    })
                 ProfileService.log_activity(
                     profile=updated_profile,
                     action='updated',
                     field_changed=', '.join(changed_fields),
+                    metadata={'changes': changes} if changes else {},
                     request=request
                 )
             
@@ -146,9 +159,11 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 updated_profile = serializer.save()
                 
                 # Log activity
+                file_name = os.path.basename(updated_profile.profile_picture.name) if updated_profile.profile_picture else ''
                 ProfileService.log_activity(
                     profile=updated_profile,
                     action='picture_uploaded',
+                    metadata={'document_name': file_name} if file_name else {},
                     request=request
                 )
             
@@ -180,7 +195,8 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             )
         
         with transaction.atomic():
-            # Remove picture file and clear field
+            
+            previous_picture = profile.profile_picture.name if profile.profile_picture else ''
             ProfileService.remove_profile_picture(profile)
             profile.profile_picture = None
             profile.save()
@@ -189,6 +205,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             ProfileService.log_activity(
                 profile=profile,
                 action='picture_removed',
+                metadata={'document_name': os.path.basename(previous_picture)} if previous_picture else {},
                 request=request
             )
         
@@ -212,12 +229,22 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         
         if serializer.is_valid():
             with transaction.atomic():
+                changed_fields = list(serializer.validated_data.keys())
+                original_values = {field: getattr(profile, field, None) for field in changed_fields}
                 updated_profile = serializer.save()
                 
                 # Log activity
+                changes = []
+                for field in changed_fields:
+                    changes.append({
+                        'field': field,
+                        'old': original_values.get(field),
+                        'new': getattr(updated_profile, field, None),
+                    })
                 ProfileService.log_activity(
                     profile=updated_profile,
                     action='privacy_changed',
+                    metadata={'changes': changes} if changes else {},
                     request=request
                 )
             
@@ -243,12 +270,22 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         
         if serializer.is_valid():
             with transaction.atomic():
+                changed_fields = list(serializer.validated_data.keys())
+                original_values = {field: getattr(profile, field, None) for field in changed_fields}
                 updated_profile = serializer.save()
                 
                 # Log activity
+                changes = []
+                for field in changed_fields:
+                    changes.append({
+                        'field': field,
+                        'old': original_values.get(field),
+                        'new': getattr(updated_profile, field, None),
+                    })
                 ProfileService.log_activity(
                     profile=updated_profile,
                     action='notifications_changed',
+                    metadata={'changes': changes} if changes else {},
                     request=request
                 )
             

@@ -2,10 +2,10 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Count, Q
 from django.utils import timezone
 from datetime import timedelta
-from .models import ForumPost, Comment, Like, Category, Tag, Report
+from .models import ForumPost, Comment, Like, Category, Tag, Report, PostView
 from .serializers import (
     ForumPostListSerializer, ForumPostDetailSerializer,
     CommentSerializer, LikeSerializer, CategorySerializer,
@@ -110,7 +110,7 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         List forum posts with error handling
         """
         print("\n" + "="*50)
-        print("📋 LIST POSTS REQUEST")
+        print("LIST POSTS REQUEST")
         print("="*50)
         print(f"User: {request.user.email if request.user.is_authenticated else 'Anonymous'}")
         print(f"Query params: {request.query_params}")
@@ -119,7 +119,7 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         try:
             return super().list(request, *args, **kwargs)
         except Exception as e:
-            print(f"\n❌ ERROR in list():")
+            print(f"\n ERROR in list():")
             print(f"   Type: {type(e).__name__}")
             print(f"   Message: {str(e)}")
             import traceback
@@ -129,11 +129,11 @@ class ForumPostViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         """
-        Increment view count when post is retrieved
+        Record a unique view when post is retrieved
         """
         instance = self.get_object()
-        instance.views_count += 1
-        instance.save(update_fields=['views_count'])
+        if request.user.is_authenticated and request.user != instance.author:
+          PostView.objects.get_or_create(post=instance, user=request.user)
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
@@ -142,7 +142,7 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         Create a new forum post with detailed logging
         """
         print("\n" + "="*50)
-        print("📝 CREATE POST REQUEST")
+        print(" CREATE POST REQUEST")
         print("="*50)
         print(f"User: {request.user.email if request.user.is_authenticated else 'Anonymous'}")
         print(f"Data received: {request.data}")
@@ -151,7 +151,7 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         try:
             return super().create(request, *args, **kwargs)
         except Exception as e:
-            print(f"\n❌ ERROR in create():")
+            print(f"\n ERROR in create():")
             print(f"   Type: {type(e).__name__}")
             print(f"   Message: {str(e)}")
             import traceback
@@ -165,9 +165,9 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         """
         try:
             post = serializer.save(author=self.request.user)
-            print(f"✅ Post created successfully: {post.title} by {post.author.email}")
+            print(f" Post created successfully: {post.title} by {post.author.email}")
         except Exception as e:
-            print(f"❌ Error creating post: {str(e)}")
+            print(f" Error creating post: {str(e)}")
             import traceback
             traceback.print_exc()
             raise
@@ -203,6 +203,21 @@ class ForumPostViewSet(viewsets.ModelViewSet):
             {'message': 'Post liked successfully', 'like_count': post.like_count},
             status=status.HTTP_201_CREATED
         )
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def viewers(self, request, pk=None):
+        """
+        Get full list of viewers for a post (excluding author)
+        """
+        post = self.get_object()
+        views = (
+            PostView.objects.filter(post=post)
+            .exclude(user=post.author)
+            .select_related('user')
+            .order_by('-created_at')
+        )
+        data = [AuthorSerializer(view.user, context={'request': request}).data for view in views]
+        return Response(data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def unlike(self, request, pk=None):

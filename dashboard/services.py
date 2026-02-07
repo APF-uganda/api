@@ -117,12 +117,73 @@ def get_member_dashboard_data(user, request=None):
         ProfileActivityLog.objects.filter(profile__user=user)
         .order_by('-timestamp')[:10]
     )
+    action_labels = {
+        "created": "Profile created",
+        "updated": "Profile updated",
+        "picture_uploaded": "Profile picture uploaded",
+        "picture_removed": "Profile picture removed",
+        "privacy_changed": "Privacy settings updated",
+        "notifications_changed": "Notification preferences updated",
+    }
+
+    def _format_value(value):
+        if value is None or value == "":
+            return ""
+        if isinstance(value, bool):
+            return "enabled" if value else "disabled"
+        text = str(value)
+        if len(text) > 40:
+            return f"{text[:37]}..."
+        return text
+
+    def _humanize_field(field_name):
+        if not field_name:
+            return ""
+        return field_name.replace('_', ' ').strip().title()
+
+    def _build_message(log):
+        meta = log.metadata or {}
+        changes = meta.get("changes") or []
+        document_name = meta.get("document_name")
+
+        if document_name and log.action in ["picture_uploaded", "picture_removed"]:
+            return f"{action_labels.get(log.action, 'Profile picture updated')}: {document_name}"
+
+        if changes:
+            if len(changes) == 1:
+                change = changes[0]
+                field_label = _humanize_field(change.get("field") or log.field_changed)
+                old_val = _format_value(change.get("old"))
+                new_val = _format_value(change.get("new"))
+
+                if old_val and new_val:
+                    return f"Updated {field_label} from {old_val} to {new_val}"
+                if new_val:
+                    return f"Set {field_label} to {new_val}"
+                if old_val and not new_val:
+                    return f"Cleared {field_label}"
+                return f"Updated {field_label}"
+
+            labels = [
+                _humanize_field(change.get("field"))
+                for change in changes
+                if change.get("field")
+            ]
+            labels = [label for label in labels if label]
+            if labels:
+                listed = ", ".join(labels[:3])
+                suffix = "..." if len(labels) > 3 else ""
+                return f"Updated {len(labels)} fields: {listed}{suffix}"
+
+        return action_labels.get(log.action, "Account activity")
+
     recent_activity = [
         {
             "id": log.id,
             "action": log.action,
             "field_changed": log.field_changed or "",
             "timestamp": log.timestamp,
+            "message": _build_message(log),
         }
         for log in activity_logs
     ]
