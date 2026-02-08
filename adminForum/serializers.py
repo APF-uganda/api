@@ -147,11 +147,11 @@ class ForumPostListSerializer(serializers.ModelSerializer):
 
     def get_comment_count(self, obj):
         """Get comment count excluding the author's own comments"""
-        return getattr(obj, 'comment_count', obj.replies_count_excluding_author)
+        return getattr(obj, 'comments_total', obj.replies_count_excluding_author)
 
     def get_like_count(self, obj):
         """Get like count from annotation or calculate"""
-        return getattr(obj, 'like_count', obj.like_count)
+        return getattr(obj, 'likes_total', obj.like_count)
 
     def get_is_liked(self, obj):
         """Check if the current user has liked this post"""
@@ -226,11 +226,11 @@ class ForumPostDetailSerializer(serializers.ModelSerializer):
 
     def get_comment_count(self, obj):
         """Get comment count excluding the author's own comments"""
-        return getattr(obj, 'comment_count', obj.replies_count_excluding_author)
+        return getattr(obj, 'comments_total', obj.replies_count_excluding_author)
 
     def get_like_count(self, obj):
         """Get like count from annotation or calculate"""
-        return getattr(obj, 'like_count', obj.like_count)
+        return getattr(obj, 'likes_total', obj.like_count)
 
     def get_views_count(self, obj):
         """Get view count excluding the author's own view"""

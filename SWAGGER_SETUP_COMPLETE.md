@@ -2,7 +2,7 @@
 
 ## Summary
 
-Successfully integrated Swagger/OpenAPI documentation into the APF Portal Backend using `drf-yasg`.
+Successfully integrated Swagger/OpenAPI documentation into the APF Portal Backend using `drf-yasg` with proper API versioning.
 
 ## What Was Implemented
 
@@ -11,6 +11,7 @@ Successfully integrated Swagger/OpenAPI documentation into the APF Portal Backen
 - ✅ Added ReDoc endpoint: `/api/redoc/`
 - ✅ Added OpenAPI schema endpoints: `/swagger.json` and `/swagger.yaml`
 - ✅ Configured schema view with API metadata
+- ✅ **Fixed versioning**: All endpoints now show with `/api/v1/` prefix
 
 ### 2. Authentication Views Documentation (`Backend/authentication/views.py`)
 Added comprehensive Swagger documentation for all authentication endpoints:

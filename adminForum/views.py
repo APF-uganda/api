@@ -2,9 +2,10 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Count, Q, Max
 from django.utils import timezone
 from datetime import timedelta
+from django.contrib.auth import get_user_model
 from .models import ForumPost, Comment, Like, Category, Tag, Report, PostView
 from .serializers import (
     ForumPostListSerializer, ForumPostDetailSerializer,
@@ -12,6 +13,8 @@ from .serializers import (
     TagSerializer, ReportSerializer, ForumStatsSerializer,
     AuthorSerializer
 )
+from rest_framework.pagination import PageNumberPagination
+
 
 
 class ForumPostPagination(PageNumberPagination):
@@ -62,7 +65,7 @@ class ForumPostViewSet(viewsets.ModelViewSet):
     pagination_class = ForumPostPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'content', 'author__email', 'author__first_name', 'author__last_name']
-    ordering_fields = ['created_at', 'updated_at', 'views_count', 'comment_count', 'like_count']
+    ordering_fields = ['created_at', 'updated_at', 'views_count', 'comments_total', 'likes_total']
     ordering = ['-is_pinned', '-created_at']
 
     def get_queryset(self):
@@ -105,7 +108,15 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         if date_to:
             queryset = queryset.filter(created_at__lte=date_to)
 
-        return queryset.distinct()
+        # Only distinct when tag filter is used to avoid DB errors with ordering
+        if tag_slug:
+            queryset = queryset.distinct()
+
+        queryset = queryset.annotate(
+            likes_total=Count('likes', distinct=True),
+            comments_total=Count('comments', distinct=True)
+        )
+        return queryset
 
     def get_serializer_class(self):
         """
@@ -314,6 +325,61 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         
         serializer = ForumStatsSerializer(stats)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def active_users(self, request):
+        """
+        Get active forum users based on recent post/comment activity
+        """
+        User = get_user_model()
+        now = timezone.now()
+        current_user_id = request.user.id if request.user.is_authenticated else None
+
+        post_activity = (
+            ForumPost.objects.values('author')
+            .annotate(last_active=Max('created_at'))
+        )
+        comment_activity = (
+            Comment.objects.values('author')
+            .annotate(last_active=Max('created_at'))
+        )
+
+        last_seen_map = {}
+        for item in post_activity:
+            last_seen_map[item['author']] = item['last_active']
+        for item in comment_activity:
+            existing = last_seen_map.get(item['author'])
+            if not existing or (item['last_active'] and item['last_active'] > existing):
+                last_seen_map[item['author']] = item['last_active']
+
+        user_ids = [uid for uid, ts in last_seen_map.items() if ts]
+        if current_user_id is not None:
+            user_ids = [uid for uid in user_ids if uid != current_user_id]
+        users = User.objects.filter(id__in=user_ids)
+
+        results = []
+        for user in users:
+            last_active = last_seen_map.get(user.id)
+            if not last_active:
+                continue
+            delta = now - last_active
+            if delta <= timedelta(minutes=5):
+                status = 'online'
+            elif delta <= timedelta(hours=1):
+                status = 'away'
+            else:
+                status = 'offline'
+            author_data = AuthorSerializer(user, context={'request': request}).data
+            results.append({
+                'name': author_data.get('full_name') or author_data.get('email') or 'Member',
+                'initials': author_data.get('initials') or 'U',
+                'profile_picture_url': author_data.get('profile_picture_url'),
+                'status': status,
+                'last_seen': last_active.isoformat()
+            })
+
+        results.sort(key=lambda x: x['last_seen'], reverse=True)
+        return Response(results[:10])
 
 
 class CommentViewSet(viewsets.ModelViewSet):

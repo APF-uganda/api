@@ -94,11 +94,19 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         profile = self.get_object()
         
         if request.method == 'GET':
-            serializer = self.get_serializer(profile, context={'request': request})
+            # Log what we're returning
+            print(f"[Profile GET] User: {request.user.email}")
+            print(f"[Profile GET] Profile data: first_name={profile.first_name}, last_name={profile.last_name}, phone={profile.phone_number}")
+            
+            serializer = UserProfileSerializer(profile, context={'request': request})
             return Response(serializer.data)
         
-        # Handle updates
-        serializer = self.get_serializer(
+        # Handle updates - use update serializer
+        print(f"[Profile UPDATE] User: {request.user.email}")
+        print(f"[Profile UPDATE] Request data: {request.data}")
+        print(f"[Profile UPDATE] Current profile: first_name={profile.first_name}, last_name={profile.last_name}")
+        
+        update_serializer = UserProfileUpdateSerializer(
             profile,
             data=request.data,
             partial=request.method == 'PATCH',
@@ -114,9 +122,34 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                     changed_fields = list(serializer.validated_data.keys())
                     for field in changed_fields:
                         original_values[field] = getattr(profile, field, None)
+        if update_serializer.is_valid():
+            try:
+                # Save profile (with transaction)
+                with transaction.atomic():
+                    # Track changes for logging
+                    changed_fields = []
+                    if hasattr(update_serializer, 'validated_data'):
+                        changed_fields = list(update_serializer.validated_data.keys())
+                    
+                    print(f"[Profile UPDATE] Validated data: {update_serializer.validated_data}")
+                    
+                    # Save profile
+                    updated_profile = update_serializer.save()
+                    
+                    print(f"[Profile UPDATE] After save: first_name={updated_profile.first_name}, last_name={updated_profile.last_name}")
+                    
+                    # Refresh from database to ensure all relations are loaded
+                    updated_profile.refresh_from_db()
+                    
+                    print(f"[Profile UPDATE] After refresh: first_name={updated_profile.first_name}, last_name={updated_profile.last_name}")
+                    
+                    # Verify data is actually in database
+                    db_check = UserProfile.objects.get(user=request.user)
+                    print(f"[Profile UPDATE] Database check (inside transaction): first_name={db_check.first_name}, last_name={db_check.last_name}")
                 
-                # Save profile
-                updated_profile = serializer.save()
+                # Transaction committed! Check database again
+                final_check = UserProfile.objects.get(user=request.user)
+                print(f"[Profile UPDATE] Database check (AFTER transaction): first_name={final_check.first_name}, last_name={final_check.last_name}")
                 
                 # Log activity
                 changes = []
@@ -132,31 +165,64 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                     field_changed=', '.join(changed_fields),
                     metadata={'changes': changes} if changes else {},
                     request=request
+                # Log activity OUTSIDE the transaction (so it doesn't cause rollback)
+                try:
+                    ProfileService.log_activity(
+                        profile=updated_profile,
+                        action='updated',
+                        field_changed=', '.join(changed_fields) if changed_fields else 'profile',
+                        request=request
+                    )
+                except Exception as log_error:
+                    # Don't fail the update if logging fails
+                    print(f"Warning: Failed to log profile activity: {log_error}")
+                
+                # Return full profile data using the read serializer
+                response_serializer = UserProfileSerializer(updated_profile, context={'request': request})
+                print(f"[Profile UPDATE] Returning: {response_serializer.data.get('first_name')}, {response_serializer.data.get('last_name')}")
+                
+                return Response(response_serializer.data)
+            except Exception as e:
+                # Log the error for debugging
+                print(f"Error updating profile: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                return Response(
+                    {'error': f'Failed to update profile: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
-            
-            # Return full profile data
-            response_serializer = UserProfileSerializer(updated_profile, context={'request': request})
-            return Response(response_serializer.data)
         
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        print(f"[Profile UPDATE] Validation errors: {update_serializer.errors}")
+        return Response(update_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
     def upload_picture(self, request):
         """
         Upload or update profile picture.
         """
+        print(f"[Profile UPLOAD] User: {request.user.email}")
+        print(f"[Profile UPLOAD] Files: {request.FILES}")
+        
         profile, created = UserProfile.objects.get_or_create(user=request.user)
         
         serializer = self.get_serializer(profile, data=request.data, partial=True, context={'request': request})
         
         if serializer.is_valid():
-            with transaction.atomic():
-                # Remove old picture if exists
-                if profile.profile_picture:
-                    ProfileService.remove_profile_picture(profile)
+            try:
+                with transaction.atomic():
+                    # Remove old picture if exists
+                    if profile.profile_picture:
+                        ProfileService.remove_profile_picture(profile)
+                    
+                    # Save new picture
+                    updated_profile = serializer.save()
+                    print(f"[Profile UPLOAD] Picture saved: {updated_profile.profile_picture}")
+                    print(f"[Profile UPLOAD] Picture name: {updated_profile.profile_picture.name if updated_profile.profile_picture else 'None'}")
+                    print(f"[Profile UPLOAD] Has url attr: {hasattr(updated_profile.profile_picture, 'url') if updated_profile.profile_picture else False}")
                 
-                # Save new picture
-                updated_profile = serializer.save()
+                # Refresh from database
+                updated_profile.refresh_from_db()
+                print(f"[Profile UPLOAD] After refresh - Picture: {updated_profile.profile_picture}")
                 
                 # Log activity
                 file_name = os.path.basename(updated_profile.profile_picture.name) if updated_profile.profile_picture else ''
@@ -165,14 +231,34 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                     action='picture_uploaded',
                     metadata={'document_name': file_name} if file_name else {},
                     request=request
+                # Log activity OUTSIDE transaction
+                try:
+                    ProfileService.log_activity(
+                        profile=updated_profile,
+                        action='picture_uploaded',
+                        request=request
+                    )
+                except Exception as log_error:
+                    print(f"Warning: Failed to log picture upload: {log_error}")
+                
+                picture_url = updated_profile.get_profile_picture_url()
+                print(f"[Profile UPLOAD] Picture URL: {picture_url}")
+                
+                return Response({
+                    'message': 'Profile picture uploaded successfully',
+                    'profile_picture_url': request.build_absolute_uri(picture_url) if picture_url else None,
+                    'initials': updated_profile.get_initials()
+                })
+            except Exception as e:
+                print(f"Error uploading picture: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                return Response(
+                    {'error': f'Failed to upload picture: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
-            
-            return Response({
-                'message': 'Profile picture uploaded successfully',
-                'profile_picture_url': request.build_absolute_uri(updated_profile.get_profile_picture_url()),
-                'initials': updated_profile.get_initials()
-            })
         
+        print(f"[Profile UPLOAD] Validation errors: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['delete'])
@@ -180,6 +266,8 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         """
         Remove profile picture.
         """
+        print(f"[Profile REMOVE] User: {request.user.email}")
+        
         try:
             profile = UserProfile.objects.get(user=request.user)
         except UserProfile.DoesNotExist:
@@ -207,12 +295,36 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 action='picture_removed',
                 metadata={'document_name': os.path.basename(previous_picture)} if previous_picture else {},
                 request=request
+        try:
+            with transaction.atomic():
+                # Remove picture file and clear field
+                ProfileService.remove_profile_picture(profile)
+                profile.profile_picture = None
+                profile.save()
+                print(f"[Profile REMOVE] Picture removed successfully")
+            
+            # Log activity OUTSIDE transaction
+            try:
+                ProfileService.log_activity(
+                    profile=profile,
+                    action='picture_removed',
+                    request=request
+                )
+            except Exception as log_error:
+                print(f"Warning: Failed to log picture removal: {log_error}")
+            
+            return Response({
+                'message': 'Profile picture removed successfully',
+                'initials': profile.get_initials()
+            })
+        except Exception as e:
+            print(f"Error removing picture: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': f'Failed to remove picture: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
-        return Response({
-            'message': 'Profile picture removed successfully',
-            'initials': profile.get_initials()
-        })
     
     @action(detail=False, methods=['put', 'patch'])
     def privacy_settings(self, request):

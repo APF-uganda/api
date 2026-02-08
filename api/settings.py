@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "reports",
     "adminForum",
     "AdminNotifications",
+    "payments",
 ]
 
 # URL Configuration
@@ -76,10 +77,13 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    # Custom authentication and security middleware - temporarily disabled for debugging
-    # "authentication.middleware.JWTAuthenticationMiddleware",
-    # "authentication.middleware.SecurityHeadersMiddleware",
-    # "authentication.middleware.RequestLoggingMiddleware",
+    # Custom authentication and security middleware
+    "authentication.middleware.JWTAuthenticationMiddleware",
+    "authentication.middleware.SecurityHeadersMiddleware",
+    "authentication.middleware.RequestLoggingMiddleware",
+    # Payment middleware
+    "payments.middleware.PaymentRateLimitMiddleware",
+    "payments.middleware.PaymentLoggingMiddleware",
 ]
 
 ROOT_URLCONF = "api.urls"
@@ -328,3 +332,26 @@ EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='APF Portal <noreply@apfportal.com>')
 
 SERVE_MEDIA=True
+
+# Payment Configuration
+PAYMENT_ENVIRONMENT = env('PAYMENT_ENVIRONMENT', default='sandbox')
+
+# MTN MoMo API Configuration
+MTN_API_USER = env('MTN_API_USER', default='')
+MTN_API_KEY = env('MTN_API_KEY', default='')
+MTN_SUBSCRIPTION_KEY = env('MTN_SUBSCRIPTION_KEY', default='')
+
+# Airtel Money API Configuration
+AIRTEL_CLIENT_ID = env('AIRTEL_CLIENT_ID', default='')
+AIRTEL_CLIENT_SECRET = env('AIRTEL_CLIENT_SECRET', default='')
+
+# Phone number encryption key (generate with: Fernet.generate_key())
+PHONE_ENCRYPTION_KEY = env('PHONE_ENCRYPTION_KEY', default='')
+
+# Payment rate limiting
+PAYMENT_RATE_LIMIT_REQUESTS = env.int('PAYMENT_RATE_LIMIT_REQUESTS', default=10)
+PAYMENT_RATE_LIMIT_WINDOW = env.int('PAYMENT_RATE_LIMIT_WINDOW', default=60)
+
+# Webhook secrets
+MTN_WEBHOOK_SECRET = env('MTN_WEBHOOK_SECRET', default='')
+AIRTEL_WEBHOOK_SECRET = env('AIRTEL_WEBHOOK_SECRET', default='')

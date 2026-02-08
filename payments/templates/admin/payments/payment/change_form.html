@@ -1,0 +1,110 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block content %}
+    {% if original %}
+    <div style="background: #f8f9fa; padding: 20px; margin: 0 0 20px 0; border-radius: 5px; border: 1px solid #dee2e6;">
+        <h2 style="margin-top: 0; color: #333;">Payment Transaction Details</h2>
+        
+        <!-- Status Badge -->
+        <div style="margin-bottom: 20px;">
+            {% if original.status == 'completed' %}
+                <span style="background: #28a745; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 14px;">
+                    ✓ COMPLETED
+                </span>
+            {% elif original.status == 'pending' %}
+                <span style="background: #ffc107; color: #333; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 14px;">
+                    ⏳ PENDING
+                </span>
+            {% elif original.status == 'processing' %}
+                <span style="background: #17a2b8; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 14px;">
+                    ⚙ PROCESSING
+                </span>
+            {% elif original.status == 'failed' %}
+                <span style="background: #dc3545; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 14px;">
+                    ✗ FAILED
+                </span>
+            {% elif original.status == 'timeout' %}
+                <span style="background: #fd7e14; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 14px;">
+                    ⏱ TIMEOUT
+                </span>
+            {% elif original.status == 'cancelled' %}
+                <span style="background: #6c757d; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 14px;">
+                    ⊘ CANCELLED
+                </span>
+            {% endif %}
+        </div>
+        
+        <!-- Quick Summary -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+            <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #17a2b8;">
+                <div style="color: #6c757d; font-size: 12px; text-transform: uppercase; margin-bottom: 5px;">Amount</div>
+                <div style="font-size: 20px; font-weight: bold; color: #333;">
+                    {{ original.amount }} {{ original.currency }}
+                </div>
+            </div>
+            
+            <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
+                <div style="color: #6c757d; font-size: 12px; text-transform: uppercase; margin-bottom: 5px;">Provider</div>
+                <div style="font-size: 20px; font-weight: bold; color: #333; text-transform: uppercase;">
+                    {{ original.get_provider_display }}
+                </div>
+            </div>
+            
+            <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #28a745;">
+                <div style="color: #6c757d; font-size: 12px; text-transform: uppercase; margin-bottom: 5px;">Phone Number</div>
+                <div style="font-size: 20px; font-weight: bold; color: #333;">
+                    {{ original.get_masked_phone }}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Error Message (if failed) -->
+        {% if original.error_message %}
+        <div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 5px; padding: 15px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0; color: #721c24;">Error Details</h3>
+            <p style="margin: 0; color: #721c24; font-family: monospace;">
+                {{ original.error_message }}
+            </p>
+        </div>
+        {% endif %}
+        
+        <!-- Timeline -->
+        <div style="background: white; padding: 15px; border-radius: 5px; border: 1px solid #dee2e6;">
+            <h3 style="margin-top: 0; color: #333;">Transaction Timeline</h3>
+            <div style="position: relative; padding-left: 30px;">
+                <!-- Created -->
+                <div style="position: relative; padding-bottom: 20px;">
+                    <div style="position: absolute; left: -30px; width: 20px; height: 20px; background: #17a2b8; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 2px #17a2b8;"></div>
+                    <div style="position: absolute; left: -21px; top: 20px; bottom: 0; width: 2px; background: #dee2e6;"></div>
+                    <div style="color: #6c757d; font-size: 12px; text-transform: uppercase;">Created</div>
+                    <div style="font-weight: bold; color: #333;">{{ original.created_at|date:"Y-m-d H:i:s" }}</div>
+                </div>
+                
+                <!-- Updated -->
+                {% if original.updated_at != original.created_at %}
+                <div style="position: relative; padding-bottom: 20px;">
+                    <div style="position: absolute; left: -30px; width: 20px; height: 20px; background: #ffc107; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 2px #ffc107;"></div>
+                    {% if original.completed_at %}
+                    <div style="position: absolute; left: -21px; top: 20px; bottom: 0; width: 2px; background: #dee2e6;"></div>
+                    {% endif %}
+                    <div style="color: #6c757d; font-size: 12px; text-transform: uppercase;">Last Updated</div>
+                    <div style="font-weight: bold; color: #333;">{{ original.updated_at|date:"Y-m-d H:i:s" }}</div>
+                </div>
+                {% endif %}
+                
+                <!-- Completed -->
+                {% if original.completed_at %}
+                <div style="position: relative;">
+                    <div style="position: absolute; left: -30px; width: 20px; height: 20px; background: #28a745; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 2px #28a745;"></div>
+                    <div style="color: #6c757d; font-size: 12px; text-transform: uppercase;">Completed</div>
+                    <div style="font-weight: bold; color: #333;">{{ original.completed_at|date:"Y-m-d H:i:s" }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    {{ block.super }}
+{% endblock %}
