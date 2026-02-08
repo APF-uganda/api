@@ -113,23 +113,17 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             context={'request': request}
         )
         
-        if serializer.is_valid():
-            with transaction.atomic():
-                # Track changes for logging
-                changed_fields = []
-                original_values = {}
-                if hasattr(serializer, 'validated_data'):
-                    changed_fields = list(serializer.validated_data.keys())
-                    for field in changed_fields:
-                        original_values[field] = getattr(profile, field, None)
         if update_serializer.is_valid():
             try:
                 # Save profile (with transaction)
                 with transaction.atomic():
                     # Track changes for logging
                     changed_fields = []
+                    original_values = {}
                     if hasattr(update_serializer, 'validated_data'):
                         changed_fields = list(update_serializer.validated_data.keys())
+                        for field in changed_fields:
+                            original_values[field] = getattr(profile, field, None)
                     
                     print(f"[Profile UPDATE] Validated data: {update_serializer.validated_data}")
                     
@@ -151,26 +145,20 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 final_check = UserProfile.objects.get(user=request.user)
                 print(f"[Profile UPDATE] Database check (AFTER transaction): first_name={final_check.first_name}, last_name={final_check.last_name}")
                 
-                # Log activity
-                changes = []
-                for field in changed_fields:
-                    changes.append({
-                        'field': field,
-                        'old': original_values.get(field),
-                        'new': getattr(updated_profile, field, None),
-                    })
-                ProfileService.log_activity(
-                    profile=updated_profile,
-                    action='updated',
-                    field_changed=', '.join(changed_fields),
-                    metadata={'changes': changes} if changes else {},
-                    request=request
                 # Log activity OUTSIDE the transaction (so it doesn't cause rollback)
                 try:
+                    changes = []
+                    for field in changed_fields:
+                        changes.append({
+                            'field': field,
+                            'old': original_values.get(field),
+                            'new': getattr(updated_profile, field, None),
+                        })
                     ProfileService.log_activity(
                         profile=updated_profile,
                         action='updated',
                         field_changed=', '.join(changed_fields) if changed_fields else 'profile',
+                        metadata={'changes': changes} if changes else {},
                         request=request
                     )
                 except Exception as log_error:
@@ -231,6 +219,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                     action='picture_uploaded',
                     metadata={'document_name': file_name} if file_name else {},
                     request=request
+                )
                 # Log activity OUTSIDE transaction
                 try:
                     ProfileService.log_activity(
@@ -282,19 +271,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        with transaction.atomic():
-            
-            previous_picture = profile.profile_picture.name if profile.profile_picture else ''
-            ProfileService.remove_profile_picture(profile)
-            profile.profile_picture = None
-            profile.save()
-            
-            # Log activity
-            ProfileService.log_activity(
-                profile=profile,
-                action='picture_removed',
-                metadata={'document_name': os.path.basename(previous_picture)} if previous_picture else {},
-                request=request
+        previous_picture = profile.profile_picture.name if profile.profile_picture else ''
         try:
             with transaction.atomic():
                 # Remove picture file and clear field
@@ -308,6 +285,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 ProfileService.log_activity(
                     profile=profile,
                     action='picture_removed',
+                    metadata={'document_name': os.path.basename(previous_picture)} if previous_picture else {},
                     request=request
                 )
             except Exception as log_error:
