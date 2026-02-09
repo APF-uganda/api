@@ -32,7 +32,7 @@ Dear {user.first_name or user.email},
 
 Congratulations! Your membership application has been approved.
 
-We are thrilled to welcome you to the Association of Professional Foresters (APF). 
+We are thrilled to welcome you to the Accountancy Practitioners Forum (APF). 
 As a member, you now have access to:
 
 - Professional networking opportunities
@@ -45,7 +45,7 @@ Your membership journey starts now. We encourage you to:
 1. Complete your profile
 2. Explore upcoming events
 3. Connect with fellow members
-4. Stay updated with the latest forestry news
+4. Stay updated with the latest accounting news
 
 If you have any questions or need assistance, please don't hesitate to reach out to our support team.
 
@@ -157,6 +157,27 @@ def create_in_app_notifications(announcement):
     
     recipients = get_announcement_recipients(announcement)
     
-    # TODO: Create in-app notification records
-    # This would integrate with your notifications app
-    print(f"Would create in-app notifications for {recipients.count()} users")
+    if recipients.count() == 0:
+        print(f"No recipients found for in-app notifications: {announcement.title}")
+        return
+    
+    # Import here to avoid circular imports
+    from notifications.models import UserNotification
+    
+    # Create in-app notification for each recipient
+    notifications_created = 0
+    for user in recipients:
+        try:
+            UserNotification.objects.create(
+                user=user,
+                title=announcement.title,
+                message=announcement.content,
+                notification_type='announcement',
+                priority=announcement.priority,
+                is_read=False
+            )
+            notifications_created += 1
+        except Exception as e:
+            print(f"Error creating notification for user {user.email}: {e}")
+    
+    print(f"Created {notifications_created} in-app notifications for announcement: {announcement.title}")
