@@ -11,13 +11,21 @@ from django.utils import timezone
 
 from payments.models import Payment, PaymentConfig
 from payments.services.mtn_service import MTNService
+from payments.services.airtel_service import AirtelService
 from payments.utils import PhoneNumberEncryption, validate_phone_number
+from payments.logging_utils import (
+    set_correlation_id,
+    get_correlation_id,
+    log_payment_event,
+    create_log_context,
+    PerformanceLoggingMixin
+)
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
-class PaymentService:
+class PaymentService(PerformanceLoggingMixin):
     """
     Service layer for payment operations.
     Orchestrates payment initiation, status checking, webhooks, and retries.
@@ -27,6 +35,7 @@ class PaymentService:
     def __init__(self):
         """Initialize payment service with provider services."""
         self.mtn_service = MTNService()
+        self.airtel_service = AirtelService()
         self.phone_encryptor = PhoneNumberEncryption()
     
     def _get_provider_service(self, provider: str):
@@ -45,11 +54,11 @@ class PaymentService:
         if provider == Payment.PROVIDER_MTN:
             return self.mtn_service
         elif provider == Payment.PROVIDER_AIRTEL:
-            # TODO: Implement Airtel service in Phase 2
-            raise ValueError(f"Provider '{provider}' not yet implemented")
+            return self.airtel_service
         else:
             raise ValueError(f"Unsupported provider: {provider}")
     
+    @PerformanceLoggingMixin.log_performance('payment_initiation')
     def initiate_payment(
         self,
         user: User,
@@ -89,6 +98,9 @@ class PaymentService:
         
         Requirements: 1.3, 1.4, 3.1
         """
+        # Set correlation ID for this payment flow
+        correlation_id = set_correlation_id()
+        
         try:
             # Step 1: Validate phone number format
             is_valid, error_message = validate_phone_number(phone_number)
@@ -128,28 +140,41 @@ class PaymentService:
                 user_agent=user_agent
             )
             
-            logger.info(
-                f"Payment record created",
-                extra={
-                    "payment_id": str(payment.id),
-                    "transaction_reference": transaction_reference,
-                    "provider": provider,
-                    "amount": str(amount),
-                    "user_id": user.id,
-                    "masked_phone": self.phone_encryptor.mask(phone_number)
-                }
+            # Log payment creation with structured logging
+            log_payment_event(
+                logger=logger,
+                event_type='initiated',
+                payment_id=str(payment.id),
+                transaction_reference=transaction_reference,
+                provider=provider,
+                status=Payment.STATUS_PENDING,
+                amount=str(amount),
+                user_id=user.id,
+                masked_phone=self.phone_encryptor.mask(phone_number)
             )
             
             # Step 6: Call provider service to initiate payment
             try:
                 provider_service = self._get_provider_service(provider)
-                result = provider_service.request_to_pay(
-                    phone_number=phone_number,
-                    amount=amount,
-                    currency='UGX',
-                    reference=transaction_reference,
-                    payer_message="APF Membership Fee"
-                )
+                
+                # Airtel requires a separate transaction_id parameter
+                if provider == Payment.PROVIDER_AIRTEL:
+                    result = provider_service.request_to_pay(
+                        phone_number=phone_number,
+                        amount=amount,
+                        currency='UGX',
+                        reference=transaction_reference,
+                        transaction_id=transaction_reference  # Use same reference as transaction_id
+                    )
+                else:
+                    # MTN uses reference only
+                    result = provider_service.request_to_pay(
+                        phone_number=phone_number,
+                        amount=amount,
+                        currency='UGX',
+                        reference=transaction_reference,
+                        payer_message="APF Membership Fee"
+                    )
                 
                 if result.get('success'):
                     # Payment request sent successfully
@@ -221,6 +246,7 @@ class PaymentService:
             )
             return False, None, "Payment service error. Please try again."
     
+    @PerformanceLoggingMixin.log_performance('payment_status_check')
     def check_payment_status(self, payment: Payment) -> Tuple[str, str]:
         """
         Check current status of a payment.
@@ -239,13 +265,15 @@ class PaymentService:
             - status: Current payment status ('pending', 'completed', 'failed', etc.)
             - message: Status message for display
         
-        Requirements: 1.6, 1.7, 1.8, 3.2
+        Requirements: 1.6, 1.7, 1.8, 3.2, 2.6, 2.7, 2.8
         """
         try:
             # Step 1: Get provider service
             provider_service = self._get_provider_service(payment.provider)
             
             # Step 2: Call provider's status check
+            # Airtel uses transaction_id, MTN uses transaction_reference
+            # Both are stored in transaction_reference field
             result = provider_service.check_payment_status(payment.transaction_reference)
             
             if not result.get('success'):

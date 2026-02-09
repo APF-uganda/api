@@ -8,6 +8,7 @@ from .views import (
     PaymentRetryView,
     PaymentCancellationView,
     MTNWebhookView,
+    AirtelWebhookView,
     MembershipFeeView
 )
 
@@ -22,6 +23,7 @@ urlpatterns = [
     
     # Webhooks
     path('webhooks/mtn/', MTNWebhookView.as_view(), name='webhook-mtn'),
+    path('webhooks/airtel/', AirtelWebhookView.as_view(), name='webhook-airtel'),
     
     # Configuration
     path('membership-fee/', MembershipFeeView.as_view(), name='membership-fee'),

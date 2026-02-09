@@ -396,7 +396,7 @@ class TestMTNWebhookView:
             
             assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_401_UNAUTHORIZED, status.HTTP_400_BAD_REQUEST]
     
-    def test_webhook_no_authentication_required(self, api_client):
+    def test_webhook_no_authentication_required(self, api_client, db):
         """Test that webhook endpoint doesn't require authentication."""
         # Webhooks come from external service, so no auth required
         url = reverse('payments:webhook-mtn')
@@ -446,3 +446,156 @@ class TestMembershipFeeView:
         
         # Should succeed without authentication
         assert response.status_code == status.HTTP_200_OK
+
+
+class TestAirtelWebhookView:
+    """Test Airtel webhook endpoint."""
+    
+    def test_webhook_success(self, api_client, test_payment):
+        """Test successful webhook processing."""
+        with patch('payments.views.PaymentService') as MockService:
+            mock_service = MockService.return_value
+            mock_service.process_webhook.return_value = True
+            
+            url = reverse('payments:webhook-airtel')
+            data = {
+                'transaction': {
+                    'id': test_payment.transaction_reference,
+                    'status': 'TS',
+                    'message': 'Transaction successful'
+                }
+            }
+            headers = {'HTTP_X_SIGNATURE': 'test-signature'}
+            
+            response = api_client.post(url, data, format='json', **headers)
+            
+            assert response.status_code == status.HTTP_200_OK
+            assert 'message' in response.data
+    
+    def test_webhook_missing_signature(self, api_client):
+        """Test webhook without signature."""
+        url = reverse('payments:webhook-airtel')
+        data = {
+            'transaction': {
+                'id': str(uuid.uuid4()),
+                'status': 'TS'
+            }
+        }
+        
+        response = api_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert 'error' in response.data
+    
+    def test_webhook_payment_not_found(self, api_client, db):
+        """Test webhook for non-existent payment."""
+        with patch('payments.views.PaymentService') as MockService:
+            mock_service = MockService.return_value
+            mock_service.process_webhook.return_value = False
+            
+            url = reverse('payments:webhook-airtel')
+            data = {
+                'transaction': {
+                    'id': str(uuid.uuid4()),
+                    'status': 'TS'
+                }
+            }
+            headers = {'HTTP_X_SIGNATURE': 'test-signature'}
+            
+            response = api_client.post(url, data, format='json', **headers)
+            
+            assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_401_UNAUTHORIZED, status.HTTP_400_BAD_REQUEST]
+    
+    def test_webhook_signature_verification_failed(self, api_client, test_payment):
+        """Test webhook with invalid signature."""
+        with patch('payments.views.PaymentService') as MockService:
+            mock_service = MockService.return_value
+            mock_service.process_webhook.return_value = False
+            
+            url = reverse('payments:webhook-airtel')
+            data = {
+                'transaction': {
+                    'id': test_payment.transaction_reference,
+                    'status': 'TS'
+                }
+            }
+            headers = {'HTTP_X_SIGNATURE': 'invalid-signature'}
+            
+            response = api_client.post(url, data, format='json', **headers)
+            
+            # Should return 401 for signature verification failure
+            assert response.status_code in [status.HTTP_401_UNAUTHORIZED, status.HTTP_400_BAD_REQUEST]
+    
+    def test_webhook_no_authentication_required(self, api_client, db):
+        """Test that webhook endpoint doesn't require authentication."""
+        # Webhooks come from external service, so no auth required
+        url = reverse('payments:webhook-airtel')
+        data = {
+            'transaction': {
+                'id': str(uuid.uuid4()),
+                'status': 'TS'
+            }
+        }
+        headers = {'HTTP_X_SIGNATURE': 'test-signature'}
+        
+        # Should not return 401 for missing auth token
+        response = api_client.post(url, data, format='json', **headers)
+        
+        # Will fail for other reasons (payment not found, etc.) but not auth
+        assert response.status_code != status.HTTP_401_UNAUTHORIZED or 'signature' in response.data.get('error', '').lower()
+    
+    def test_webhook_failed_transaction(self, api_client, test_payment):
+        """Test webhook for failed transaction."""
+        with patch('payments.views.PaymentService') as MockService:
+            mock_service = MockService.return_value
+            mock_service.process_webhook.return_value = True
+            
+            url = reverse('payments:webhook-airtel')
+            data = {
+                'transaction': {
+                    'id': test_payment.transaction_reference,
+                    'status': 'TF',
+                    'message': 'Insufficient funds'
+                }
+            }
+            headers = {'HTTP_X_SIGNATURE': 'test-signature'}
+            
+            response = api_client.post(url, data, format='json', **headers)
+            
+            assert response.status_code == status.HTTP_200_OK
+            assert 'message' in response.data
+    
+    def test_webhook_ambiguous_transaction(self, api_client, test_payment):
+        """Test webhook for ambiguous transaction status."""
+        with patch('payments.views.PaymentService') as MockService:
+            mock_service = MockService.return_value
+            mock_service.process_webhook.return_value = True
+            
+            url = reverse('payments:webhook-airtel')
+            data = {
+                'transaction': {
+                    'id': test_payment.transaction_reference,
+                    'status': 'TA',
+                    'message': 'Transaction ambiguous'
+                }
+            }
+            headers = {'HTTP_X_SIGNATURE': 'test-signature'}
+            
+            response = api_client.post(url, data, format='json', **headers)
+            
+            assert response.status_code == status.HTTP_200_OK
+            assert 'message' in response.data
+    
+    def test_webhook_missing_transaction_data(self, api_client):
+        """Test webhook with missing transaction data."""
+        with patch('payments.views.PaymentService') as MockService:
+            mock_service = MockService.return_value
+            mock_service.process_webhook.return_value = False
+            
+            url = reverse('payments:webhook-airtel')
+            data = {}  # Missing transaction object
+            headers = {'HTTP_X_SIGNATURE': 'test-signature'}
+            
+            response = api_client.post(url, data, format='json', **headers)
+            
+            assert response.status_code == status.HTTP_400_BAD_REQUEST

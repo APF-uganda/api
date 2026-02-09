@@ -419,6 +419,91 @@ class MTNWebhookView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
 
+class AirtelWebhookView(APIView):
+    """
+    POST /api/v1/payments/webhooks/airtel/
+    Handle Airtel Money webhook callbacks.
+    """
+    permission_classes = [AllowAny]  # Webhooks come from external service
+    
+    @swagger_auto_schema(
+        operation_description="Handle Airtel Money webhook callback",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'transaction': openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'id': openapi.Schema(type=openapi.TYPE_STRING),
+                        'status': openapi.Schema(type=openapi.TYPE_STRING),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                    }
+                )
+            }
+        ),
+        responses={
+            200: "Webhook processed successfully",
+            401: "Unauthorized - Invalid signature",
+            404: "Payment not found"
+        },
+        tags=['Payments']
+    )
+    def post(self, request):
+        """
+        Process Airtel webhook callback.
+        
+        Steps:
+        1. Extract signature from headers
+        2. Call PaymentService.process_webhook()
+        3. Return appropriate HTTP status
+        
+        Requirements: 8.2, 8.3, 8.4, 8.7
+        """
+        # Step 1: Extract signature from headers
+        signature = request.META.get('HTTP_X_SIGNATURE', '')
+        
+        if not signature:
+            logger.warning("Airtel webhook received without signature")
+            return Response({
+                'error': 'Missing signature'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        
+        # Step 2: Call PaymentService.process_webhook()
+        payment_service = PaymentService()
+        success = payment_service.process_webhook(
+            provider='airtel',
+            payload=request.data,
+            signature=signature
+        )
+        
+        # Step 3: Return appropriate HTTP status
+        if success:
+            return Response({
+                'message': 'Webhook processed successfully'
+            }, status=status.HTTP_200_OK)
+        else:
+            # Check if payment was not found
+            transaction_data = request.data.get('transaction', {})
+            transaction_id = transaction_data.get('id')
+            
+            if transaction_id:
+                try:
+                    Payment.objects.get(transaction_reference=transaction_id)
+                    # Payment exists but processing failed (likely signature issue)
+                    return Response({
+                        'error': 'Webhook processing failed'
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+                except Payment.DoesNotExist:
+                    # Payment not found
+                    return Response({
+                        'error': 'Payment not found'
+                    }, status=status.HTTP_404_NOT_FOUND)
+            
+            return Response({
+                'error': 'Webhook processing failed'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
 class MembershipFeeView(APIView):
     """
     GET /api/v1/payments/membership-fee/

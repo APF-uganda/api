@@ -1,0 +1,37 @@
+﻿SECRET_KEY=x8@f#yd^9i-vs!*^=a)!-6xmqg0c_)n+6j$6d_dn3d-msff6i
+DEBUG=True
+DATABASE_URL=postgresql://neondb_owner:npg_7QbEFVciI3xB@ep-dry-frog-ah8roofk-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require
+
+EMAILJS_SERVICE_ID=service_algcmhn
+EMAILJS_TEMPLATE_ID_OTP=template_le2zqzf
+EMAILJS_TEMPLATE_ID_PASSWORD_RESET=template_wdn5ia7
+EMAILJS_PUBLIC_KEY=cA_eld2ezDC7RRjxD
+
+REDIS_URL=redis://127.0.0.1:6379/1
+
+# Payment Configuration
+PAYMENT_ENVIRONMENT=sandbox
+
+# MTN MoMo API (sandbox credentials - replace with production)
+MTN_API_USER=
+MTN_API_KEY=
+MTN_SUBSCRIPTION_KEY=
+
+# Airtel Money API (sandbox credentials - replace with production)
+AIRTEL_CLIENT_ID=
+AIRTEL_CLIENT_SECRET=
+
+# Phone number encryption key (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+PHONE_ENCRYPTION_KEY=MiLjwTq6bO6ODRSC793D87MgQsvCWKkdH2NRLaN7tkI=
+
+# Payment rate limiting
+PAYMENT_RATE_LIMIT_REQUESTS=10
+PAYMENT_RATE_LIMIT_WINDOW=60
+
+# Webhook secrets
+MTN_WEBHOOK_SECRET=
+AIRTEL_WEBHOOK_SECRET=
+
+mtn momo keys
+Primary key= 7ea33c3f94c14e68b6df34afb20d19c8
+Secondary key= 93cfb42233774ada9473dac02babccd0
