@@ -709,7 +709,7 @@ class EmailService:
     @staticmethod
     def send_otp_email(email, otp_code, user_name=None):
         """
-        Send OTP email using Django SMTP
+        Send OTP email using Django SMTP (production) or log to console (development)
         
         Args:
             email: Recipient email address
@@ -720,8 +720,6 @@ class EmailService:
             Boolean indicating success or failure
         """
         try:
-            from django.core.mail import send_mail
-            
             subject = 'Your APF Portal Login Code'
             message = f'''Hello {user_name or 'User'},
 
@@ -737,16 +735,40 @@ Best regards,
 APF Portal Team
 '''
             
-            send_mail(
-                subject=subject,
-                message=message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[email],
-                fail_silently=False,
-            )
-            
-            logger.info(f"OTP email sent successfully to {email}")
-            return True
+            # Check if in development mode
+            if settings.DEBUG:
+                # Development: Log OTP to console
+                logger.info("=" * 60)
+                logger.info("DEVELOPMENT MODE - OTP EMAIL")
+                logger.info("=" * 60)
+                logger.info(f"To: {email}")
+                logger.info(f"Subject: {subject}")
+                logger.info(f"OTP Code: {otp_code}")
+                logger.info(f"User: {user_name or 'User'}")
+                logger.info("=" * 60)
+                print("\n" + "=" * 60)
+                print("🔐 DEVELOPMENT MODE - OTP EMAIL")
+                print("=" * 60)
+                print(f"📧 To: {email}")
+                print(f"📝 Subject: {subject}")
+                print(f"🔑 OTP Code: {otp_code}")
+                print(f"👤 User: {user_name or 'User'}")
+                print("=" * 60 + "\n")
+                return True
+            else:
+                # Production: Send actual email
+                from django.core.mail import send_mail
+                
+                send_mail(
+                    subject=subject,
+                    message=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                    fail_silently=False,
+                )
+                
+                logger.info(f"OTP email sent successfully to {email}")
+                return True
             
         except Exception as e:
             logger.error(f"Error sending OTP email to {email}: {str(e)}")
@@ -755,7 +777,7 @@ APF Portal Team
     @staticmethod
     def send_password_reset_email(email, reset_token, user_name=None):
         """
-        Send password reset email using Django SMTP
+        Send password reset email using Django SMTP (production) or log to console (development)
         
         Args:
             email: Recipient email address
@@ -766,8 +788,6 @@ APF Portal Team
             Boolean indicating success or failure
         """
         try:
-            from django.core.mail import send_mail
-            
             # Construct reset link (frontend URL)
             frontend_url = settings.CORS_ALLOWED_ORIGINS[0] if settings.CORS_ALLOWED_ORIGINS else 'http://localhost:5173'
             reset_link = f"{frontend_url}/reset-password?token={reset_token}"
@@ -788,23 +808,113 @@ Best regards,
 APF Portal Team
 '''
             
-            send_mail(
-                subject=subject,
-                message=message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[email],
-                fail_silently=False,
-            )
-            
-            logger.info(f"Password reset email sent successfully to {email}")
-            return True
+            # Check if in development mode
+            if settings.DEBUG:
+                # Development: Log reset token to console
+                logger.info("=" * 60)
+                logger.info("DEVELOPMENT MODE - PASSWORD RESET EMAIL")
+                logger.info("=" * 60)
+                logger.info(f"To: {email}")
+                logger.info(f"Subject: {subject}")
+                logger.info(f"Reset Link: {reset_link}")
+                logger.info(f"Reset Token: {reset_token}")
+                logger.info(f"User: {user_name or 'User'}")
+                logger.info("=" * 60)
+                print("\n" + "=" * 60)
+                print("🔐 DEVELOPMENT MODE - PASSWORD RESET EMAIL")
+                print("=" * 60)
+                print(f"📧 To: {email}")
+                print(f"📝 Subject: {subject}")
+                print(f"🔗 Reset Link: {reset_link}")
+                print(f"🔑 Reset Token: {reset_token}")
+                print(f"👤 User: {user_name or 'User'}")
+                print("=" * 60 + "\n")
+                return True
+            else:
+                # Production: Send actual email
+                from django.core.mail import send_mail
+                
+                send_mail(
+                    subject=subject,
+                    message=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                    fail_silently=False,
+                )
+                
+                logger.info(f"Password reset email sent successfully to {email}")
+                return True
             
         except Exception as e:
             logger.error(f"Error sending password reset email to {email}: {str(e)}")
             return False
+
+    @staticmethod
+    def send_password_reset_otp_email(email, otp_code, user_name=None):
+        """
+        Send password reset OTP email using Django SMTP (production) or log to console (development)
+        
+        Args:
+            email: Recipient email address
+            otp_code: 6-digit OTP code for password reset
+            user_name: Optional user name for personalization
+            
+        Returns:
+            Boolean indicating success or failure
+        """
+        try:
+            subject = 'APF Portal - Password Reset Code'
+            message = f'''Hello {user_name or 'User'},
+
+You requested to reset your password for the APF Portal.
+
+Your password reset code is:
+
+{otp_code}
+
+This code will expire in 15 minutes.
+
+If you didn't request a password reset, please ignore this email.
+
+Best regards,
+APF Portal Team
+'''
+            
+            # Check if in development mode
+            if settings.DEBUG:
+                # Development: Log OTP to console
+                logger.info("=" * 60)
+                logger.info("DEVELOPMENT MODE - PASSWORD RESET OTP EMAIL")
+                logger.info("=" * 60)
+                logger.info(f"To: {email}")
+                logger.info(f"Subject: {subject}")
+                logger.info(f"OTP Code: {otp_code}")
+                logger.info(f"User: {user_name or 'User'}")
+                logger.info("=" * 60)
+                print("\n" + "=" * 60)
+                print("🔐 DEVELOPMENT MODE - PASSWORD RESET OTP EMAIL")
+                print("=" * 60)
+                print(f"📧 To: {email}")
+                print(f"📝 Subject: {subject}")
+                print(f"🔑 OTP Code: {otp_code}")
+                print(f"👤 User: {user_name or 'User'}")
+                print("=" * 60 + "\n")
+                return True
+            else:
+                # Production: Send actual email
+                from django.core.mail import send_mail
+                
+                send_mail(
+                    subject=subject,
+                    message=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                    fail_silently=False,
+                )
+                
+                logger.info(f"Password reset OTP email sent successfully to {email}")
+                return True
+            
         except Exception as e:
-            logger.error(f"Error sending password reset email to {email}: {str(e)}")
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error sending password reset email to {email}: {str(e)}")
+            logger.error(f"Error sending password reset OTP email to {email}: {str(e)}")
             return False

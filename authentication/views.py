@@ -9,6 +9,7 @@ from datetime import timedelta
 import uuid
 from .models import OTP
 from .services import TokenService
+from .email_service import EmailService
 from .serializers import (
     UserProfileSerializer, 
     UserProfileUpdateSerializer, 
@@ -76,14 +77,19 @@ class LoginView(APIView):
         # Get user's display name from email
         user_name = user.email.split('@')[0]
         
+        # Send OTP email (automatically handles dev/prod mode)
+        EmailService.send_otp_email(
+            user_email=user.email,
+            otp_code=otp_code,
+            user_name=user_name
+        )
+        
         return Response({
             "success": True,
             "session_id": str(session_id),
             "email": user.email,
             "user_name": user_name,
-            "message": "OTP sent to your email",
-            # For development only - remove in production
-            "otp_code": otp_code
+            "message": "OTP sent to your email"
         })
 
 
@@ -278,3 +284,276 @@ class ChangePasswordView(APIView):
             "success": False,
             "errors": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ForgotPasswordView(APIView):
+    """
+    Request password reset OTP
+    """
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        email = request.data.get("email")
+        
+        # Validate input
+        if not email:
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Email is required"
+                }
+            }, status=400)
+        
+        # Check if user exists
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            # Return success even if user doesn't exist (security best practice)
+            return Response({
+                "success": True,
+                "message": "If the email exists, an OTP has been sent"
+            })
+        
+        # Generate OTP
+        otp_code = OTP.generate_code()
+        
+        # Generate unique session ID
+        session_id = uuid.uuid4()
+        
+        # Store OTP in database
+        OTP.objects.create(
+            user=user,
+            code=otp_code,
+            session_id=session_id,
+            expires_at=timezone.now() + timedelta(minutes=15)
+        )
+        
+        # Get user's display name
+        user_name = user.email.split('@')[0]
+        
+        # Send password reset OTP email (automatically handles dev/prod mode)
+        EmailService.send_password_reset_email(
+            user_email=user.email,
+            otp_code=otp_code,
+            user_name=user_name
+        )
+        
+        return Response({
+            "success": True,
+            "session_id": str(session_id),
+            "email": user.email,
+            "user_name": user_name,
+            "message": "OTP sent to your email"
+        })
+
+
+class ResetPasswordView(APIView):
+    """
+    Reset password using OTP
+    """
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        session_id = request.data.get("session_id")
+        otp_code = request.data.get("otp")
+        new_password = request.data.get("new_password")
+        
+        # Validate input
+        if not session_id or not otp_code or not new_password:
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Session ID, OTP, and new password are required"
+                }
+            }, status=400)
+        
+        # Validate password strength
+        if len(new_password) < 8:
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Password must be at least 8 characters long"
+                }
+            }, status=400)
+        
+        # Retrieve OTP from database
+        try:
+            otp_instance = OTP.objects.get(
+                session_id=session_id,
+                is_used=False
+            )
+        except OTP.DoesNotExist:
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "INVALID_OTP",
+                    "message": "Invalid or expired OTP session"
+                }
+            }, status=401)
+        
+        # Check if OTP matches
+        if otp_instance.code != otp_code:
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "INVALID_OTP",
+                    "message": "Invalid OTP code"
+                }
+            }, status=401)
+        
+        # Check if OTP is expired
+        if not otp_instance.is_valid():
+            otp_instance.delete()
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "EXPIRED_OTP",
+                    "message": "OTP has expired"
+                }
+            }, status=401)
+        
+        # Update user password
+        user = otp_instance.user
+        user.set_password(new_password)
+        user.save()
+        
+        # Mark OTP as used and delete it
+        otp_instance.is_used = True
+        otp_instance.save()
+        otp_instance.delete()
+        
+        return Response({
+            "success": True,
+            "message": "Password reset successfully"
+        })
+
+
+class ResendLoginOTPView(APIView):
+    """
+    Resend OTP for login without requiring password again
+    """
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        session_id = request.data.get("session_id")
+        
+        # Validate input
+        if not session_id:
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Session ID is required"
+                }
+            }, status=400)
+        
+        # Find the existing OTP session
+        try:
+            old_otp = OTP.objects.get(session_id=session_id, is_used=False)
+            user = old_otp.user
+            
+            # Delete old OTP
+            old_otp.delete()
+            
+            # Generate new OTP
+            otp_code = OTP.generate_code()
+            
+            # Create new OTP with same session_id
+            OTP.objects.create(
+                user=user,
+                code=otp_code,
+                session_id=session_id,
+                expires_at=timezone.now() + timedelta(minutes=15)
+            )
+            
+            # Get user's display name
+            user_name = user.email.split('@')[0]
+            
+            # Send OTP email (automatically handles dev/prod mode)
+            EmailService.send_otp_email(
+                user_email=user.email,
+                otp_code=otp_code,
+                user_name=user_name
+            )
+            
+            return Response({
+                "success": True,
+                "message": "New OTP sent to your email",
+                "email": user.email
+            })
+            
+        except OTP.DoesNotExist:
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "INVALID_SESSION",
+                    "message": "Invalid or expired session"
+                }
+            }, status=404)
+
+
+class ResendPasswordResetOTPView(APIView):
+    """
+    Resend OTP for password reset
+    """
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        session_id = request.data.get("session_id")
+        
+        # Validate input
+        if not session_id:
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Session ID is required"
+                }
+            }, status=400)
+        
+        # Find the existing OTP session
+        try:
+            old_otp = OTP.objects.get(session_id=session_id, is_used=False)
+            user = old_otp.user
+            
+            # Delete old OTP
+            old_otp.delete()
+            
+            # Generate new OTP
+            otp_code = OTP.generate_code()
+            
+            # Create new OTP with same session_id
+            OTP.objects.create(
+                user=user,
+                code=otp_code,
+                session_id=session_id,
+                expires_at=timezone.now() + timedelta(minutes=15)
+            )
+            
+            # Get user's display name
+            user_name = user.email.split('@')[0]
+            
+            # Send password reset OTP email (automatically handles dev/prod mode)
+            EmailService.send_password_reset_email(
+                user_email=user.email,
+                otp_code=otp_code,
+                user_name=user_name
+            )
+            
+            return Response({
+                "success": True,
+                "message": "New OTP sent to your email",
+                "email": user.email
+            })
+            
+        except OTP.DoesNotExist:
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "INVALID_SESSION",
+                    "message": "Invalid or expired session"
+                }
+            }, status=404)
