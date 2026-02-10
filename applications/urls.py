@@ -8,7 +8,7 @@ from .views import ApplicationViewSet
 
 # Create router and register viewsets
 router = DefaultRouter()
-router.register(r'applications', ApplicationViewSet, basename='application')
+router.register(r'', ApplicationViewSet, basename='application')
 
 urlpatterns = [
     path('', include(router.urls)),
