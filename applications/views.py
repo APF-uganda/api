@@ -7,7 +7,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.contrib.auth import get_user_model
-from .models import Application, Document
+from .models import Application
+from Documents.models import Document
 from .serializers import ApplicationSerializer
 from . import services
 from notifications.serializers import NotificationSerializer

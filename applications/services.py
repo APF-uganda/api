@@ -1,6 +1,7 @@
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
-from .models import Application, Document
+from .models import Application
+from Documents.models import Document
 from notifications.services import create_notification
 
 User = get_user_model()

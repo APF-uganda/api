@@ -1,5 +1,6 @@
 from django.contrib import admin
-from .models import Application, Document
+from .models import Application
+from Documents.models import Document
 
 
 class DocumentInline(admin.TabularInline):

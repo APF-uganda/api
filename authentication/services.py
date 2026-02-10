@@ -13,7 +13,7 @@ import requests
 import logging
 from authentication.models import User, OTP, PasswordResetToken, AuthLog, AuthEventType, UserRole
 from profiles.models import UserProfile
-from applications.models import Document
+from Documents.models import Document
 from rest_framework_simplejwt.tokens import RefreshToken
 
 logger = logging.getLogger(__name__)

@@ -5,7 +5,7 @@ Usage: python manage.py sync_application_profiles
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from applications.models import Application
-from applications.models import Document
+from Documents.models import Document
 from profiles.models import UserProfile
 
 

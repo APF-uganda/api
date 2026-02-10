@@ -1,4 +1,5 @@
-from applications.models import Application, Document
+from applications.models import Application
+from Documents.models import Document, MemberDocument
 from authentication.models import User, UserRole
 from profiles.models import UserProfile, ProfileActivityLog
 from notifications.models import Notification
@@ -152,9 +153,11 @@ def get_member_dashboard_data(user, request=None):
     member_since = _get_member_since_date(user)
     next_renewal_date = _safe_add_year(member_since) if member_since else None
 
-    document_qs = Document.objects.filter(application__user=user).order_by('-uploaded_at')[:10]
+    app_docs = Document.objects.filter(application__user=user).order_by('-uploaded_at')[:10]
+    member_docs = MemberDocument.objects.filter(user=user).order_by('-uploaded_at')[:10]
     documents = []
-    for doc in document_qs:
+
+    def _append_doc(doc):
         file_url = None
         if doc.file and hasattr(doc.file, "url"):
             file_url = request.build_absolute_uri(doc.file.url) if request else doc.file.url
@@ -165,6 +168,11 @@ def get_member_dashboard_data(user, request=None):
             "uploaded_at": doc.uploaded_at,
             "file_url": file_url,
         })
+
+    for doc in app_docs:
+        _append_doc(doc)
+    for doc in member_docs:
+        _append_doc(doc)
 
     activity_logs = (
         ProfileActivityLog.objects.filter(profile__user=user)

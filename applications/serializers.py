@@ -2,7 +2,8 @@ import re
 from datetime import date, timedelta
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
-from .models import Application, Document
+from .models import Application
+from Documents.models import Document
 
 MTN_PREFIXES = (
     '25677', '25678', '25676'  # MTN Uganda

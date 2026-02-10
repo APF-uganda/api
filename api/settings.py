@@ -33,6 +33,7 @@ SECRET_KEY = env("SECRET_KEY", default="django-insecure-dev-key-change-in-produc
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool("DEBUG", default=False)
+
 SERVE_MEDIA = env.bool("SERVE_MEDIA", default=DEBUG)
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
@@ -54,6 +55,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "contacts",
+    "Documents",
     "applications.apps.ApplicationsConfig",
     "notifications",
     "dashboard",

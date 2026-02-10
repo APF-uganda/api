@@ -109,27 +109,3 @@ class Application(models.Model):
         return f"{self.username} - {self.email} ({self.status})"
 
 
-class Document(models.Model):
-    """
-    Represents a document uploaded as part of a membership application.
-    Associated with an Application via foreign key.
-    """
-    application = models.ForeignKey(
-        Application,
-        on_delete=models.CASCADE,
-        related_name='documents'
-    )
-    file = models.FileField(upload_to='application_documents/')
-    file_name = models.CharField(max_length=255)
-    file_size = models.IntegerField()
-    file_type = models.CharField(max_length=50)
-    document_type = models.CharField(max_length=50, blank=True, default='')
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['uploaded_at']
-        verbose_name = 'Application Document'
-        verbose_name_plural = 'Application Documents'
-    
-    def __str__(self):
-        return f"{self.file_name} - {self.application.username}"

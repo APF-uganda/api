@@ -1,7 +1,8 @@
 import pytest
 from datetime import date, timedelta
 from django.core.files.uploadedfile import SimpleUploadedFile
-from .models import Application, Document
+from .models import Application
+from Documents.models import Document
 import uuid
 
 

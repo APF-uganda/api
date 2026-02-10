@@ -8,7 +8,7 @@ from applications.models import Application
 from django.contrib.auth.hashers import identify_hasher, make_password
 from authentication.models import User, UserRole
 from profiles.models import UserProfile
-from applications.models import Document
+from Documents.models import Document
 
 
 class Command(BaseCommand):
