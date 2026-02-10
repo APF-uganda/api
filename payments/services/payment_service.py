@@ -140,6 +140,33 @@ class PaymentService(PerformanceLoggingMixin):
                 user_agent=user_agent
             )
             
+            # Step 5a: Link payment to application if application_id provided
+            if application_id:
+                try:
+                    from applications.models import Application
+                    application = Application.objects.get(id=application_id)
+                    application.current_payment = payment
+                    application.payment_transaction_reference = transaction_reference
+                    application.payment_status = 'pending'
+                    application.save()
+                    
+                    logger.info(
+                        f"Payment linked to application",
+                        extra={
+                            "payment_id": str(payment.id),
+                            "application_id": application_id,
+                            "transaction_reference": transaction_reference
+                        }
+                    )
+                except Application.DoesNotExist:
+                    logger.warning(
+                        f"Application not found for payment link",
+                        extra={
+                            "payment_id": str(payment.id),
+                            "application_id": application_id
+                        }
+                    )
+            
             # Log payment creation with structured logging
             log_payment_event(
                 logger=logger,
@@ -298,6 +325,31 @@ class PaymentService(PerformanceLoggingMixin):
             if status == 'completed' and payment.status != Payment.STATUS_COMPLETED:
                 # Payment completed
                 payment.mark_completed(provider_tx_id, response_data)
+                
+                # Update linked application if exists
+                if payment.application_id:
+                    try:
+                        from applications.models import Application
+                        application = Application.objects.get(id=payment.application_id)
+                        application.payment_status = 'success'
+                        application.save()
+                        
+                        logger.info(
+                            f"Application payment status updated to success",
+                            extra={
+                                "payment_id": str(payment.id),
+                                "application_id": payment.application_id
+                            }
+                        )
+                    except Application.DoesNotExist:
+                        logger.warning(
+                            f"Application not found for payment completion update",
+                            extra={
+                                "payment_id": str(payment.id),
+                                "application_id": payment.application_id
+                            }
+                        )
+                
                 logger.info(
                     f"Payment completed",
                     extra={
@@ -311,6 +363,32 @@ class PaymentService(PerformanceLoggingMixin):
             elif status == 'failed' and payment.status != Payment.STATUS_FAILED:
                 # Payment failed
                 payment.mark_failed(message, response_data)
+                
+                # Update linked application if exists
+                if payment.application_id:
+                    try:
+                        from applications.models import Application
+                        application = Application.objects.get(id=payment.application_id)
+                        application.payment_status = 'failed'
+                        application.payment_error_message = message
+                        application.save()
+                        
+                        logger.info(
+                            f"Application payment status updated to failed",
+                            extra={
+                                "payment_id": str(payment.id),
+                                "application_id": payment.application_id
+                            }
+                        )
+                    except Application.DoesNotExist:
+                        logger.warning(
+                            f"Application not found for payment failure update",
+                            extra={
+                                "payment_id": str(payment.id),
+                                "application_id": payment.application_id
+                            }
+                        )
+                
                 logger.info(
                     f"Payment failed",
                     extra={
@@ -452,6 +530,17 @@ class PaymentService(PerformanceLoggingMixin):
                 
                 if webhook_status == 'SUCCESSFUL':
                     payment.mark_completed(provider_tx_id, payload)
+                    
+                    # Update linked application if exists
+                    if payment.application_id:
+                        try:
+                            from applications.models import Application
+                            application = Application.objects.get(id=payment.application_id)
+                            application.payment_status = 'success'
+                            application.save()
+                        except Application.DoesNotExist:
+                            pass
+                    
                     logger.info(
                         f"Webhook: Payment completed",
                         extra={
@@ -463,6 +552,18 @@ class PaymentService(PerformanceLoggingMixin):
                 elif webhook_status == 'FAILED':
                     error_reason = payload.get('reason', 'Payment failed')
                     payment.mark_failed(error_reason, payload)
+                    
+                    # Update linked application if exists
+                    if payment.application_id:
+                        try:
+                            from applications.models import Application
+                            application = Application.objects.get(id=payment.application_id)
+                            application.payment_status = 'failed'
+                            application.payment_error_message = error_reason
+                            application.save()
+                        except Application.DoesNotExist:
+                            pass
+                    
                     logger.info(
                         f"Webhook: Payment failed",
                         extra={
@@ -479,6 +580,17 @@ class PaymentService(PerformanceLoggingMixin):
                 
                 if webhook_status == 'TS':  # Transaction Successful
                     payment.mark_completed(provider_tx_id, payload)
+                    
+                    # Update linked application if exists
+                    if payment.application_id:
+                        try:
+                            from applications.models import Application
+                            application = Application.objects.get(id=payment.application_id)
+                            application.payment_status = 'success'
+                            application.save()
+                        except Application.DoesNotExist:
+                            pass
+                    
                     logger.info(
                         f"Webhook: Payment completed",
                         extra={
@@ -490,6 +602,18 @@ class PaymentService(PerformanceLoggingMixin):
                 elif webhook_status in ['TF', 'TA']:  # Transaction Failed/Ambiguous
                     error_message = transaction_data.get('message', 'Payment failed')
                     payment.mark_failed(error_message, payload)
+                    
+                    # Update linked application if exists
+                    if payment.application_id:
+                        try:
+                            from applications.models import Application
+                            application = Application.objects.get(id=payment.application_id)
+                            application.payment_status = 'failed'
+                            application.payment_error_message = error_message
+                            application.save()
+                        except Application.DoesNotExist:
+                            pass
+                    
                     logger.info(
                         f"Webhook: Payment failed",
                         extra={
