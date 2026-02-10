@@ -70,6 +70,16 @@ class Application(models.Model):
     payment_transaction_reference = models.CharField(max_length=100, blank=True)
     payment_error_message = models.TextField(blank=True)
     
+    # Link to Payment model (for mobile money integration)
+    current_payment = models.ForeignKey(
+        'payments.Payment',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='linked_application',
+        help_text='Current active payment for this application'
+    )
+    
     # Metadata
     status = models.CharField(
         max_length=20,
