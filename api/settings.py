@@ -314,11 +314,12 @@ CACHES = {
 RATE_LIMIT_ATTEMPTS = 5
 RATE_LIMIT_WINDOW = 900  # 15 minutes in seconds
 
-# EmailJS Configuration (Note: EmailJS blocks server-side calls)
+# EmailJS Configuration (Requires private key for server-side calls)
 EMAILJS_SERVICE_ID = env('EMAILJS_SERVICE_ID', default='')
 EMAILJS_TEMPLATE_ID_OTP = env('EMAILJS_TEMPLATE_ID_OTP', default='')
 EMAILJS_TEMPLATE_ID_PASSWORD_RESET = env('EMAILJS_TEMPLATE_ID_PASSWORD_RESET', default='')
 EMAILJS_PUBLIC_KEY = env('EMAILJS_PUBLIC_KEY', default='')
+EMAILJS_PRIVATE_KEY = env('EMAILJS_PRIVATE_KEY', default='')
 EMAILJS_API_URL = 'https://api.emailjs.com/api/v1.0/email/send'
 
 # Email Configuration (for SMTP - recommended for production)
