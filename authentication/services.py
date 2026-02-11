@@ -704,12 +704,24 @@ class UserCreationService:
 
 
 class EmailService:
-    """Service for sending emails via Django SMTP"""
+    """Service for sending emails via EmailJS"""
+    
+    # EmailJS Configuration
+    EMAILJS_SERVICE_ID = getattr(settings, 'EMAILJS_SERVICE_ID', '')
+    EMAILJS_TEMPLATE_ID_OTP = getattr(settings, 'EMAILJS_TEMPLATE_ID_OTP', '')
+    EMAILJS_TEMPLATE_ID_PASSWORD_RESET = getattr(settings, 'EMAILJS_TEMPLATE_ID_PASSWORD_RESET', '')
+    EMAILJS_PUBLIC_KEY = getattr(settings, 'EMAILJS_PUBLIC_KEY', '')
+    EMAILJS_PRIVATE_KEY = getattr(settings, 'EMAILJS_PRIVATE_KEY', '')
+    EMAILJS_API_URL = getattr(settings, 'EMAILJS_API_URL', 'https://api.emailjs.com/api/v1.0/email/send')
     
     @staticmethod
     def send_otp_email(email, otp_code, user_name=None):
         """
+<<<<<<< HEAD
         Send OTP email using Django SMTP (production) or log to console (development)
+=======
+        Send OTP email using EmailJS
+>>>>>>> feature1
         
         Args:
             email: Recipient email address
@@ -720,6 +732,7 @@ class EmailService:
             Boolean indicating success or failure
         """
         try:
+<<<<<<< HEAD
             subject = 'Your APF Portal Login Code'
             message = f'''Hello {user_name or 'User'},
 
@@ -769,7 +782,60 @@ APF Portal Team
                 
                 logger.info(f"OTP email sent successfully to {email}")
                 return True
+=======
+            if not user_name:
+                user_name = email.split('@')[0]
             
+            # Check if EmailJS is configured
+            if not all([
+                EmailService.EMAILJS_SERVICE_ID,
+                EmailService.EMAILJS_TEMPLATE_ID_OTP,
+                EmailService.EMAILJS_PUBLIC_KEY,
+                EmailService.EMAILJS_PRIVATE_KEY
+            ]):
+                logger.error("EmailJS not properly configured. Missing required settings (including private key).")
+                return False
+            
+            payload = {
+                'service_id': EmailService.EMAILJS_SERVICE_ID,
+                'template_id': EmailService.EMAILJS_TEMPLATE_ID_OTP,
+                'user_id': EmailService.EMAILJS_PUBLIC_KEY,
+                'accessToken': EmailService.EMAILJS_PRIVATE_KEY,
+                'template_params': {
+                    'to_email': email,
+                    'user_email': email,  # Alternative variable name
+                    'reply_to': email,     # Some templates use this
+                    'to_name': user_name,
+                    'user_name': user_name,  # Alternative variable name
+                    'otp_code': otp_code,
+                    'from_name': 'APF Portal'
+                }
+            }
+            
+            logger.info(f"Sending OTP email to {email} via EmailJS")
+            logger.debug(f"EmailJS payload: service_id={EmailService.EMAILJS_SERVICE_ID}, template_id={EmailService.EMAILJS_TEMPLATE_ID_OTP}")
+            
+            response = requests.post(
+                EmailService.EMAILJS_API_URL,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"OTP email sent successfully to {email} via EmailJS")
+                return True
+            else:
+                logger.error(f"EmailJS API error for OTP email to {email}: {response.status_code} - {response.text}")
+                return False
+>>>>>>> feature1
+            
+        except requests.exceptions.Timeout:
+            logger.error(f"EmailJS request timeout for {email}")
+            return False
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error sending OTP email to {email}: {str(e)}")
+            return False
         except Exception as e:
             logger.error(f"Error sending OTP email to {email}: {str(e)}")
             return False
@@ -777,7 +843,7 @@ APF Portal Team
     @staticmethod
     def send_password_reset_email(email, reset_token, user_name=None):
         """
-        Send password reset email using Django SMTP (production) or log to console (development)
+        Send password reset email using EmailJS
         
         Args:
             email: Recipient email address
@@ -788,65 +854,61 @@ APF Portal Team
             Boolean indicating success or failure
         """
         try:
+            if not user_name:
+                user_name = email.split('@')[0]
+            
+            # Check if EmailJS is configured
+            if not all([
+                EmailService.EMAILJS_SERVICE_ID,
+                EmailService.EMAILJS_TEMPLATE_ID_PASSWORD_RESET,
+                EmailService.EMAILJS_PUBLIC_KEY,
+                EmailService.EMAILJS_PRIVATE_KEY
+            ]):
+                logger.error("EmailJS not properly configured. Missing required settings (including private key).")
+                return False
+            
             # Construct reset link (frontend URL)
             frontend_url = settings.CORS_ALLOWED_ORIGINS[0] if settings.CORS_ALLOWED_ORIGINS else 'http://localhost:5173'
             reset_link = f"{frontend_url}/reset-password?token={reset_token}"
             
-            subject = 'Reset Your APF Portal Password'
-            message = f'''Hello {user_name or 'User'},
-
-You requested to reset your password for the APF Portal.
-
-Click the link below to reset your password:
-{reset_link}
-
-This link will expire in 1 hour.
-
-If you didn't request this, please ignore this email.
-
-Best regards,
-APF Portal Team
-'''
+            payload = {
+                'service_id': EmailService.EMAILJS_SERVICE_ID,
+                'template_id': EmailService.EMAILJS_TEMPLATE_ID_PASSWORD_RESET,
+                'user_id': EmailService.EMAILJS_PUBLIC_KEY,
+                'accessToken': EmailService.EMAILJS_PRIVATE_KEY,
+                'template_params': {
+                    'to_email': email,
+                    'user_email': email,  # Alternative variable name
+                    'reply_to': email,     # Some templates use this
+                    'to_name': user_name,
+                    'user_name': user_name,  # Alternative variable name
+                    'reset_link': reset_link,
+                    'reset_token': reset_token,
+                    'from_name': 'APF Portal'
+                }
+            }
             
-            # Check if in development mode
-            if settings.DEBUG:
-                # Development: Log reset token to console
-                logger.info("=" * 60)
-                logger.info("DEVELOPMENT MODE - PASSWORD RESET EMAIL")
-                logger.info("=" * 60)
-                logger.info(f"To: {email}")
-                logger.info(f"Subject: {subject}")
-                logger.info(f"Reset Link: {reset_link}")
-                logger.info(f"Reset Token: {reset_token}")
-                logger.info(f"User: {user_name or 'User'}")
-                logger.info("=" * 60)
-                print("\n" + "=" * 60)
-                print("🔐 DEVELOPMENT MODE - PASSWORD RESET EMAIL")
-                print("=" * 60)
-                print(f"📧 To: {email}")
-                print(f"📝 Subject: {subject}")
-                print(f"🔗 Reset Link: {reset_link}")
-                print(f"🔑 Reset Token: {reset_token}")
-                print(f"👤 User: {user_name or 'User'}")
-                print("=" * 60 + "\n")
+            logger.info(f"Sending password reset email to {email} via EmailJS")
+            
+            response = requests.post(
+                EmailService.EMAILJS_API_URL,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"Password reset email sent successfully to {email} via EmailJS")
                 return True
             else:
-                # Production: Send actual email
-                from django.core.mail import send_mail
-                
-                send_mail(
-                    subject=subject,
-                    message=message,
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[email],
-                    fail_silently=False,
-                )
-                
-                logger.info(f"Password reset email sent successfully to {email}")
-                return True
+                logger.error(f"EmailJS API error for password reset email to {email}: {response.status_code} - {response.text}")
+                return False
             
-        except Exception as e:
-            logger.error(f"Error sending password reset email to {email}: {str(e)}")
+        except requests.exceptions.Timeout:
+            logger.error(f"EmailJS request timeout for {email}")
+            return False
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error sending password reset email to {email}: {str(e)}")
             return False
 
     @staticmethod
@@ -916,5 +978,6 @@ APF Portal Team
                 return True
             
         except Exception as e:
-            logger.error(f"Error sending password reset OTP email to {email}: {str(e)}")
+            logger.error(f"Error sending password reset email to {email}: {str(e)}")
             return False
+
