@@ -8,8 +8,7 @@ from django.utils import timezone
 from datetime import timedelta
 import uuid
 from .models import OTP
-from .services import TokenService
-from .email_service import EmailService
+from .services import TokenService, EmailService
 from .serializers import (
     UserProfileSerializer, 
     UserProfileUpdateSerializer, 
@@ -77,9 +76,9 @@ class LoginView(APIView):
         # Get user's display name from email
         user_name = user.email.split('@')[0]
         
-        # Send OTP email (automatically handles dev/prod mode)
+        # Send OTP email via EmailJS
         EmailService.send_otp_email(
-            user_email=user.email,
+            email=user.email,
             otp_code=otp_code,
             user_name=user_name
         )
@@ -332,9 +331,9 @@ class ForgotPasswordView(APIView):
         # Get user's display name
         user_name = user.email.split('@')[0]
         
-        # Send password reset OTP email (automatically handles dev/prod mode)
+        # Send password reset OTP email via EmailJS
         EmailService.send_password_reset_email(
-            user_email=user.email,
+            email=user.email,
             otp_code=otp_code,
             user_name=user_name
         )
@@ -472,9 +471,9 @@ class ResendLoginOTPView(APIView):
             # Get user's display name
             user_name = user.email.split('@')[0]
             
-            # Send OTP email (automatically handles dev/prod mode)
+            # Send OTP email via EmailJS
             EmailService.send_otp_email(
-                user_email=user.email,
+                email=user.email,
                 otp_code=otp_code,
                 user_name=user_name
             )
@@ -536,9 +535,9 @@ class ResendPasswordResetOTPView(APIView):
             # Get user's display name
             user_name = user.email.split('@')[0]
             
-            # Send password reset OTP email (automatically handles dev/prod mode)
+            # Send password reset OTP email via EmailJS
             EmailService.send_password_reset_email(
-                user_email=user.email,
+                email=user.email,
                 otp_code=otp_code,
                 user_name=user_name
             )

@@ -717,11 +717,7 @@ class EmailService:
     @staticmethod
     def send_otp_email(email, otp_code, user_name=None):
         """
-<<<<<<< HEAD
-        Send OTP email using Django SMTP (production) or log to console (development)
-=======
         Send OTP email using EmailJS
->>>>>>> feature1
         
         Args:
             email: Recipient email address
@@ -789,13 +785,13 @@ class EmailService:
             return False
     
     @staticmethod
-    def send_password_reset_email(email, reset_token, user_name=None):
+    def send_password_reset_email(email, otp_code, user_name=None):
         """
-        Send password reset email using EmailJS
+        Send password reset OTP email using EmailJS
         
         Args:
             email: Recipient email address
-            reset_token: Password reset token
+            otp_code: 6-digit OTP code for password reset
             user_name: Optional user name for personalization
             
         Returns:
@@ -815,10 +811,6 @@ class EmailService:
                 logger.error("EmailJS not properly configured. Missing required settings (including private key).")
                 return False
             
-            # Construct reset link (frontend URL)
-            frontend_url = settings.CORS_ALLOWED_ORIGINS[0] if settings.CORS_ALLOWED_ORIGINS else 'http://localhost:5173'
-            reset_link = f"{frontend_url}/reset-password?token={reset_token}"
-            
             payload = {
                 'service_id': EmailService.EMAILJS_SERVICE_ID,
                 'template_id': EmailService.EMAILJS_TEMPLATE_ID_PASSWORD_RESET,
@@ -830,13 +822,13 @@ class EmailService:
                     'reply_to': email,     # Some templates use this
                     'to_name': user_name,
                     'user_name': user_name,  # Alternative variable name
-                    'reset_link': reset_link,
-                    'reset_token': reset_token,
+                    'otp_code': otp_code,
+                    'reset_code': otp_code,  # Alternative variable name
                     'from_name': 'APF Portal'
                 }
             }
             
-            logger.info(f"Sending password reset email to {email} via EmailJS")
+            logger.info(f"Sending password reset OTP email to {email} via EmailJS")
             
             response = requests.post(
                 EmailService.EMAILJS_API_URL,
@@ -846,7 +838,7 @@ class EmailService:
             )
             
             if response.status_code == 200:
-                logger.info(f"Password reset email sent successfully to {email} via EmailJS")
+                logger.info(f"Password reset OTP email sent successfully to {email} via EmailJS")
                 return True
             else:
                 logger.error(f"EmailJS API error for password reset email to {email}: {response.status_code} - {response.text}")
@@ -858,73 +850,6 @@ class EmailService:
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error sending password reset email to {email}: {str(e)}")
             return False
-
-    @staticmethod
-    def send_password_reset_otp_email(email, otp_code, user_name=None):
-        """
-        Send password reset OTP email using Django SMTP (production) or log to console (development)
-        
-        Args:
-            email: Recipient email address
-            otp_code: 6-digit OTP code for password reset
-            user_name: Optional user name for personalization
-            
-        Returns:
-            Boolean indicating success or failure
-        """
-        try:
-            subject = 'APF Portal - Password Reset Code'
-            message = f'''Hello {user_name or 'User'},
-
-You requested to reset your password for the APF Portal.
-
-Your password reset code is:
-
-{otp_code}
-
-This code will expire in 15 minutes.
-
-If you didn't request a password reset, please ignore this email.
-
-Best regards,
-APF Portal Team
-'''
-            
-            # Check if in development mode
-            if settings.DEBUG:
-                # Development: Log OTP to console
-                logger.info("=" * 60)
-                logger.info("DEVELOPMENT MODE - PASSWORD RESET OTP EMAIL")
-                logger.info("=" * 60)
-                logger.info(f"To: {email}")
-                logger.info(f"Subject: {subject}")
-                logger.info(f"OTP Code: {otp_code}")
-                logger.info(f"User: {user_name or 'User'}")
-                logger.info("=" * 60)
-                print("\n" + "=" * 60)
-                print(" DEVELOPMENT MODE - PASSWORD RESET OTP EMAIL")
-                print("=" * 60)
-                print(f" To: {email}")
-                print(f" Subject: {subject}")
-                print(f" OTP Code: {otp_code}")
-                print(f" User: {user_name or 'User'}")
-                print("=" * 60 + "\n")
-                return True
-            else:
-                # Production: Send actual email
-                from django.core.mail import send_mail
-                
-                send_mail(
-                    subject=subject,
-                    message=message,
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[email],
-                    fail_silently=False,
-                )
-                
-                logger.info(f"Password reset OTP email sent successfully to {email}")
-                return True
-            
         except Exception as e:
             logger.error(f"Error sending password reset email to {email}: {str(e)}")
             return False

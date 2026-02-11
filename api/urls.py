@@ -86,19 +86,20 @@ urlpatterns = [
     path("api/redoc/", schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
     re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
     
-    # API v1 endpoints
-    path("api/v1/contacts/", include("contacts.urls")),
-    path("api/v1/", include("applications.urls")),
-    path("api/v1/", include("Documents.urls")),
+    # API v1 endpoints - organized by app
     path("api/v1/auth/", include("authentication.urls")),
-    path("api/v1/", include("dashboard.urls")),
-    path("api/v1/", include("profiles.urls")),
-    path("media/<path:path>", serve, {"document_root": settings.MEDIA_ROOT}),
+    path("api/v1/contacts/", include("contacts.urls")),
+    path("api/v1/applications/", include("applications.urls")),
+    path("api/v1/payments/", include("payments.urls")),
+    path("api/v1/documents/", include("Documents.urls")),
     path("api/v1/reports/", include("reports.urls")),
     path("api/v1/forum/", include("adminForum.urls")),
     path("api/v1/notifications/", include("AdminNotifications.urls")),
-    path("api/v1/notifications/", include("notifications.urls")),
-    path("api/v1/", include(api_v1_patterns)),
+    path("api/v1/", include("profiles.urls")),
+    path("api/v1/", include("dashboard.urls")),
+    
+    # Media files
+    path("media/<path:path>", serve, {"document_root": settings.MEDIA_ROOT}),
 ]
 
 # Serve media files in development
