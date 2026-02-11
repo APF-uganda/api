@@ -732,57 +732,6 @@ class EmailService:
             Boolean indicating success or failure
         """
         try:
-<<<<<<< HEAD
-            subject = 'Your APF Portal Login Code'
-            message = f'''Hello {user_name or 'User'},
-
-Your one-time password (OTP) for logging into the APF Portal is:
-
-{otp_code}
-
-This code will expire in 10 minutes.
-
-If you didn't request this code, please ignore this email.
-
-Best regards,
-APF Portal Team
-'''
-            
-            # Check if in development mode
-            if settings.DEBUG:
-                # Development: Log OTP to console
-                logger.info("=" * 60)
-                logger.info("DEVELOPMENT MODE - OTP EMAIL")
-                logger.info("=" * 60)
-                logger.info(f"To: {email}")
-                logger.info(f"Subject: {subject}")
-                logger.info(f"OTP Code: {otp_code}")
-                logger.info(f"User: {user_name or 'User'}")
-                logger.info("=" * 60)
-                print("\n" + "=" * 60)
-                print("🔐 DEVELOPMENT MODE - OTP EMAIL")
-                print("=" * 60)
-                print(f"📧 To: {email}")
-                print(f"📝 Subject: {subject}")
-                print(f"🔑 OTP Code: {otp_code}")
-                print(f"👤 User: {user_name or 'User'}")
-                print("=" * 60 + "\n")
-                return True
-            else:
-                # Production: Send actual email
-                from django.core.mail import send_mail
-                
-                send_mail(
-                    subject=subject,
-                    message=message,
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[email],
-                    fail_silently=False,
-                )
-                
-                logger.info(f"OTP email sent successfully to {email}")
-                return True
-=======
             if not user_name:
                 user_name = email.split('@')[0]
             
@@ -828,7 +777,6 @@ APF Portal Team
             else:
                 logger.error(f"EmailJS API error for OTP email to {email}: {response.status_code} - {response.text}")
                 return False
->>>>>>> feature1
             
         except requests.exceptions.Timeout:
             logger.error(f"EmailJS request timeout for {email}")
@@ -954,12 +902,12 @@ APF Portal Team
                 logger.info(f"User: {user_name or 'User'}")
                 logger.info("=" * 60)
                 print("\n" + "=" * 60)
-                print("🔐 DEVELOPMENT MODE - PASSWORD RESET OTP EMAIL")
+                print(" DEVELOPMENT MODE - PASSWORD RESET OTP EMAIL")
                 print("=" * 60)
-                print(f"📧 To: {email}")
-                print(f"📝 Subject: {subject}")
-                print(f"🔑 OTP Code: {otp_code}")
-                print(f"👤 User: {user_name or 'User'}")
+                print(f" To: {email}")
+                print(f" Subject: {subject}")
+                print(f" OTP Code: {otp_code}")
+                print(f" User: {user_name or 'User'}")
                 print("=" * 60 + "\n")
                 return True
             else:
