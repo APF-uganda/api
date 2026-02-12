@@ -4,6 +4,8 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
+from rest_framework.pagination import PageNumberPagination
+from rest_framework import serializers
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.contrib.auth import get_user_model
@@ -19,6 +21,22 @@ import logging
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+class ApplicationListSerializer(serializers.ModelSerializer):
+    """
+    Lightweight serializer for listing applications to improve performance
+    """
+    class Meta:
+        model = Application
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name',
+            'status', 'payment_status', 'submitted_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'submitted_at', 'updated_at']
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     """
@@ -37,11 +55,55 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     
     Requirements: 9.2, 9.5, 10.5
     """
+    # Don't use pagination for the main list endpoint to maintain frontend compatibility
+    # pagination_class = StandardResultsSetPagination
     queryset = Application.objects.all().order_by('-submitted_at')
     serializer_class = ApplicationSerializer
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     authentication_classes = [JWTAuthentication]
-    permission_classes = [AllowPublicApplicationSubmission]
+    
+    def get_permissions(self):
+        """
+        Instantiates and returns the list of permissions that this view requires.
+        - Allow unauthenticated POST for public application submission
+        - Require admin authentication for all other operations
+        """
+        if self.action == 'create':
+            # Allow anyone to create applications (public submission)
+            permission_classes = [AllowPublicApplicationSubmission]
+        elif self.action == 'recent' or self.action == 'list':
+            # Allow admin users to access recent and full application lists
+            from authentication.permissions import IsAuthenticated, IsAdmin
+            permission_classes = [IsAuthenticated, IsAdmin]
+        else:
+            # All other actions require admin authentication
+            from authentication.permissions import IsAdmin
+            permission_classes = [IsAdmin]
+        
+        return [permission() for permission in permission_classes]
+    
+    def get_serializer_class(self):
+        """
+        Use different serializers for different actions to optimize performance
+        """
+        if self.action == 'list':
+            return ApplicationListSerializer
+        return ApplicationSerializer
+
+    def get_queryset(self):
+        """
+        Optimize queryset for different actions
+        """
+        if self.action == 'list':
+            # Optimize the queryset for list view to prevent N+1 queries
+            # Only select the fields needed for the list view
+            return Application.objects.only(
+                'id', 'username', 'email', 'first_name', 'last_name',
+                'status', 'payment_status', 'submitted_at', 'updated_at'
+            ).order_by('-submitted_at')
+        return Application.objects.all().order_by('-submitted_at')
+
+
 
    
     def create(self, request, *args, **kwargs):
@@ -176,8 +238,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
        """
        Return recent applications for dashboard
        """
-       recent_apps = Application.objects.order_by('-submitted_at')[:5]
-       serializer = self.get_serializer(recent_apps, many=True)
+       recent_apps = Application.objects.only(
+           'id', 'username', 'email', 'first_name', 'last_name',
+           'status', 'payment_status', 'submitted_at', 'updated_at'
+       ).order_by('-submitted_at')[:5]
+       # Use the list serializer for consistency
+       serializer = ApplicationListSerializer(recent_apps, many=True)
        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="check-availability", permission_classes=[AllowAny])
