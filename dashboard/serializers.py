@@ -59,6 +59,21 @@ class MemberDashboardNotificationSerializer(serializers.Serializer):
     application_id = serializers.IntegerField(allow_null=True)
 
 
+class DashboardApplicationSerializer(serializers.Serializer):
+    """
+    Lightweight serializer for dashboard applications to avoid heavy serialization
+    """
+    id = serializers.IntegerField(read_only=True)
+    username = serializers.CharField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    first_name = serializers.CharField(read_only=True)
+    last_name = serializers.CharField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    payment_status = serializers.CharField(read_only=True)
+    submitted_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+
 class MemberDashboardSerializer(serializers.Serializer):
     profile = MemberDashboardProfileSerializer()
     documents = MemberDashboardDocumentSerializer(many=True)
