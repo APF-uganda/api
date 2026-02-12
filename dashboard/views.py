@@ -14,6 +14,7 @@ from .serializers import (
     TotalMemberSerializer,
     ApplicationStatisticsSerializer,
     MemberDashboardSerializer,
+    DashboardApplicationSerializer,
 )
 from authentication.permissions import IsAuthenticated, IsAdmin, IsMember
 from drf_yasg.utils import swagger_auto_schema
@@ -56,15 +57,17 @@ class ApplicationStatisticsView(APIView):
         serializer = ApplicationStatisticsSerializer(data)
         return Response(serializer.data)
 
+
+
 class RecentApplicationsView(APIView):
     """Get recent applications for dashboard display."""
-    permission_classes = [AllowAny]  
+    permission_classes = [AllowAny]  # TODO: Change to IsAdmin in production
     
     @swagger_auto_schema(tags=["dashboard"])
     def get(self, request):
         limit = int(request.query_params.get('limit', 5))
         applications = get_recent_applications(limit)
-        serializer = ApplicationSerializer(applications, many=True)
+        serializer = DashboardApplicationSerializer(applications, many=True)
         return Response(serializer.data)
 
 
