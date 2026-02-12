@@ -98,7 +98,10 @@ def get_application_statistics():
 
 def get_recent_applications(limit=5):
     """Get recent applications for dashboard display."""
-    return Application.objects.select_related('user').order_by('-submitted_at')[:limit]
+    return Application.objects.only(
+        'id', 'username', 'email', 'first_name', 'last_name',
+        'status', 'payment_status', 'submitted_at', 'updated_at'
+    ).order_by('-submitted_at')[:limit]
 
 
 def get_recent_payments(limit=5):
