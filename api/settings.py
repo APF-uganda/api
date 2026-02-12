@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     "adminForum",
     "AdminNotifications",
     "payments",
+    "admin_management",
 ]
 
 # URL Configuration
