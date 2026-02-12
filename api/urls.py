@@ -95,6 +95,7 @@ urlpatterns = [
     path("api/v1/reports/", include("reports.urls")),
     path("api/v1/forum/", include("adminForum.urls")),
     path("api/v1/notifications/", include("AdminNotifications.urls")),
+    path("api/v1/admin-management/", include("admin_management.urls")),
     path("api/v1/", include("profiles.urls")),
     path("api/v1/", include("dashboard.urls")),
     
