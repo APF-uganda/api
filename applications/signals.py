@@ -1,10 +1,10 @@
-"""
-Django signals for Application model
+"""Django signals for Application model
 """
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from applications.models import Application
 from authentication.services import UserCreationService
+from AdminNotifications.services import send_welcome_announcement
 import logging
 
 logger = logging.getLogger(__name__)
@@ -33,5 +33,45 @@ def create_user_on_approval(sender, instance, created, **kwargs):
         
         if user:
             logger.info(f"Successfully created user {user.id} for approved application {instance.id}")
+            
+            # Send welcome notification to the newly approved member
+            try:
+                send_welcome_announcement(user)
+                logger.info(f"Welcome announcement sent to user {user.email}")
+            except Exception as e:
+                logger.error(f"Failed to send welcome announcement to user {user.email}: {e}")
         else:
             logger.error(f"Failed to create user for approved application {instance.id}: {error}")
+
+
+@receiver(pre_save, sender=Application)
+def send_welcome_notification_on_status_change(sender, instance, **kwargs):
+    """
+    Signal handler to send welcome notification when an application status changes to approved
+    This catches cases where an existing application gets approved (not just new ones)
+    
+    Args:
+        sender: The model class (Application)
+        instance: The actual Application instance being saved
+        **kwargs: Additional keyword arguments
+    """
+    if not instance.pk:
+        # New instance, handled by the post_save signal
+        return
+    
+    try:
+        old_instance = Application.objects.get(pk=instance.pk)
+        # Check if status changed to approved
+        if old_instance.status != 'approved' and instance.status == 'approved':
+            logger.info(f"Application {instance.id} status changed to approved, sending welcome notification")
+            
+            # If user already exists, send welcome notification
+            if instance.user:
+                try:
+                    send_welcome_announcement(instance.user)
+                    logger.info(f"Welcome announcement sent to user {instance.user.email}")
+                except Exception as e:
+                    logger.error(f"Failed to send welcome announcement to user {instance.user.email}: {e}")
+    except Application.DoesNotExist:
+        # This is a new application, will be handled by post_save
+        pass
