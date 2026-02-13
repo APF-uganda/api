@@ -6,7 +6,7 @@ from .models import Application
 from Documents.models import Document
 
 MTN_PREFIXES = (
-    '25677', '25678', '25676'  # MTN Uganda
+    '25677', '25678', '25676', '25679' # MTN Uganda
 )
 
 AIRTEL_PREFIXES = (
@@ -24,25 +24,59 @@ class DocumentSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'uploaded_at']
 
 
+class ApplicationListSerializer(serializers.ModelSerializer):
+    """
+    Lightweight serializer for listing applications to improve performance
+    """
+    name = serializers.SerializerMethodField()
+    icpaCertNo = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Application
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name', 'name',
+            'icpau_certificate_number', 'icpaCertNo', 'status', 'payment_status', 'submitted_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'submitted_at', 'updated_at', 'name', 'icpaCertNo']
+    
+    def get_name(self, obj):
+        """Return concatenated full name from first_name and last_name"""
+        if obj.first_name and obj.last_name:
+            return f"{obj.first_name} {obj.last_name}"
+        elif obj.first_name:
+            return obj.first_name
+        elif obj.last_name:
+            return obj.last_name
+        else:
+            return ""
+    
+    def get_icpaCertNo(self, obj):
+        """Return ICPAU certificate number as icpaCertNo for frontend compatibility"""
+        return obj.icpau_certificate_number or ""
+
+
 class ApplicationSerializer(serializers.ModelSerializer):
     """
     Serializer for Application model.
     Includes comprehensive field validation for all application data.
     """
     documents = DocumentSerializer(many=True, read_only=True)
+    name = serializers.SerializerMethodField()
+    icpaCertNo = serializers.SerializerMethodField()
     
     class Meta:
         model = Application
         fields = [
-            'id', 'username', 'email', 'password_hash', 'first_name', 'last_name',
+            'id', 'username', 'email', 'password_hash', 'first_name', 'last_name', 'name',
             'age_range', 'phone_number', 'address', 'national_id_number', 'icpau_certificate_number',
+            'icpaCertNo',
             'payment_method', 'payment_phone',
             'payment_card_number', 'payment_card_expiry', 'payment_card_cvv',
             'payment_cardholder_name',
             'payment_status', 'payment_transaction_reference', 'payment_error_message',
             'payment_amount', 'status', 'submitted_at', 'updated_at', 'documents'
         ]
-        read_only_fields = ['id', 'status', 'submitted_at', 'updated_at']
+        read_only_fields = ['id', 'status', 'submitted_at', 'updated_at', 'name', 'icpaCertNo']
         extra_kwargs = {
             'password_hash': {'write_only': True},
             'payment_card_cvv': {'write_only': True}  # Never return CVV
@@ -237,3 +271,18 @@ class ApplicationSerializer(serializers.ModelSerializer):
         
         # Create and return the application instance
         return super().create(validated_data)
+    
+    def get_name(self, obj):
+        """Return concatenated full name from first_name and last_name"""
+        if obj.first_name and obj.last_name:
+            return f"{obj.first_name} {obj.last_name}"
+        elif obj.first_name:
+            return obj.first_name
+        elif obj.last_name:
+            return obj.last_name
+        else:
+            return ""
+    
+    def get_icpaCertNo(self, obj):
+        """Return ICPAU certificate number as icpaCertNo for frontend compatibility"""
+        return obj.icpau_certificate_number or ""
