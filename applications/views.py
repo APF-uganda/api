@@ -11,7 +11,7 @@ from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.contrib.auth import get_user_model
 from .models import Application
 from Documents.models import Document
-from .serializers import ApplicationSerializer
+from .serializers import ApplicationSerializer, ApplicationListSerializer
 from . import services
 from notifications.serializers import NotificationSerializer
 from authentication.permissions import AllowPublicApplicationSubmission
@@ -25,18 +25,6 @@ class StandardResultsSetPagination(PageNumberPagination):
     page_size = 20
     page_size_query_param = 'page_size'
     max_page_size = 100
-
-class ApplicationListSerializer(serializers.ModelSerializer):
-    """
-    Lightweight serializer for listing applications to improve performance
-    """
-    class Meta:
-        model = Application
-        fields = [
-            'id', 'username', 'email', 'first_name', 'last_name',
-            'status', 'payment_status', 'submitted_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'submitted_at', 'updated_at']
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     """
