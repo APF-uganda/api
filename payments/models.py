@@ -50,7 +50,7 @@ class Payment(models.Model):
     provider_transaction_id = models.CharField(max_length=200, null=True, blank=True)
     
     # User and application linkage
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='payments')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='payments', null=True, blank=True)
     application = models.ForeignKey(
         'applications.Application',
         on_delete=models.SET_NULL,

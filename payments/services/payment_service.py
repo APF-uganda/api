@@ -61,7 +61,7 @@ class PaymentService(PerformanceLoggingMixin):
     @PerformanceLoggingMixin.log_performance('payment_initiation')
     def initiate_payment(
         self,
-        user: User,
+        user: Optional[User],
         phone_number: str,
         amount: Decimal,
         provider: str,
@@ -82,7 +82,7 @@ class PaymentService(PerformanceLoggingMixin):
         7. Handle errors and return result
         
         Args:
-            user: User making the payment
+            user: User making the payment (None for registration payments)
             phone_number: User's phone number (256XXXXXXXXX)
             amount: Payment amount
             provider: Payment provider ('mtn' or 'airtel')
@@ -108,7 +108,7 @@ class PaymentService(PerformanceLoggingMixin):
                 logger.warning(
                     f"Invalid phone number format",
                     extra={
-                        "user_id": user.id,
+                        "user_id": user.id if user else None,
                         "provider": provider,
                         "error": error_message
                     }
@@ -176,7 +176,7 @@ class PaymentService(PerformanceLoggingMixin):
                 provider=provider,
                 status=Payment.STATUS_PENDING,
                 amount=str(amount),
-                user_id=user.id,
+                user_id=user.id if user else None,
                 masked_phone=self.phone_encryptor.mask(phone_number)
             )
             
@@ -265,7 +265,7 @@ class PaymentService(PerformanceLoggingMixin):
             logger.error(
                 f"Payment initiation failed before record creation",
                 extra={
-                    "user_id": user.id,
+                    "user_id": user.id if user else None,
                     "provider": provider,
                     "error": str(e)
                 },

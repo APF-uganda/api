@@ -86,7 +86,7 @@ MIDDLEWARE = [
     "authentication.middleware.SecurityHeadersMiddleware",
     "authentication.middleware.RequestLoggingMiddleware",
     # Payment middleware
-    "payments.middleware.PaymentRateLimitMiddleware",
+    # "payments.middleware.PaymentRateLimitMiddleware",  # Temporarily disabled - requires Redis
     "payments.middleware.PaymentLoggingMiddleware",
 ]
 
