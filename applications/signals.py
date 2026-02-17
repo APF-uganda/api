@@ -5,7 +5,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 from datetime import timedelta
 from applications.models import Application
-from authentication.services import UserCreationService
+from authentication.services import UserCreationService, EmailService
 from AdminNotifications.services import send_welcome_announcement
 import logging
 
@@ -41,6 +41,20 @@ def create_user_on_approval(sender, instance, created, **kwargs):
             user.save(update_fields=['subscription_due_date'])
             logger.info(f"Set subscription due date for user {user.email} to {user.subscription_due_date}")
             
+            # Send approval email to the newly approved member
+            try:
+                user_name = f"{user.first_name} {user.last_name}".strip() if user.first_name or user.last_name else user.email.split('@')[0]
+                email_sent = EmailService.send_approval_email(
+                    email=user.email,
+                    user_name=user_name
+                )
+                if email_sent:
+                    logger.info(f"Approval email sent successfully to {user.email}")
+                else:
+                    logger.warning(f"Failed to send approval email to {user.email}")
+            except Exception as e:
+                logger.error(f"Error sending approval email to {user.email}: {e}")
+            
             # Send welcome notification to the newly approved member
             try:
                 send_welcome_announcement(user)
@@ -72,13 +86,28 @@ def send_welcome_notification_on_status_change(sender, instance, **kwargs):
         if old_instance.status != 'approved' and instance.status == 'approved':
             logger.info(f"Application {instance.id} status changed to approved, sending welcome notification")
             
-            # If user already exists, send welcome notification and set subscription date
+            # If user already exists, send approval email, welcome notification and set subscription date
             if instance.user:
                 # Set subscription due date to 1 year from now
                 instance.user.subscription_due_date = (timezone.now() + timedelta(days=365)).date()
                 instance.user.save(update_fields=['subscription_due_date'])
                 logger.info(f"Set subscription due date for user {instance.user.email} to {instance.user.subscription_due_date}")
                 
+                # Send approval email
+                try:
+                    user_name = f"{instance.user.first_name} {instance.user.last_name}".strip() if instance.user.first_name or instance.user.last_name else instance.user.email.split('@')[0]
+                    email_sent = EmailService.send_approval_email(
+                        email=instance.user.email,
+                        user_name=user_name
+                    )
+                    if email_sent:
+                        logger.info(f"Approval email sent successfully to {instance.user.email}")
+                    else:
+                        logger.warning(f"Failed to send approval email to {instance.user.email}")
+                except Exception as e:
+                    logger.error(f"Error sending approval email to {instance.user.email}: {e}")
+                
+                # Send welcome announcement
                 try:
                     send_welcome_announcement(instance.user)
                     logger.info(f"Welcome announcement sent to user {instance.user.email}")
