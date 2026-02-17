@@ -124,7 +124,7 @@ Your APF Portal Verification Code
         </div>
         
         <div class="warning">
-            <strong>⏰ Important:</strong> This code will expire in <strong>10 minutes</strong>.
+            <strong>Important:</strong> This code will expire in <strong>10 minutes</strong>.
         </div>
         
         <p>Enter this code on the verification page to complete your login.</p>
@@ -372,6 +372,8 @@ EmailService.send_otp_email(
     otp_code='123456',
     user_name='Test User'
 )
+
+
 
 # Test password reset email
 EmailService.send_password_reset_email(
