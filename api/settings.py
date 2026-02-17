@@ -321,9 +321,13 @@ RATE_LIMIT_WINDOW = 900  # 15 minutes in seconds
 EMAILJS_SERVICE_ID = env('EMAILJS_SERVICE_ID', default='')
 EMAILJS_TEMPLATE_ID_OTP = env('EMAILJS_TEMPLATE_ID_OTP', default='')
 EMAILJS_TEMPLATE_ID_PASSWORD_RESET = env('EMAILJS_TEMPLATE_ID_PASSWORD_RESET', default='')
+EMAILJS_TEMPLATE_ID_APPROVAL = env('EMAILJS_TEMPLATE_ID_APPROVAL', default='')
 EMAILJS_PUBLIC_KEY = env('EMAILJS_PUBLIC_KEY', default='')
 EMAILJS_PRIVATE_KEY = env('EMAILJS_PRIVATE_KEY', default='')
 EMAILJS_API_URL = 'https://api.emailjs.com/api/v1.0/email/send'
+
+# Frontend URL Configuration
+FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 
 # Email Configuration (for SMTP - recommended for production)
 # For development, use console backend to print emails to terminal
