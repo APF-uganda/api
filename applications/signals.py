@@ -2,6 +2,8 @@
 """
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
+from django.utils import timezone
+from datetime import timedelta
 from applications.models import Application
 from authentication.services import UserCreationService
 from AdminNotifications.services import send_welcome_announcement
@@ -34,6 +36,11 @@ def create_user_on_approval(sender, instance, created, **kwargs):
         if user:
             logger.info(f"Successfully created user {user.id} for approved application {instance.id}")
             
+            # Set subscription due date to 1 year from now for newly approved members
+            user.subscription_due_date = (timezone.now() + timedelta(days=365)).date()
+            user.save(update_fields=['subscription_due_date'])
+            logger.info(f"Set subscription due date for user {user.email} to {user.subscription_due_date}")
+            
             # Send welcome notification to the newly approved member
             try:
                 send_welcome_announcement(user)
@@ -65,8 +72,13 @@ def send_welcome_notification_on_status_change(sender, instance, **kwargs):
         if old_instance.status != 'approved' and instance.status == 'approved':
             logger.info(f"Application {instance.id} status changed to approved, sending welcome notification")
             
-            # If user already exists, send welcome notification
+            # If user already exists, send welcome notification and set subscription date
             if instance.user:
+                # Set subscription due date to 1 year from now
+                instance.user.subscription_due_date = (timezone.now() + timedelta(days=365)).date()
+                instance.user.save(update_fields=['subscription_due_date'])
+                logger.info(f"Set subscription due date for user {instance.user.email} to {instance.user.subscription_due_date}")
+                
                 try:
                     send_welcome_announcement(instance.user)
                     logger.info(f"Welcome announcement sent to user {instance.user.email}")
