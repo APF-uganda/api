@@ -33,15 +33,18 @@ class AdminMemberListView(APIView):
         status_param = self.request.query_params.get('status', None)
         if status_param:
             if status_param.upper() == 'SUSPENDED':
-                # Filter for users who have a suspension record and are not reactivated
-                queryset = queryset.filter(suspension_record__isnull=False).exclude(
-                    suspension_record__reactivated_at__isnull=False
+                # Filter for users who are inactive or have an active suspension record
+                queryset = queryset.filter(
+                    Q(is_active=False) | 
+                    Q(suspension_record__isnull=False, suspension_record__reactivated_at__isnull=True)
                 )
             elif status_param.upper() == 'ACTIVE':
-                # Filter for users who either don't have a suspension record or have been reactivated
+                # Filter for users who are active and don't have an active suspension
                 queryset = queryset.filter(
-                    Q(suspension_record__isnull=True) | 
-                    Q(suspension_record__reactivated_at__isnull=False)
+                    is_active=True
+                ).exclude(
+                    suspension_record__isnull=False,
+                    suspension_record__reactivated_at__isnull=True
                 )
         
         # Apply search filter
