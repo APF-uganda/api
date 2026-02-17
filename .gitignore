@@ -96,3 +96,7 @@ debug_*.py
 simple_*.py
 verify_*.py
 create_user_account.py
+
+APPROVAL_*.md
+CONFIGURE_*.md
+EMAILJS_*.md
