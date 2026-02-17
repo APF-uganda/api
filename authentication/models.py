@@ -65,6 +65,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Profile picture
     profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
     
+    # Subscription management
+    subscription_due_date = models.DateField(null=True, blank=True, help_text='Annual subscription renewal date')
+    
     objects = UserManager()
     
     USERNAME_FIELD = 'email'
