@@ -2,7 +2,6 @@ from applications.models import Application
 from Documents.models import Document, MemberDocument
 from authentication.models import User, UserRole
 from profiles.models import UserProfile, ProfileActivityLog
-from notifications.models import Notification
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Count, Q, Sum
@@ -252,20 +251,22 @@ def get_member_dashboard_data(user, request=None):
         for log in activity_logs
     ]
 
-    notifications = (
-        Notification.objects.filter(user=user)
+    # Fetch UserNotification objects (announcements from admin)
+    from notifications.models import UserNotification
+    user_notifications = (
+        UserNotification.objects.filter(user=user)
         .order_by('-created_at')[:10]
     )
     notifications_data = [
         {
             "id": notif.id,
             "message": notif.message,
-            "type": notif.type,
+            "type": notif.notification_type,
             "is_read": notif.is_read,
             "created_at": notif.created_at,
-            "application_id": notif.application_id,
+            "application_id": None,  # UserNotifications are not tied to applications
         }
-        for notif in notifications
+        for notif in user_notifications
     ]
 
     return {

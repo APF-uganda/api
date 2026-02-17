@@ -193,3 +193,53 @@ class DocumentViewSet(viewsets.ViewSet):
             else DocumentSerializer(document, context={'request': request})
         )
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(tags=["documents"])
+    @action(detail=True, methods=['get'], url_path='download')
+    def download(self, request, pk=None):
+        """
+        Download a document file.
+        Members can only download their own documents.
+        """
+        from django.http import FileResponse, Http404
+        import os
+
+        # Try to find the document in MemberDocument first
+        document = MemberDocument.objects.filter(pk=pk, user=request.user).first()
+        
+        # If not found, try Document (application documents)
+        if not document:
+            document = Document.objects.filter(pk=pk, application__user=request.user).first()
+        
+        if not document:
+            return Response(
+                {'error': {'message': 'Document not found or access denied.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Check if file exists
+        if not document.file:
+            return Response(
+                {'error': {'message': 'File not available.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            # Open the file
+            file_handle = document.file.open('rb')
+            
+            # Get the filename
+            filename = document.file_name or os.path.basename(document.file.name)
+            
+            # Create response with file
+            response = FileResponse(file_handle, content_type=document.file_type or 'application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response['Content-Length'] = document.file_size
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': {'message': f'Error downloading file: {str(e)}'}},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
