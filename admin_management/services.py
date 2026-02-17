@@ -31,11 +31,16 @@ class MemberManagementService:
         try:
             member = User.objects.get(id=member_id, role='2')  # Ensure it's a member, not admin
             
+            # Set user as inactive
+            member.is_active = False
+            member.save(update_fields=['is_active'])
+            
             # Create/update suspension record
             suspended_member, created = SuspendedMember.objects.update_or_create(
                 user=member,
                 defaults={
                     'suspension_reason': reason,
+                    'reactivated_at': None,  # Clear any previous reactivation
                 }
             )
             
@@ -43,7 +48,7 @@ class MemberManagementService:
             UserNotification.objects.create(
                 user=member,
                 title="Account Suspended",
-                message=f"Your account has been suspended. Reason: {reason}",
+                message=f"Your account has been suspended. Reason: {reason}. Please pay your annual subscription fee to reactivate your account.",
                 notification_type='system',
                 priority='high'
             )
@@ -71,6 +76,10 @@ class MemberManagementService:
         try:
             member = User.objects.get(id=member_id, role='2')  # Ensure it's a member, not admin
             
+            # Set user as active
+            member.is_active = True
+            member.save(update_fields=['is_active'])
+            
             # Update suspension record
             try:
                 suspended_record = member.suspension_record
@@ -83,7 +92,7 @@ class MemberManagementService:
             UserNotification.objects.create(
                 user=member,
                 title="Account Reactivated",
-                message="Your account has been reactivated successfully.",
+                message="Your account has been reactivated successfully. Welcome back!",
                 notification_type='system',
                 priority='medium'
             )
