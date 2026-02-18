@@ -27,49 +27,50 @@ def get_application_statistics():
     paid_applications = Application.objects.filter(payment_status='success').count()
     
     # Calculate total revenue from all sources
-    # Revenue is generated from successful payments regardless of approval status
-    # This includes application fees, event payments, renewals, etc.
     application_revenue = Application.objects.filter(
         payment_status='success'
     ).aggregate(
         total=Sum('payment_amount')
     )['total'] or Decimal('0.00')
     
-    # Debug logging to help troubleshoot revenue calculation
     print(f'DEBUG: Total applications with successful payments: {paid_applications}')
     print(f'DEBUG: Calculated application revenue: {application_revenue}')
     
-    # 2. Other revenue sources can be added here when implemented
-    # For example, event registrations, annual renewals, donations, etc.
-    # For now, we'll just use application revenue
-    # TODO: Add separate models for different payment types (events, renewals, etc.)
     total_revenue = application_revenue
     
-    # Calculate last month's revenue for trend
+    # FIX 1: Calculate last month's revenue for trend (last 30 days)
     last_month_revenue = Application.objects.filter(
         payment_status='success',
-        updated_at__lt=last_month
+        updated_at__gte=last_month,
+        updated_at__lte=now
     ).aggregate(
         total=Sum('payment_amount')
     )['total'] or Decimal('0.00')
     
-    # Last month counts for trend calculation
-    last_month_total = Application.objects.filter(submitted_at__lt=last_month).count()
+    # FIX 2: Last month counts for trend calculation (last 30 days)
+    last_month_total = Application.objects.filter(
+        submitted_at__gte=last_month,
+        submitted_at__lte=now
+    ).count()
     last_month_pending = Application.objects.filter(
-        status='pending', 
-        submitted_at__lt=last_month
+        status='pending',
+        submitted_at__gte=last_month,
+        submitted_at__lte=now
     ).count()
     last_month_approved = Application.objects.filter(
-        status='approved', 
-        updated_at__lt=last_month
+        status='approved',
+        updated_at__gte=last_month,
+        updated_at__lte=now
     ).count()
     last_month_rejected = Application.objects.filter(
-        status='rejected', 
-        updated_at__lt=last_month
+        status='rejected',
+        updated_at__gte=last_month,
+        updated_at__lte=now
     ).count()
     last_month_paid = Application.objects.filter(
-        payment_status='success', 
-        updated_at__lt=last_month
+        payment_status='success',
+        updated_at__gte=last_month,
+        updated_at__lte=now
     ).count()
     
     # Calculate percentage changes
@@ -107,7 +108,6 @@ def get_recent_payments(limit=5):
     """Get recent successful payments for dashboard display."""
     from django.db.models import F
     
-    # Get applications with successful payments, ordered by most recent
     payments = Application.objects.filter(
         payment_status='success'
     ).select_related('user').annotate(
@@ -159,15 +159,18 @@ def get_member_dashboard_data(user, request=None):
     member_docs = MemberDocument.objects.filter(user=user).order_by('-uploaded_at')[:10]
     documents = []
 
+    # FIX 3: Safe field mapping for both Document and MemberDocument models
     def _append_doc(doc):
+        file_obj = getattr(doc, "file", None) or getattr(doc, "document", None) or getattr(doc, "document_file", None)
         file_url = None
-        if doc.file and hasattr(doc.file, "url"):
-            file_url = request.build_absolute_uri(doc.file.url) if request else doc.file.url
+        if file_obj and hasattr(file_obj, "url"):
+            file_url = request.build_absolute_uri(file_obj.url) if request else file_obj.url
+        
         documents.append({
             "id": doc.id,
-            "name": doc.file_name,
-            "document_type": doc.document_type or "",
-            "uploaded_at": doc.uploaded_at,
+            "name": getattr(doc, "file_name", None) or getattr(doc, "document_name", None) or getattr(doc, "name", "") or "",
+            "document_type": getattr(doc, "document_type", "") or getattr(doc, "doc_type", "") or "",
+            "uploaded_at": getattr(doc, "uploaded_at", None) or getattr(doc, "created_at", None) or getattr(doc, "uploaded_on", None),
             "file_url": file_url,
         })
 
@@ -180,6 +183,7 @@ def get_member_dashboard_data(user, request=None):
         ProfileActivityLog.objects.filter(profile__user=user)
         .order_by('-timestamp')[:10]
     )
+    
     action_labels = {
         "created": "Profile created",
         "updated": "Profile updated",
@@ -242,7 +246,7 @@ def get_member_dashboard_data(user, request=None):
 
     recent_activity = [
         {
-            "id": log.id,
+            "id": str(log.id),  # Convert to string for consistency
             "action": log.action,
             "field_changed": log.field_changed or "",
             "timestamp": log.timestamp,
@@ -250,7 +254,7 @@ def get_member_dashboard_data(user, request=None):
         }
         for log in activity_logs
     ]
-
+    
     # Fetch UserNotification objects (document activities, announcements, etc.)
     from notifications.models import UserNotification
     user_notifications = (
@@ -258,31 +262,54 @@ def get_member_dashboard_data(user, request=None):
         .order_by('-created_at')[:20]
     )
     
-    # Add document-related notifications to recent activity
-    for notif in user_notifications:
-        # Map notification types to activity actions
-        action_type = 'other'
-        if 'upload' in notif.title.lower():
-            action_type = 'document_upload'
-        elif 'replace' in notif.title.lower():
-            action_type = 'document_upload'
-        elif 'remove' in notif.title.lower():
-            action_type = 'document_remove'
-        elif 'approved' in notif.message.lower():
-            action_type = 'document_approved'
-        elif 'rejected' in notif.message.lower():
-            action_type = 'document_rejected'
+    # FIX 4: Helper to convert notification to activity format with complete message
+    def _notif_to_activity(notif):
+        # Build complete message from title and message
+        text = f"{notif.title}: {notif.message}".strip() if notif.title else notif.message
         
-        recent_activity.append({
+        # Determine action type based on title and message (safe checks)
+        action_type = "other"
+        title_l = (notif.title or "").lower()
+        msg_l = (notif.message or "").lower()
+        
+        if "upload" in title_l or "replace" in title_l:
+            action_type = "document_upload"
+        elif "remove" in title_l or "delete" in title_l:
+            action_type = "document_remove"
+        elif "approved" in msg_l:
+            action_type = "document_approved"
+        elif "rejected" in msg_l:
+            action_type = "document_rejected"
+        
+        return {
             "id": f"notif_{notif.id}",
             "action": action_type,
             "field_changed": "",
             "timestamp": notif.created_at,
-            "message": notif.message,
-        })
+            "message": text,
+        }
     
-    # Sort all activities by timestamp (most recent first) and limit to 15
-    recent_activity = sorted(recent_activity, key=lambda x: x['timestamp'], reverse=True)[:15]
+    # Add document-related notifications to recent activity
+    for notif in user_notifications:
+        # Only include document-related activities (not announcements)
+        if any(keyword in (notif.title or "").lower() for keyword in ['document', 'upload', 'replace', 'remove']):
+            recent_activity.append(_notif_to_activity(notif))
+    
+    # Sort all activities by timestamp (most recent first)
+    recent_activity = sorted(recent_activity, key=lambda x: x['timestamp'], reverse=True)
+    
+    # Deduplicate activities based on timestamp, message, and action
+    seen = set()
+    deduped = []
+    for item in recent_activity:
+        key = (item["timestamp"], item["message"], item["action"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    
+    # Limit to 15 most recent unique activities
+    recent_activity = deduped[:15]
     
     # Separate notifications for the notifications section
     notifications_data = [
@@ -292,7 +319,7 @@ def get_member_dashboard_data(user, request=None):
             "type": notif.notification_type,
             "is_read": notif.is_read,
             "created_at": notif.created_at,
-            "application_id": None,  # UserNotifications are not tied to applications
+            "application_id": None,
         }
         for notif in user_notifications
     ]
@@ -309,4 +336,3 @@ def get_member_dashboard_data(user, request=None):
         "recent_activity": recent_activity,
         "notifications": notifications_data,
     }
-
