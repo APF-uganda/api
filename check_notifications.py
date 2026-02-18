@@ -1,39 +1,61 @@
 """
-Check if notifications were created
+Quick script to check if UserNotifications exist in the database
+Run with: python manage.py shell < check_notifications.py
 """
+
 import os
 import django
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'api.settings')
 django.setup()
 
-from notifications.models import UserNotification
 from django.contrib.auth import get_user_model
+from notifications.models import UserNotification
 
 User = get_user_model()
 
-print("=" * 60)
-print("Checking Notifications")
-print("=" * 60)
+print("\n" + "="*60)
+print("CHECKING USER NOTIFICATIONS")
+print("="*60 + "\n")
 
-total_notifications = UserNotification.objects.count()
-print(f"\nTotal notifications: {total_notifications}")
+# Get all UserNotifications
+all_notifications = UserNotification.objects.all()
+print(f"Total UserNotifications in database: {all_notifications.count()}")
 
-total_users = User.objects.count()
-print(f"Total users: {total_users}")
-
-if total_notifications > 0:
-    print("\nSample notifications:")
-    for n in UserNotification.objects.all()[:10]:
-        print(f"  - {n.user.email}: {n.title} (read: {n.is_read})")
-    
-    print("\nNotifications by user:")
-    for user in User.objects.all()[:5]:
-        count = UserNotification.objects.filter(user=user).count()
-        print(f"  {user.email}: {count} notifications")
+if all_notifications.count() == 0:
+    print("\n❌ NO NOTIFICATIONS FOUND!")
+    print("This means admin hasn't sent any announcements yet.")
+    print("\nTo fix:")
+    print("1. Login as admin")
+    print("2. Go to Admin Notifications")
+    print("3. Create an announcement")
+    print("4. Set audience to 'Members'")
+    print("5. Set status to 'Sent'")
 else:
-    print("\n⚠️  No notifications found!")
-    print("\nTo create a test notification:")
-    print("1. Go to /admin/announcements")
-    print("2. Create announcement with channel='in_app' or 'both'")
-    print("3. Click 'Send Now'")
+    print("\n✅ Notifications found!\n")
+    
+    # Show sample notifications
+    print("Sample notifications:")
+    for notif in all_notifications[:5]:
+        print(f"\n  ID: {notif.id}")
+        print(f"  User: {notif.user.email}")
+        print(f"  Title: {notif.title}")
+        print(f"  Type: {notif.notification_type}")
+        print(f"  Read: {notif.is_read}")
+        print(f"  Created: {notif.created_at}")
+    
+    # Check member users
+    members = User.objects.filter(role='2')
+    print(f"\n\nTotal members: {members.count()}")
+    
+    if members.count() > 0:
+        test_member = members.first()
+        member_notifs = UserNotification.objects.filter(user=test_member)
+        print(f"\nNotifications for {test_member.email}: {member_notifs.count()}")
+        
+        if member_notifs.count() == 0:
+            print("❌ This member has no notifications!")
+        else:
+            print("✅ This member has notifications")
+
+print("\n" + "="*60 + "\n")

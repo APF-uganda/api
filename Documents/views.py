@@ -63,6 +63,19 @@ class DocumentViewSet(viewsets.ViewSet):
             document_type=doc_type,
         )
 
+        # Create activity notification
+        try:
+            from notifications.models import UserNotification
+            UserNotification.objects.create(
+                user=request.user,
+                title="Document Uploaded",
+                message=f'You uploaded "{uploaded_file.name}" for admin review.',
+                notification_type="success",
+                priority="low"
+            )
+        except Exception as e:
+            print(f"Failed to create notification: {e}")
+
         serializer = MemberDocumentSerializer(document, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -83,11 +96,33 @@ class DocumentViewSet(viewsets.ViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Store old document name
+        old_name = document.file_name or 'Document'
+        
+        # Update document
         document.file = uploaded_file
         document.file_name = uploaded_file.name
         document.file_size = uploaded_file.size
         document.file_type = uploaded_file.content_type or ''
-        document.save(update_fields=['file', 'file_name', 'file_size', 'file_type'])
+        
+        # Reset status to pending for admin review
+        if hasattr(document, 'status'):
+            document.status = 'pending'
+        
+        document.save(update_fields=['file', 'file_name', 'file_size', 'file_type', 'status'])
+
+        # Create activity notification
+        try:
+            from notifications.models import UserNotification
+            UserNotification.objects.create(
+                user=request.user,
+                title="Document Replaced",
+                message=f'You replaced "{old_name}" with "{uploaded_file.name}". It will be reviewed by admin.',
+                notification_type="info",
+                priority="low"
+            )
+        except Exception as e:
+            print(f"Failed to create notification: {e}")
 
         serializer = DocumentSerializer(document, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -101,7 +136,26 @@ class DocumentViewSet(viewsets.ViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Store document name before deletion
+        document_name = document.file_name or 'Document'
+        
+        # Delete the document
         document.delete()
+        
+        # Create activity notification
+        try:
+            from notifications.models import UserNotification
+            UserNotification.objects.create(
+                user=request.user,
+                title="Document Removed",
+                message=f'You removed "{document_name}" from your documents.',
+                notification_type="info",
+                priority="low"
+            )
+        except Exception as e:
+            # Log error but don't fail the delete operation
+            print(f"Failed to create notification: {e}")
+        
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @swagger_auto_schema(tags=["documents"])
