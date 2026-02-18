@@ -251,12 +251,40 @@ def get_member_dashboard_data(user, request=None):
         for log in activity_logs
     ]
 
-    # Fetch UserNotification objects (announcements from admin)
+    # Fetch UserNotification objects (document activities, announcements, etc.)
     from notifications.models import UserNotification
     user_notifications = (
         UserNotification.objects.filter(user=user)
-        .order_by('-created_at')[:10]
+        .order_by('-created_at')[:20]
     )
+    
+    # Add document-related notifications to recent activity
+    for notif in user_notifications:
+        # Map notification types to activity actions
+        action_type = 'other'
+        if 'upload' in notif.title.lower():
+            action_type = 'document_upload'
+        elif 'replace' in notif.title.lower():
+            action_type = 'document_upload'
+        elif 'remove' in notif.title.lower():
+            action_type = 'document_remove'
+        elif 'approved' in notif.message.lower():
+            action_type = 'document_approved'
+        elif 'rejected' in notif.message.lower():
+            action_type = 'document_rejected'
+        
+        recent_activity.append({
+            "id": f"notif_{notif.id}",
+            "action": action_type,
+            "field_changed": "",
+            "timestamp": notif.created_at,
+            "message": notif.message,
+        })
+    
+    # Sort all activities by timestamp (most recent first) and limit to 15
+    recent_activity = sorted(recent_activity, key=lambda x: x['timestamp'], reverse=True)[:15]
+    
+    # Separate notifications for the notifications section
     notifications_data = [
         {
             "id": notif.id,
