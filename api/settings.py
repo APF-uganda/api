@@ -71,9 +71,9 @@ INSTALLED_APPS = [
 # APPEND_SLASH = False  # Re-enabled to allow Django to redirect URLs without trailing slashes
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # Add WhiteNoise
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -205,17 +205,27 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = 'authentication.User'
 
 # CORS Settings
+# CORS_ALLOWED_ORIGINS = env.list(
+
+#     # "CORS_ALLOWED_ORIGINS",
+#     # default=[
+#     #     "http://localhost:5173",
+#     #     "http://localhost:3000",
+#     #     "http://localhost:3001",
+#     #     "http://localhost:3002",  # Add the current frontend port
+#     #     "http://127.0.0.1:5173",
+#     #     "http://127.0.0.1:3000",
+#     #     "http://127.0.0.1:3001",
+#     #     "http://127.0.0.1:3002",  # Add the current frontend port
+#     # ]
+# )
+
+
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=[
-        "http://localhost:5173",
+        "http://localhost",
         "http://localhost:3000",
-        "http://localhost:3001",
-        "http://localhost:3002",  # Add the current frontend port
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-        "http://127.0.0.1:3002",  # Add the current frontend port
     ]
 )
 
