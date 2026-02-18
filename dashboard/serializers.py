@@ -42,7 +42,7 @@ class MemberDashboardDocumentSerializer(serializers.Serializer):
 
 
 class MemberDashboardActivitySerializer(serializers.Serializer):
-    id = serializers.IntegerField()
+    id = serializers.CharField()  # Changed from IntegerField to support both numeric and string IDs
     action = serializers.CharField()
     field_changed = serializers.CharField(allow_blank=True)
     timestamp = serializers.DateTimeField()
