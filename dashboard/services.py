@@ -246,7 +246,7 @@ def get_member_dashboard_data(user, request=None):
 
     recent_activity = [
         {
-            "id": str(log.id),  # Convert to string for consistency
+            "id": log.id,
             "action": log.action,
             "field_changed": log.field_changed or "",
             "timestamp": log.timestamp,
@@ -336,3 +336,4 @@ def get_member_dashboard_data(user, request=None):
         "recent_activity": recent_activity,
         "notifications": notifications_data,
     }
+
