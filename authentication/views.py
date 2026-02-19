@@ -23,9 +23,13 @@ User = get_user_model()
 class LoginView(APIView):
     permission_classes = [AllowAny]
     
+    # Test users that bypass OTP verification
+    OTP_BYPASS_USERS = ['admin@apt.com', 'member@apf.com']
+    
     def post(self, request):
         email = request.data.get("email")
         password = request.data.get("password")
+        remember_me = request.data.get("remember_me", False)
         
         # Validate input
         if not email or not password:
@@ -59,7 +63,21 @@ class LoginView(APIView):
                 }
             }, status=401)
         
-        # Generate dynamic OTP
+        # Check if user should bypass OTP
+        if email in self.OTP_BYPASS_USERS:
+            # Generate JWT tokens directly without OTP
+            tokens = TokenService.generate_tokens(user, remember_me)
+            
+            return Response({
+                "success": True,
+                "message": "Login successful (OTP bypassed for test user)",
+                "access": tokens['access_token'],
+                "refresh": tokens['refresh_token'],
+                "user": tokens['user'],
+                "otp_bypassed": True
+            })
+        
+        # Generate dynamic OTP for regular users
         otp_code = OTP.generate_code()
         
         # Generate unique session ID
