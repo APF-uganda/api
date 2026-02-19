@@ -10,7 +10,7 @@ class AdminMemberSerializer(serializers.ModelSerializer):
     """
     full_name = serializers.SerializerMethodField()
     membership_status = serializers.SerializerMethodField()
-    subscription_due_date = serializers.DateField(required=False)
+    subscription_due_date = serializers.DateField(required=False, allow_null=True)
     
     class Meta:
         model = User
@@ -24,14 +24,16 @@ class AdminMemberSerializer(serializers.ModelSerializer):
         return obj.full_name
     
     def get_membership_status(self, obj):
-        # Check if user is suspended by checking the suspension record
+        # Check if user is suspended by checking if they're inactive or have an active suspension record
         try:
-            if hasattr(obj, 'suspension_record'):
+            if not obj.is_active:
                 return MembershipStatus.SUSPENDED
-            else:
-                return MembershipStatus.ACTIVE
-        except:
+            # Also check if there's a suspension record without reactivation
+            if hasattr(obj, 'suspension_record') and obj.suspension_record.reactivated_at is None:
+                return MembershipStatus.SUSPENDED
             return MembershipStatus.ACTIVE
+        except:
+            return MembershipStatus.ACTIVE if obj.is_active else MembershipStatus.SUSPENDED
 
 
 class SuspendMemberSerializer(serializers.Serializer):

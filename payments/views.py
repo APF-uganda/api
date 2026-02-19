@@ -29,9 +29,13 @@ class PaymentInitiationView(APIView):
     """
     POST /api/v1/payments/initiate/
     Initiate a mobile money payment.
+    
+    This endpoint supports both authenticated and unauthenticated requests:
+    - Authenticated: For logged-in members making subscription payments
+    - Unauthenticated: For new users making registration payments
     """
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]  # Allow both authenticated and unauthenticated requests
     
     @swagger_auto_schema(
         operation_description="Initiate a mobile money payment for membership fee",
@@ -56,6 +60,10 @@ class PaymentInitiationView(APIView):
         2. Get membership fee from configuration
         3. Call PaymentService.initiate_payment()
         4. Return payment ID and transaction reference
+        
+        Supports both authenticated and unauthenticated requests:
+        - Authenticated: user=request.user (for member subscription payments)
+        - Unauthenticated: user=None (for registration payments)
         
         Requirements: 1.3, 1.4
         """
@@ -84,9 +92,12 @@ class PaymentInitiationView(APIView):
         ip_address = self._get_client_ip(request)
         user_agent = request.META.get('HTTP_USER_AGENT', '')
         
+        # Get user if authenticated, None otherwise
+        user = request.user if hasattr(request, 'user') and request.user and request.user.is_authenticated else None
+        
         # Step 3: Call PaymentService.initiate_payment()
         success, payment, message = payment_service.initiate_payment(
-            user=request.user,
+            user=user,
             phone_number=phone_number,
             amount=amount,
             provider=provider,
@@ -128,9 +139,12 @@ class PaymentStatusView(APIView):
     """
     GET /api/v1/payments/status/{payment_id}/
     Check payment status.
+    
+    Supports both authenticated and unauthenticated requests to allow
+    status checking for registration payments.
     """
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]  # Allow both authenticated and unauthenticated requests
     
     @swagger_auto_schema(
         operation_description="Check the current status of a payment",
@@ -159,7 +173,7 @@ class PaymentStatusView(APIView):
         
         Steps:
         1. Get payment by ID
-        2. Verify user owns the payment
+        2. Verify user owns the payment (if authenticated)
         3. Call PaymentService.check_payment_status()
         4. Return current status and message
         
@@ -168,14 +182,17 @@ class PaymentStatusView(APIView):
         # Step 1: Get payment by ID
         payment = get_object_or_404(Payment, id=payment_id)
         
-        # Step 2: Verify user owns the payment
-        if payment.user != request.user:
-            return Response({
-                'error': {
-                    'code': 'FORBIDDEN',
-                    'message': 'You do not have permission to access this payment'
-                }
-            }, status=status.HTTP_403_FORBIDDEN)
+        # Step 2: Verify user owns the payment (if authenticated)
+        # For authenticated requests, verify ownership
+        # For unauthenticated requests (registration), allow access
+        if request.user and request.user.is_authenticated:
+            if payment.user != request.user:
+                return Response({
+                    'error': {
+                        'code': 'FORBIDDEN',
+                        'message': 'You do not have permission to access this payment'
+                    }
+                }, status=status.HTTP_403_FORBIDDEN)
         
         # Step 3: Call PaymentService.check_payment_status()
         payment_service = PaymentService()
@@ -197,9 +214,12 @@ class PaymentRetryView(APIView):
     """
     POST /api/v1/payments/{payment_id}/retry/
     Retry a failed payment.
+    
+    Supports both authenticated and unauthenticated requests to allow
+    retrying registration payments.
     """
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]  # Allow both authenticated and unauthenticated requests
     
     @swagger_auto_schema(
         operation_description="Retry a failed or timed out payment",
@@ -229,7 +249,7 @@ class PaymentRetryView(APIView):
         
         Steps:
         1. Get payment by ID
-        2. Verify user owns the payment
+        2. Verify user owns the payment (if authenticated)
         3. Call PaymentService.retry_payment()
         4. Return new payment ID
         
@@ -238,15 +258,18 @@ class PaymentRetryView(APIView):
         # Step 1: Get payment by ID
         payment = get_object_or_404(Payment, id=payment_id)
         
-        # Step 2: Verify user owns the payment
-        if payment.user != request.user:
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'FORBIDDEN',
-                    'message': 'You do not have permission to access this payment'
-                }
-            }, status=status.HTTP_403_FORBIDDEN)
+        # Step 2: Verify user owns the payment (if authenticated)
+        # For authenticated requests, verify ownership
+        # For unauthenticated requests (registration), allow access
+        if request.user and request.user.is_authenticated:
+            if payment.user != request.user:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'FORBIDDEN',
+                        'message': 'You do not have permission to access this payment'
+                    }
+                }, status=status.HTTP_403_FORBIDDEN)
         
         # Step 3: Call PaymentService.retry_payment()
         payment_service = PaymentService()
@@ -273,9 +296,12 @@ class PaymentCancellationView(APIView):
     """
     POST /api/v1/payments/{payment_id}/cancel/
     Cancel a pending payment.
+    
+    Supports both authenticated and unauthenticated requests to allow
+    canceling registration payments.
     """
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]  # Allow both authenticated and unauthenticated requests
     
     @swagger_auto_schema(
         operation_description="Cancel a pending payment",
@@ -305,7 +331,7 @@ class PaymentCancellationView(APIView):
         
         Steps:
         1. Get payment by ID
-        2. Verify user owns the payment
+        2. Verify user owns the payment (if authenticated)
         3. Call PaymentService.cancel_payment()
         4. Return success message
         
@@ -314,15 +340,18 @@ class PaymentCancellationView(APIView):
         # Step 1: Get payment by ID
         payment = get_object_or_404(Payment, id=payment_id)
         
-        # Step 2: Verify user owns the payment
-        if payment.user != request.user:
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'FORBIDDEN',
-                    'message': 'You do not have permission to access this payment'
-                }
-            }, status=status.HTTP_403_FORBIDDEN)
+        # Step 2: Verify user owns the payment (if authenticated)
+        # For authenticated requests, verify ownership
+        # For unauthenticated requests (registration), allow access
+        if request.user and request.user.is_authenticated:
+            if payment.user != request.user:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'FORBIDDEN',
+                        'message': 'You do not have permission to access this payment'
+                    }
+                }, status=status.HTTP_403_FORBIDDEN)
         
         # Step 3: Call PaymentService.cancel_payment()
         payment_service = PaymentService()

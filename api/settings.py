@@ -71,9 +71,10 @@ INSTALLED_APPS = [
 # APPEND_SLASH = False  # Re-enabled to allow Django to redirect URLs without trailing slashes
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # Add WhiteNoise
-    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.common.CommonMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -85,7 +86,7 @@ MIDDLEWARE = [
     "authentication.middleware.SecurityHeadersMiddleware",
     "authentication.middleware.RequestLoggingMiddleware",
     # Payment middleware
-    "payments.middleware.PaymentRateLimitMiddleware",
+    # "payments.middleware.PaymentRateLimitMiddleware",  # Temporarily disabled - requires Redis
     "payments.middleware.PaymentLoggingMiddleware",
 ]
 
@@ -204,17 +205,27 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = 'authentication.User'
 
 # CORS Settings
+# CORS_ALLOWED_ORIGINS = env.list(
+
+#     # "CORS_ALLOWED_ORIGINS",
+#     # default=[
+#     #     "http://localhost:5173",
+#     #     "http://localhost:3000",
+#     #     "http://localhost:3001",
+#     #     "http://localhost:3002",  # Add the current frontend port
+#     #     "http://127.0.0.1:5173",
+#     #     "http://127.0.0.1:3000",
+#     #     "http://127.0.0.1:3001",
+#     #     "http://127.0.0.1:3002",  # Add the current frontend port
+#     # ]
+# )
+
+
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=[
-        "http://localhost:5173",
+        "http://localhost",
         "http://localhost:3000",
-        "http://localhost:3001",
-        "http://localhost:3002",  # Add the current frontend port
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-        "http://127.0.0.1:3002",  # Add the current frontend port
     ]
 )
 
@@ -321,9 +332,13 @@ RATE_LIMIT_WINDOW = 900  # 15 minutes in seconds
 EMAILJS_SERVICE_ID = env('EMAILJS_SERVICE_ID', default='')
 EMAILJS_TEMPLATE_ID_OTP = env('EMAILJS_TEMPLATE_ID_OTP', default='')
 EMAILJS_TEMPLATE_ID_PASSWORD_RESET = env('EMAILJS_TEMPLATE_ID_PASSWORD_RESET', default='')
+EMAILJS_TEMPLATE_ID_APPROVAL = env('EMAILJS_TEMPLATE_ID_APPROVAL', default='')
 EMAILJS_PUBLIC_KEY = env('EMAILJS_PUBLIC_KEY', default='')
 EMAILJS_PRIVATE_KEY = env('EMAILJS_PRIVATE_KEY', default='')
 EMAILJS_API_URL = 'https://api.emailjs.com/api/v1.0/email/send'
+
+# Frontend URL Configuration
+FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 
 # Email Configuration (for SMTP - recommended for production)
 # For development, use console backend to print emails to terminal

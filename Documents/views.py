@@ -63,6 +63,19 @@ class DocumentViewSet(viewsets.ViewSet):
             document_type=doc_type,
         )
 
+        # Create activity notification
+        try:
+            from notifications.models import UserNotification
+            UserNotification.objects.create(
+                user=request.user,
+                title="Document Uploaded",
+                message=f'You uploaded "{uploaded_file.name}" for admin review.',
+                notification_type="success",
+                priority="low"
+            )
+        except Exception as e:
+            print(f"Failed to create notification: {e}")
+
         serializer = MemberDocumentSerializer(document, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -83,11 +96,33 @@ class DocumentViewSet(viewsets.ViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Store old document name
+        old_name = document.file_name or 'Document'
+        
+        # Update document
         document.file = uploaded_file
         document.file_name = uploaded_file.name
         document.file_size = uploaded_file.size
         document.file_type = uploaded_file.content_type or ''
-        document.save(update_fields=['file', 'file_name', 'file_size', 'file_type'])
+        
+        # Reset status to pending for admin review
+        if hasattr(document, 'status'):
+            document.status = 'pending'
+        
+        document.save(update_fields=['file', 'file_name', 'file_size', 'file_type', 'status'])
+
+        # Create activity notification
+        try:
+            from notifications.models import UserNotification
+            UserNotification.objects.create(
+                user=request.user,
+                title="Document Replaced",
+                message=f'You replaced "{old_name}" with "{uploaded_file.name}". It will be reviewed by admin.',
+                notification_type="info",
+                priority="low"
+            )
+        except Exception as e:
+            print(f"Failed to create notification: {e}")
 
         serializer = DocumentSerializer(document, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -101,7 +136,26 @@ class DocumentViewSet(viewsets.ViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Store document name before deletion
+        document_name = document.file_name or 'Document'
+        
+        # Delete the document
         document.delete()
+        
+        # Create activity notification
+        try:
+            from notifications.models import UserNotification
+            UserNotification.objects.create(
+                user=request.user,
+                title="Document Removed",
+                message=f'You removed "{document_name}" from your documents.',
+                notification_type="info",
+                priority="low"
+            )
+        except Exception as e:
+            # Log error but don't fail the delete operation
+            print(f"Failed to create notification: {e}")
+        
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @swagger_auto_schema(tags=["documents"])
@@ -193,3 +247,53 @@ class DocumentViewSet(viewsets.ViewSet):
             else DocumentSerializer(document, context={'request': request})
         )
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(tags=["documents"])
+    @action(detail=True, methods=['get'], url_path='download')
+    def download(self, request, pk=None):
+        """
+        Download a document file.
+        Members can only download their own documents.
+        """
+        from django.http import FileResponse, Http404
+        import os
+
+        # Try to find the document in MemberDocument first
+        document = MemberDocument.objects.filter(pk=pk, user=request.user).first()
+        
+        # If not found, try Document (application documents)
+        if not document:
+            document = Document.objects.filter(pk=pk, application__user=request.user).first()
+        
+        if not document:
+            return Response(
+                {'error': {'message': 'Document not found or access denied.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Check if file exists
+        if not document.file:
+            return Response(
+                {'error': {'message': 'File not available.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            # Open the file
+            file_handle = document.file.open('rb')
+            
+            # Get the filename
+            filename = document.file_name or os.path.basename(document.file.name)
+            
+            # Create response with file
+            response = FileResponse(file_handle, content_type=document.file_type or 'application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response['Content-Length'] = document.file_size
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': {'message': f'Error downloading file: {str(e)}'}},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

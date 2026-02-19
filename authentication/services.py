@@ -710,6 +710,7 @@ class EmailService:
     EMAILJS_SERVICE_ID = getattr(settings, 'EMAILJS_SERVICE_ID', '')
     EMAILJS_TEMPLATE_ID_OTP = getattr(settings, 'EMAILJS_TEMPLATE_ID_OTP', '')
     EMAILJS_TEMPLATE_ID_PASSWORD_RESET = getattr(settings, 'EMAILJS_TEMPLATE_ID_PASSWORD_RESET', '')
+    EMAILJS_TEMPLATE_ID_APPROVAL = getattr(settings, 'EMAILJS_TEMPLATE_ID_APPROVAL', '')
     EMAILJS_PUBLIC_KEY = getattr(settings, 'EMAILJS_PUBLIC_KEY', '')
     EMAILJS_PRIVATE_KEY = getattr(settings, 'EMAILJS_PRIVATE_KEY', '')
     EMAILJS_API_URL = getattr(settings, 'EMAILJS_API_URL', 'https://api.emailjs.com/api/v1.0/email/send')
@@ -852,5 +853,85 @@ class EmailService:
             return False
         except Exception as e:
             logger.error(f"Error sending password reset email to {email}: {str(e)}")
+            return False
+    
+    @staticmethod
+    def send_approval_email(email, user_name=None, login_url=None):
+        """
+        Send member approval email using EmailJS
+        
+        Args:
+            email: Recipient email address
+            user_name: Optional user name for personalization
+            login_url: Optional login URL (defaults to FRONTEND_URL/login from settings)
+            
+        Returns:
+            Boolean indicating success or failure
+        """
+        try:
+            if not user_name:
+                user_name = email.split('@')[0]
+            
+            if not login_url:
+                # Use FRONTEND_URL from settings with /login path
+                frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+                login_url = f'{frontend_url}/login'
+            
+            # Check if EmailJS is configured
+            if not all([
+                EmailService.EMAILJS_SERVICE_ID,
+                EmailService.EMAILJS_TEMPLATE_ID_APPROVAL,
+                EmailService.EMAILJS_PUBLIC_KEY,
+                EmailService.EMAILJS_PRIVATE_KEY
+            ]):
+                logger.error("EmailJS not properly configured for approval emails. Missing required settings.")
+                return False
+            
+            # Use the exact parameters from emailtemplate.ts: member_name, member_email, loginUrl
+            # Also include to_email for EmailJS template "To Email" field configuration
+            payload = {
+                'service_id': EmailService.EMAILJS_SERVICE_ID,
+                'template_id': EmailService.EMAILJS_TEMPLATE_ID_APPROVAL,
+                'user_id': EmailService.EMAILJS_PUBLIC_KEY,
+                'accessToken': EmailService.EMAILJS_PRIVATE_KEY,
+                'template_params': {
+                    # Primary parameters for email content (from emailtemplate.ts)
+                    'member_name': user_name,
+                    'member_email': email,
+                    'loginUrl': login_url,
+                    # Additional parameters for EmailJS template configuration
+                    'to_email': email,
+                    'to_name': user_name,
+                    'reply_to': 'noreply@apf-uganda.com',
+                    'from_name': 'APF Portal',
+                    'from_email': 'abnowellah@gmail.com'
+                }
+            }
+            
+            logger.info(f"Sending approval email to {email} via EmailJS")
+            logger.debug(f"EmailJS payload: service_id={EmailService.EMAILJS_SERVICE_ID}, template_id={EmailService.EMAILJS_TEMPLATE_ID_APPROVAL}")
+            
+            response = requests.post(
+                EmailService.EMAILJS_API_URL,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"Approval email sent successfully to {email} via EmailJS")
+                return True
+            else:
+                logger.error(f"EmailJS API error for approval email to {email}: {response.status_code} - {response.text}")
+                return False
+            
+        except requests.exceptions.Timeout:
+            logger.error(f"EmailJS request timeout for approval email to {email}")
+            return False
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error sending approval email to {email}: {str(e)}")
+            return False
+        except Exception as e:
+            logger.error(f"Error sending approval email to {email}: {str(e)}")
             return False
 
