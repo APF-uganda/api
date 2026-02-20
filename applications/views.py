@@ -48,7 +48,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     queryset = Application.objects.all().order_by('-submitted_at')
     serializer_class = ApplicationSerializer
     parser_classes = [JSONParser, MultiPartParser, FormParser]
-    authentication_classes = [JWTAuthentication]
+    # Remove authentication_classes from class level - let DRF handle it via settings
+    # authentication_classes = [JWTAuthentication]
     
     def get_permissions(self):
         """
@@ -64,9 +65,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             from authentication.permissions import IsAuthenticated, IsAdmin
             permission_classes = [IsAuthenticated, IsAdmin]
         else:
-            # All other actions require admin authentication
-            from authentication.permissions import IsAdmin
-            permission_classes = [IsAdmin]
+            # All other actions (retrieve, update, partial_update, destroy, custom actions) require admin authentication
+            from authentication.permissions import IsAuthenticated, IsAdmin
+            permission_classes = [IsAuthenticated, IsAdmin]
         
         return [permission() for permission in permission_classes]
     
@@ -90,6 +91,23 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 'status', 'payment_status', 'submitted_at', 'updated_at'
             ).order_by('-submitted_at')
         return Application.objects.all().order_by('-submitted_at')
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Custom retrieve method with better error handling and logging
+        """
+        try:
+            logger.info(f"Retrieve request for application {kwargs.get('pk')} by user: {request.user}")
+            logger.info(f"User authenticated: {request.user.is_authenticated}")
+            logger.info(f"User role: {getattr(request.user, 'role', 'N/A')}")
+            logger.info(f"Auth header present: {'HTTP_AUTHORIZATION' in request.META}")
+            
+            instance = self.get_object()
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Error retrieving application: {str(e)}", exc_info=True)
+            raise
 
 
 

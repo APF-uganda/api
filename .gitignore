@@ -15,7 +15,7 @@ settings_local.py
 *.pot
 *.pyc
 *.mo
-/media
+
 
 # Media & Static (if generated)
 staticfiles/
