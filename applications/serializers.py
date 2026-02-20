@@ -18,10 +18,22 @@ class DocumentSerializer(serializers.ModelSerializer):
     Serializer for Document model.
     Handles nested document data for application submissions.
     """
+    file_url = serializers.SerializerMethodField()
+    
     class Meta:
         model = Document
-        fields = ['id', 'file', 'file_name', 'file_size', 'file_type', 'document_type', 'uploaded_at']
-        read_only_fields = ['id', 'uploaded_at']
+        fields = ['id', 'file', 'file_url', 'file_name', 'file_size', 'file_type', 'document_type', 'uploaded_at']
+        read_only_fields = ['id', 'uploaded_at', 'file_url']
+    
+    def get_file_url(self, obj):
+        """Return the full URL for the file"""
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            # Fallback to relative URL if no request context
+            return obj.file.url
+        return None
 
 
 class ApplicationListSerializer(serializers.ModelSerializer):
