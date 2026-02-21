@@ -43,10 +43,14 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     def get_fileUrl(self, obj):
         if not obj.file:
+            print(f"[DocumentSerializer] No file for document {obj.id}")
             return None
         request = self.context.get('request')
         if request:
-            return request.build_absolute_uri(obj.file.url)
+            url = request.build_absolute_uri(obj.file.url)
+            print(f"[DocumentSerializer] Generated URL for {obj.file_name}: {url}")
+            return url
+        print(f"[DocumentSerializer] No request context, using relative URL: {obj.file.url}")
         return obj.file.url
 
     def get_adminFeedback(self, obj):
@@ -89,10 +93,14 @@ class MemberDocumentSerializer(serializers.ModelSerializer):
 
     def get_fileUrl(self, obj):
         if not obj.file:
+            print(f"[MemberDocumentSerializer] No file for document {obj.id}")
             return None
         request = self.context.get('request')
         if request:
-            return request.build_absolute_uri(obj.file.url)
+            url = request.build_absolute_uri(obj.file.url)
+            print(f"[MemberDocumentSerializer] Generated URL for {obj.file_name}: {url}")
+            return url
+        print(f"[MemberDocumentSerializer] No request context, using relative URL: {obj.file.url}")
         return obj.file.url
 
     def get_adminFeedback(self, obj):
