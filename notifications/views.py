@@ -66,15 +66,15 @@ class UserNotificationViewSet(viewsets.ModelViewSet):
                 'notification_type': notif.type,
                 'priority': 'medium',  # Default priority
                 'is_read': notif.is_read,
-                'created_at': notif.created_at,
+                'created_at': notif.created_at.isoformat() if notif.created_at else None,
                 'read_at': None,  # Application Notification model doesn't have read_at
             })
         
         # Combine both lists
         combined_notifications = list(user_notif_data) + app_notif_data
         
-        # Sort by created_at (most recent first)
-        combined_notifications.sort(key=lambda x: x['created_at'], reverse=True)
+        # Sort by created_at (most recent first) - both are now ISO strings
+        combined_notifications.sort(key=lambda x: x.get('created_at') or '', reverse=True)
         
         print(f"[Notification] List for user {request.user.email}:")
         print(f"  - UserNotification: {len(user_notif_data)}")
