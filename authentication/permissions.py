@@ -33,14 +33,20 @@ class IsMember(BasePermission):
     """
     Permission class that requires user to be authenticated and have member role.
     Member role is identified by role='2'
+    Also blocks suspended members (is_active=False) from accessing member resources.
     """
     
     def has_permission(self, request, view):
-        return bool(
-            request.user and 
-            request.user.is_authenticated and 
-            request.user.role == '2'
-        )
+        # Check if user is authenticated and has member role
+        if not (request.user and request.user.is_authenticated and request.user.role == '2'):
+            return False
+        
+        # Block suspended members from accessing member resources
+        # Suspended members have is_active=False
+        if not request.user.is_active:
+            return False
+        
+        return True
 
 
 class IsAdminOrMember(BasePermission):

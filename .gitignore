@@ -100,3 +100,7 @@ create_user_account.py
 APPROVAL_*.md
 CONFIGURE_*.md
 EMAILJS_*.md
+
+media/
+check_all_documents.py
+check_documents.py
