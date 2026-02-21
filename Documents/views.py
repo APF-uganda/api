@@ -3,13 +3,64 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes, authentication_classes
 from django.db.models import Q
 
 from applications.models import Application
 from .models import Document, MemberDocument
 from .serializers import DocumentSerializer, MemberDocumentSerializer
 from drf_yasg.utils import swagger_auto_schema
+
+
+@swagger_auto_schema(method='get', tags=["documents"])
+@api_view(['GET'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAdminUser])
+def get_member_documents(request, user_id):
+    """
+    Admin-only: Get all documents for a specific member.
+    Returns both application documents and member-uploaded documents.
+    """
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    
+    print(f"[Documents] Fetching documents for user_id: {user_id}")
+    
+    try:
+        user = User.objects.get(id=user_id, role='2')  # Ensure it's a member
+        print(f"[Documents] Found user: {user.email}")
+    except User.DoesNotExist:
+        print(f"[Documents] User not found: {user_id}")
+        return Response(
+            {'error': {'message': 'Member not found.'}},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Get application documents
+    app_docs = Document.objects.filter(application__user=user)
+    print(f"[Documents] Found {app_docs.count()} application documents")
+    
+    # Get member documents
+    member_docs = MemberDocument.objects.filter(user=user)
+    print(f"[Documents] Found {member_docs.count()} member documents")
+    
+    # Serialize both types
+    app_data = DocumentSerializer(app_docs, many=True, context={'request': request}).data
+    member_data = MemberDocumentSerializer(member_docs, many=True, context={'request': request}).data
+    
+    # Combine and sort by upload date
+    combined = list(app_data) + list(member_data)
+    combined.sort(key=lambda item: item.get('uploadedDate', ''), reverse=True)
+    
+    print(f"[Documents] Returning {len(combined)} total documents")
+    
+    return Response({
+        'user_id': user_id,
+        'user_email': user.email,
+        'user_name': f"{user.first_name} {user.last_name}".strip() or user.email,
+        'total_documents': len(combined),
+        'documents': combined
+    }, status=status.HTTP_200_OK)
 
 
 class DocumentViewSet(viewsets.ViewSet):
@@ -163,7 +214,7 @@ class DocumentViewSet(viewsets.ViewSet):
     def admin_review(self, request, pk=None):
         """
         Admin-only: update status/feedback for a document.
-    
+        Sends notification to member when status changes.
         """
         status_value = (request.data.get('status') or '').lower()
         feedback_value = request.data.get('admin_feedback') or request.data.get('adminFeedback')
@@ -185,11 +236,44 @@ class DocumentViewSet(viewsets.ViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Store old status to check if it changed
+        old_status = getattr(document, 'status', None)
+        
         if hasattr(document, 'status'):
             document.status = status_value
         if hasattr(document, 'admin_feedback') and feedback_value is not None:
             document.admin_feedback = feedback_value
         document.save()
+
+        # Send notification if status changed
+        if old_status != status_value:
+            try:
+                from notifications.models import UserNotification
+                
+                # Get the document owner
+                doc_user = document.user if hasattr(document, 'user') else (document.application.user if hasattr(document, 'application') else None)
+                
+                if doc_user:
+                    if status_value == 'approved':
+                        UserNotification.objects.create(
+                            user=doc_user,
+                            title="Document Approved",
+                            message=f'Your document "{document.file_name}" has been approved by admin.' + (f' Feedback: {feedback_value}' if feedback_value else ''),
+                            notification_type='success',
+                            priority='medium'
+                        )
+                        print(f"[Documents] Sent approval notification to {doc_user.email} for document {document.file_name}")
+                    elif status_value == 'rejected':
+                        UserNotification.objects.create(
+                            user=doc_user,
+                            title="Document Rejected",
+                            message=f'Your document "{document.file_name}" has been rejected.' + (f' Reason: {feedback_value}' if feedback_value else ' Please upload a corrected version.'),
+                            notification_type='warning',
+                            priority='high'
+                        )
+                        print(f"[Documents] Sent rejection notification to {doc_user.email} for document {document.file_name}")
+            except Exception as e:
+                print(f"[Documents] Failed to send notification: {str(e)}")
 
         serializer = (
             MemberDocumentSerializer(document, context={'request': request})
@@ -201,6 +285,10 @@ class DocumentViewSet(viewsets.ViewSet):
     @swagger_auto_schema(tags=["documents"])
     @action(detail=True, methods=['patch'], url_path='approve', permission_classes=[IsAdminUser])
     def approve(self, request, pk=None):
+        """
+        Admin-only: Approve a document.
+        Sends notification to member.
+        """
         feedback_value = request.data.get('admin_feedback') or request.data.get('adminFeedback')
 
         document = MemberDocument.objects.filter(pk=pk).first()
@@ -216,6 +304,23 @@ class DocumentViewSet(viewsets.ViewSet):
             document.admin_feedback = feedback_value
         document.save()
 
+        # Send notification
+        try:
+            from notifications.models import UserNotification
+            doc_user = document.user if hasattr(document, 'user') else (document.application.user if hasattr(document, 'application') else None)
+            
+            if doc_user:
+                UserNotification.objects.create(
+                    user=doc_user,
+                    title="Document Approved",
+                    message=f'Your document "{document.file_name}" has been approved by admin.' + (f' Feedback: {feedback_value}' if feedback_value else ''),
+                    notification_type='success',
+                    priority='medium'
+                )
+                print(f"[Documents] Sent approval notification to {doc_user.email}")
+        except Exception as e:
+            print(f"[Documents] Failed to send notification: {str(e)}")
+
         serializer = (
             MemberDocumentSerializer(document, context={'request': request})
             if doc_is_member
@@ -226,6 +331,10 @@ class DocumentViewSet(viewsets.ViewSet):
     @swagger_auto_schema(tags=["documents"])
     @action(detail=True, methods=['patch'], url_path='reject', permission_classes=[IsAdminUser])
     def reject(self, request, pk=None):
+        """
+        Admin-only: Reject a document.
+        Sends notification to member.
+        """
         feedback_value = request.data.get('admin_feedback') or request.data.get('adminFeedback')
 
         document = MemberDocument.objects.filter(pk=pk).first()
@@ -240,6 +349,23 @@ class DocumentViewSet(viewsets.ViewSet):
         if hasattr(document, 'admin_feedback') and feedback_value is not None:
             document.admin_feedback = feedback_value
         document.save()
+
+        # Send notification
+        try:
+            from notifications.models import UserNotification
+            doc_user = document.user if hasattr(document, 'user') else (document.application.user if hasattr(document, 'application') else None)
+            
+            if doc_user:
+                UserNotification.objects.create(
+                    user=doc_user,
+                    title="Document Rejected",
+                    message=f'Your document "{document.file_name}" has been rejected.' + (f' Reason: {feedback_value}' if feedback_value else ' Please upload a corrected version.'),
+                    notification_type='warning',
+                    priority='high'
+                )
+                print(f"[Documents] Sent rejection notification to {doc_user.email}")
+        except Exception as e:
+            print(f"[Documents] Failed to send notification: {str(e)}")
 
         serializer = (
             MemberDocumentSerializer(document, context={'request': request})
