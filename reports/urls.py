@@ -23,7 +23,7 @@ from .views import (
 # Create router for ViewSets
 router = DefaultRouter()
 router.register(r'templates', ReportTemplateViewSet, basename='report-templates')
-router.register(r'generated', GeneratedReportViewSet, basename='generated-reports')
+router.register(r'generated-reports', GeneratedReportViewSet, basename='generated-reports')
 
 # URL patterns
 urlpatterns = [
@@ -38,7 +38,7 @@ urlpatterns = [
     path('analytics/charts/available/', AvailableChartsAPIView.as_view(), name='analytics-available-charts'),
     
     # Dashboard endpoints
-    path('dashboard/summary/', DashboardSummaryAPIView.as_view(), name='dashboard-summary'),
+    path('analytics/summary/', DashboardSummaryAPIView.as_view(), name='dashboard-summary'),
     
     # System endpoints
     path('system/health/', AnalyticsHealthCheckAPIView.as_view(), name='analytics-health'),

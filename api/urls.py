@@ -40,6 +40,82 @@ def health_check(request):
         }
     })
 
+def secure_media_serve(request, path):
+    """
+    Serve media files with authentication check for application and member documents
+    """
+    from django.http import FileResponse, HttpResponseForbidden, Http404, JsonResponse
+    from rest_framework_simplejwt.authentication import JWTAuthentication
+    import os
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    # Check if the path is for application or member documents (requires auth)
+    requires_auth = path.startswith('application_documents/') or path.startswith('member_documents/')
+    
+    if requires_auth:
+        # Authenticate the request
+        jwt_auth = JWTAuthentication()
+        try:
+            auth_result = jwt_auth.authenticate(request)
+            if auth_result is None:
+                logger.warning(f"Unauthenticated access attempt to: {path}")
+                return HttpResponseForbidden("Authentication required")
+            user, token = auth_result
+            
+            # For application documents, require admin access
+            if path.startswith('application_documents/'):
+                if not (user.is_authenticated and user.role == '1'):
+                    logger.warning(f"Non-admin user {user.email} attempted to access: {path}")
+                    return HttpResponseForbidden("Admin access required")
+            
+            # For member documents, allow access to own documents or admin
+            elif path.startswith('member_documents/'):
+                # Extract user_id from path (format: member_documents/user_123/...)
+                path_parts = path.split('/')
+                if len(path_parts) >= 2:
+                    folder_name = path_parts[1]  # e.g., "user_123"
+                    if folder_name.startswith('user_'):
+                        doc_user_id = folder_name.replace('user_', '')
+                        # Allow if admin or if accessing own documents
+                        if not (user.role == '1' or str(user.id) == doc_user_id):
+                            logger.warning(f"User {user.email} attempted to access another user's documents: {path}")
+                            return HttpResponseForbidden("Access denied")
+                
+        except Exception as e:
+            logger.error(f"Authentication error for {path}: {str(e)}")
+            return HttpResponseForbidden("Invalid authentication")
+    
+    # Construct the full file path
+    file_path = os.path.join(settings.MEDIA_ROOT, path)
+    
+    # Check if file exists
+    if not os.path.exists(file_path):
+        logger.error(f"File not found: {file_path}")
+        logger.error(f"MEDIA_ROOT: {settings.MEDIA_ROOT}")
+        logger.error(f"Requested path: {path}")
+        
+        # Return JSON error for API requests
+        if request.headers.get('Accept') == 'application/json' or 'api' in request.path:
+            return JsonResponse({
+                'error': 'File not found',
+                'message': f'The requested file does not exist on the server.',
+                'path': path
+            }, status=404)
+        
+        raise Http404(f"File not found: {path}")
+    
+    # Serve the file
+    try:
+        return FileResponse(open(file_path, 'rb'))
+    except Exception as e:
+        logger.error(f"Error serving file {file_path}: {str(e)}")
+        return JsonResponse({
+            'error': 'Error serving file',
+            'message': str(e)
+        }, status=500)
+
 # API v1 URL patterns (for Swagger to scan)
 api_v1_patterns = [
     path("contacts/", include("contacts.urls")),
@@ -100,10 +176,11 @@ urlpatterns = [
     path("api/v1/", include("profiles.urls")),
     path("api/v1/", include("dashboard.urls")),
     
-    # Media files
-    path("media/<path:path>", serve, {"document_root": settings.MEDIA_ROOT}),
+    # Secure media files serving
+    path("media/<path:path>", secure_media_serve, name="secure-media"),
 ]
 
-# Serve media files in development
-if settings.MEDIA_URL and settings.MEDIA_ROOT:
+# Serve media files in development (fallback for non-authenticated access)
+# The secure_media_serve view above will handle authentication for sensitive files
+if settings.DEBUG and settings.MEDIA_URL and settings.MEDIA_ROOT:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

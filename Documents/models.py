@@ -1,6 +1,44 @@
 from django.db import models
 from django.conf import settings
 from applications.models import Application
+import os
+from datetime import datetime
+
+
+def get_application_document_path(instance, filename):
+    """
+    Generate organized file path for application documents.
+    Format: application_documents/{application_id}/{timestamp}_{filename}
+    """
+    # Get the application ID
+    app_id = instance.application.id if instance.application else 'unassigned'
+    
+    # Get timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # Clean filename - remove spaces and special characters
+    clean_filename = filename.replace(' ', '_').replace('(', '').replace(')', '')
+    
+    # Construct path: application_documents/app_123/20260219_143022_document.pdf
+    return os.path.join('application_documents', f'app_{app_id}', f'{timestamp}_{clean_filename}')
+
+
+def get_member_document_path(instance, filename):
+    """
+    Generate organized file path for member documents.
+    Format: member_documents/{user_id}/{timestamp}_{filename}
+    """
+    # Get the user ID
+    user_id = instance.user.id if instance.user else 'unassigned'
+    
+    # Get timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # Clean filename
+    clean_filename = filename.replace(' ', '_').replace('(', '').replace(')', '')
+    
+    # Construct path: member_documents/user_123/20260219_143022_document.pdf
+    return os.path.join('member_documents', f'user_{user_id}', f'{timestamp}_{clean_filename}')
 
 
 class Document(models.Model):
@@ -15,7 +53,7 @@ class Document(models.Model):
         null=True,
         blank=True,
     )
-    file = models.FileField(upload_to='application_documents/')
+    file = models.FileField(upload_to=get_application_document_path)
     file_name = models.CharField(max_length=255)
     file_size = models.IntegerField()
     file_type = models.CharField(max_length=50)
@@ -58,7 +96,7 @@ class MemberDocument(models.Model):
         on_delete=models.CASCADE,
         related_name='member_documents',
     )
-    file = models.FileField(upload_to='application_documents/')
+    file = models.FileField(upload_to=get_member_document_path)
     file_name = models.CharField(max_length=255)
     file_size = models.IntegerField()
     file_type = models.CharField(max_length=50)
