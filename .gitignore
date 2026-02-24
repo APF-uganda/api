@@ -104,3 +104,5 @@ EMAILJS_*.md
 media/
 check_all_documents.py
 check_documents.py
+
+GIT_CONFIGURATION_GUIDE.md
