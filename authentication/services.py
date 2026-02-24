@@ -709,7 +709,7 @@ class EmailService:
     # EmailJS Configuration
     EMAILJS_SERVICE_ID = getattr(settings, 'EMAILJS_SERVICE_ID', '')
     EMAILJS_TEMPLATE_ID_OTP = getattr(settings, 'EMAILJS_TEMPLATE_ID_OTP', '')
-    EMAILJS_TEMPLATE_ID_PASSWORD_RESET = getattr(settings, 'EMAILJS_TEMPLATE_ID_PASSWORD_RESET', '')
+    # Note: Password reset now uses the same template as OTP to save on template limits
     EMAILJS_TEMPLATE_ID_APPROVAL = getattr(settings, 'EMAILJS_TEMPLATE_ID_APPROVAL', '')
     EMAILJS_PUBLIC_KEY = getattr(settings, 'EMAILJS_PUBLIC_KEY', '')
     EMAILJS_PRIVATE_KEY = getattr(settings, 'EMAILJS_PRIVATE_KEY', '')
@@ -789,6 +789,7 @@ class EmailService:
     def send_password_reset_email(email, otp_code, user_name=None):
         """
         Send password reset OTP email using EmailJS
+        Uses the same template as OTP login emails to save on template limits.
         
         Args:
             email: Recipient email address
@@ -802,10 +803,10 @@ class EmailService:
             if not user_name:
                 user_name = email.split('@')[0]
             
-            # Check if EmailJS is configured
+            # Check if EmailJS is configured - using OTP template for both login and password reset
             if not all([
                 EmailService.EMAILJS_SERVICE_ID,
-                EmailService.EMAILJS_TEMPLATE_ID_PASSWORD_RESET,
+                EmailService.EMAILJS_TEMPLATE_ID_OTP,
                 EmailService.EMAILJS_PUBLIC_KEY,
                 EmailService.EMAILJS_PRIVATE_KEY
             ]):
@@ -814,7 +815,7 @@ class EmailService:
             
             payload = {
                 'service_id': EmailService.EMAILJS_SERVICE_ID,
-                'template_id': EmailService.EMAILJS_TEMPLATE_ID_PASSWORD_RESET,
+                'template_id': EmailService.EMAILJS_TEMPLATE_ID_OTP,  # Using same template as OTP login
                 'user_id': EmailService.EMAILJS_PUBLIC_KEY,
                 'accessToken': EmailService.EMAILJS_PRIVATE_KEY,
                 'template_params': {
