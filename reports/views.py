@@ -153,3 +153,53 @@ class GeneratedReportViewSet(viewsets.ModelViewSet):
         except Exception:
             instance.status = 'failed'
             instance.save()
+
+
+class DownloadReportAPIView(APIView):
+    """Download a generated report file"""
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request, report_id):
+        from django.http import FileResponse, Http404
+        import os
+        from django.conf import settings
+        
+        try:
+            report = GeneratedReport.objects.get(id=report_id)
+            
+            if report.status != 'completed':
+                return Response(
+                    {'error': 'Report is not ready for download', 'status': report.status},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not report.file_path:
+                return Response(
+                    {'error': 'Report file not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            file_path = os.path.join(settings.MEDIA_ROOT, report.file_path)
+            
+            if not os.path.exists(file_path):
+                return Response(
+                    {'error': 'Report file does not exist on server'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Update download tracking
+            report.download_count += 1
+            report.last_downloaded_at = timezone.now()
+            report.save(update_fields=['download_count', 'last_downloaded_at'])
+            
+            # Serve the file
+            response = FileResponse(open(file_path, 'rb'))
+            response['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_path)}"'
+            return response
+            
+        except GeneratedReport.DoesNotExist:
+            return Response(
+                {'error': 'Report not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
