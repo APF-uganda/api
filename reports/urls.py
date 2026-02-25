@@ -17,7 +17,8 @@ from .views import (
     AnalyticsHealthCheckAPIView,
     CacheManagementsAPIView,
     ReportTemplateViewSet,
-    GeneratedReportViewSet
+    GeneratedReportViewSet,
+    DownloadReportAPIView
 )
 
 # Create router for ViewSets
@@ -43,6 +44,9 @@ urlpatterns = [
     # System endpoints
     path('system/health/', AnalyticsHealthCheckAPIView.as_view(), name='analytics-health'),
     path('system/cache/', CacheManagementsAPIView.as_view(), name='analytics-cache'),
+    
+    # Report download endpoint
+    path('download/<uuid:report_id>/', DownloadReportAPIView.as_view(), name='download-report'),
     
     # Report management endpoints (ViewSets)
     path('', include(router.urls)),
