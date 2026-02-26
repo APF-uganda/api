@@ -126,12 +126,18 @@ class PaymentService(PerformanceLoggingMixin):
             import uuid
             transaction_reference = str(uuid.uuid4())
             
+            # Step 4a: Determine currency based on environment
+            # MTN sandbox only supports EUR, production supports UGX
+            from django.conf import settings
+            payment_env = getattr(settings, 'PAYMENT_ENVIRONMENT', 'sandbox')
+            currency = 'EUR' if payment_env == 'sandbox' and provider == Payment.PROVIDER_MTN else 'UGX'
+            
             # Step 5: Create Payment record with status='pending'
             payment = Payment.objects.create(
                 user=user,
                 phone_number=encrypted_phone,
                 amount=amount,
-                currency='UGX',
+                currency=currency,
                 provider=provider,
                 transaction_reference=transaction_reference,
                 status=Payment.STATUS_PENDING,
@@ -189,7 +195,7 @@ class PaymentService(PerformanceLoggingMixin):
                     result = provider_service.request_to_pay(
                         phone_number=phone_number,
                         amount=amount,
-                        currency='UGX',
+                        currency=currency,
                         reference=transaction_reference,
                         transaction_id=transaction_reference  # Use same reference as transaction_id
                     )
@@ -198,7 +204,7 @@ class PaymentService(PerformanceLoggingMixin):
                     result = provider_service.request_to_pay(
                         phone_number=phone_number,
                         amount=amount,
-                        currency='UGX',
+                        currency=currency,
                         reference=transaction_reference,
                         payer_message="APF Membership Fee"
                     )

@@ -102,6 +102,19 @@ MTN provides specific test phone numbers for different scenarios:
 
 **Note**: These are sandbox-only numbers. They will not work in production.
 
+## Important: Sandbox Currency Requirement
+
+⚠️ **MTN Sandbox only supports EUR currency, not UGX!**
+
+- **Sandbox**: Must use `EUR` currency
+- **Production**: Use `UGX` currency
+
+The payment service automatically handles this based on the `PAYMENT_ENVIRONMENT` setting:
+- When `PAYMENT_ENVIRONMENT=sandbox` → Uses EUR for MTN payments
+- When `PAYMENT_ENVIRONMENT=production` → Uses UGX for MTN payments
+
+This is a known MTN sandbox limitation. See: [MTN Developer Community](https://momodevelopercommunity.mtn.com/momo-api-sand-box-q-a-6/currency-not-supported-invalid-currency-258)
+
 ## Test Scenarios
 
 ### 1. Successful Payment Flow
