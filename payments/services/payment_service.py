@@ -151,18 +151,12 @@ class PaymentService(PerformanceLoggingMixin):
             import uuid
             transaction_reference = str(uuid.uuid4())
             
-            # Step 4a: Determine currency based on environment
-            # MTN sandbox only supports EUR, production supports UGX
-            from django.conf import settings
-            payment_env = getattr(settings, 'PAYMENT_ENVIRONMENT', 'sandbox')
-            currency = 'EUR' if payment_env == 'sandbox' and provider == Payment.PROVIDER_MTN else 'UGX'
-            
             # Step 5: Create Payment record with status='pending'
             payment = Payment.objects.create(
                 user=user,
                 phone_number=encrypted_phone,
                 amount=amount,
-                currency=currency,
+                currency=self._get_currency(provider),
                 provider=provider,
                 transaction_reference=transaction_reference,
                 status=Payment.STATUS_PENDING,
