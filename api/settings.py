@@ -178,11 +178,11 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "Africa/Kampala"  # Uganda timezone (EAT - UTC+3)
 
 USE_I18N = True
 
-USE_TZ = True
+USE_TZ = True  # Keep timezone-aware datetimes (recommended)
 
 
 # Static files (CSS, JavaScript, Images)
