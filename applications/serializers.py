@@ -127,6 +127,24 @@ class ApplicationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Phone number must be in format 256XXXXXXXXX.")
         
         return value
+    
+    def validate_national_id_number(self, value):
+        """
+        Validate national ID number format.
+        Must start with CF or CM and be exactly 13 characters total (alphanumeric).
+        Requirements: 10.4
+        """
+        if not value:
+            raise serializers.ValidationError("National ID number is required.")
+        
+        # National ID pattern: CF or CM followed by 11 alphanumeric characters (13 characters total)
+        national_id_pattern = r'^(CF|CM)[A-Z0-9]{11}$'
+        if not re.match(national_id_pattern, value.upper()):
+            raise serializers.ValidationError(
+                "National ID must start with CF or CM and be exactly 13 characters (letters and numbers, e.g., CF12345ABC67 or CM1234567890A)."
+            )
+        
+        return value.upper()  # Normalize to uppercase
 
     def validate_username(self, value):
         if not value:
