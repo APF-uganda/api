@@ -569,3 +569,237 @@ class MembershipFeeView(APIView):
             'amount': str(amount),
             'currency': 'UGX'
         }, status=status.HTTP_200_OK)
+
+
+
+class AdminTransactionHistoryView(APIView):
+    """
+    GET /api/v1/payments/admin/transactions/
+    Get all payment transactions for admin review.
+    Supports filtering by status, provider, and date range.
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        tags=["payments-admin"],
+        operation_description="Get all payment transactions with filtering options",
+        manual_parameters=[
+            openapi.Parameter(
+                'status',
+                openapi.IN_QUERY,
+                description="Filter by status (pending, processing, completed, failed, timeout, cancelled)",
+                type=openapi.TYPE_STRING
+            ),
+            openapi.Parameter(
+                'provider',
+                openapi.IN_QUERY,
+                description="Filter by provider (mtn, airtel)",
+                type=openapi.TYPE_STRING
+            ),
+            openapi.Parameter(
+                'start_date',
+                openapi.IN_QUERY,
+                description="Filter by start date (YYYY-MM-DD)",
+                type=openapi.TYPE_STRING,
+                format='date'
+            ),
+            openapi.Parameter(
+                'end_date',
+                openapi.IN_QUERY,
+                description="Filter by end date (YYYY-MM-DD)",
+                type=openapi.TYPE_STRING,
+                format='date'
+            ),
+            openapi.Parameter(
+                'search',
+                openapi.IN_QUERY,
+                description="Search by transaction reference or user email",
+                type=openapi.TYPE_STRING
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                'Success',
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'results': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(type=openapi.TYPE_OBJECT)
+                        )
+                    }
+                )
+            ),
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required'
+        }
+    )
+    def get(self, request):
+        """Get all transactions with optional filtering."""
+        from .serializers import AdminTransactionSerializer
+        from django.db.models import Q
+        from datetime import datetime
+        
+        # Check if user is admin
+        if not (request.user.is_authenticated and request.user.role == '1'):
+            return Response(
+                {'error': 'Admin access required'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Start with all payments
+        queryset = Payment.objects.select_related('user', 'application').all()
+        
+        # Apply status filter
+        status_param = request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param.lower())
+        
+        # Apply provider filter
+        provider_param = request.query_params.get('provider')
+        if provider_param:
+            queryset = queryset.filter(provider=provider_param.lower())
+        
+        # Apply date range filter
+        start_date = request.query_params.get('start_date')
+        if start_date:
+            try:
+                start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+                queryset = queryset.filter(created_at__gte=start_datetime)
+            except ValueError:
+                pass
+        
+        end_date = request.query_params.get('end_date')
+        if end_date:
+            try:
+                end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
+                queryset = queryset.filter(created_at__lte=end_datetime)
+            except ValueError:
+                pass
+        
+        # Apply search filter
+        search_param = request.query_params.get('search')
+        if search_param:
+            queryset = queryset.filter(
+                Q(transaction_reference__icontains=search_param) |
+                Q(user__email__icontains=search_param) |
+                Q(provider_transaction_id__icontains=search_param)
+            )
+        
+        # Order by most recent first
+        queryset = queryset.order_by('-created_at')
+        
+        serializer = AdminTransactionSerializer(queryset, many=True)
+        
+        return Response({
+            'count': len(serializer.data),
+            'results': serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+class AdminRevenueStatsView(APIView):
+    """
+    GET /api/v1/payments/admin/revenue/
+    Get revenue statistics for admin dashboard.
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        tags=["payments-admin"],
+        operation_description="Get revenue statistics including total revenue, transaction counts by status and provider",
+        manual_parameters=[
+            openapi.Parameter(
+                'start_date',
+                openapi.IN_QUERY,
+                description="Filter by start date (YYYY-MM-DD)",
+                type=openapi.TYPE_STRING,
+                format='date'
+            ),
+            openapi.Parameter(
+                'end_date',
+                openapi.IN_QUERY,
+                description="Filter by end date (YYYY-MM-DD)",
+                type=openapi.TYPE_STRING,
+                format='date'
+            ),
+        ],
+        responses={
+            200: 'Success',
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required'
+        }
+    )
+    def get(self, request):
+        """Get revenue statistics."""
+        from .serializers import TransactionRevenueSerializer
+        from django.db.models import Sum, Count, Q
+        from datetime import datetime
+        from decimal import Decimal
+        
+        # Check if user is admin
+        if not (request.user.is_authenticated and request.user.role == '1'):
+            return Response(
+                {'error': 'Admin access required'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Start with all payments
+        queryset = Payment.objects.all()
+        
+        # Apply date range filter
+        start_date = request.query_params.get('start_date')
+        if start_date:
+            try:
+                start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+                queryset = queryset.filter(created_at__gte=start_datetime)
+            except ValueError:
+                pass
+        
+        end_date = request.query_params.get('end_date')
+        if end_date:
+            try:
+                end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
+                queryset = queryset.filter(created_at__lte=end_datetime)
+            except ValueError:
+                pass
+        
+        # Calculate statistics
+        total_transactions = queryset.count()
+        completed_transactions = queryset.filter(status=Payment.STATUS_COMPLETED).count()
+        pending_transactions = queryset.filter(
+            status__in=[Payment.STATUS_PENDING, Payment.STATUS_PROCESSING]
+        ).count()
+        failed_transactions = queryset.filter(
+            status__in=[Payment.STATUS_FAILED, Payment.STATUS_TIMEOUT, Payment.STATUS_CANCELLED]
+        ).count()
+        
+        # Calculate revenue (only completed transactions)
+        completed_payments = queryset.filter(status=Payment.STATUS_COMPLETED)
+        total_revenue = completed_payments.aggregate(
+            total=Sum('amount')
+        )['total'] or Decimal('0.00')
+        
+        mtn_revenue = completed_payments.filter(provider=Payment.PROVIDER_MTN).aggregate(
+            total=Sum('amount')
+        )['total'] or Decimal('0.00')
+        
+        airtel_revenue = completed_payments.filter(provider=Payment.PROVIDER_AIRTEL).aggregate(
+            total=Sum('amount')
+        )['total'] or Decimal('0.00')
+        
+        data = {
+            'total_revenue': total_revenue,
+            'total_transactions': total_transactions,
+            'completed_transactions': completed_transactions,
+            'pending_transactions': pending_transactions,
+            'failed_transactions': failed_transactions,
+            'mtn_revenue': mtn_revenue,
+            'airtel_revenue': airtel_revenue,
+            'currency': 'UGX'
+        }
+        
+        serializer = TransactionRevenueSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)

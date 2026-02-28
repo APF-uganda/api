@@ -66,7 +66,6 @@ class AdminDocumentSerializer(serializers.ModelSerializer):
     member = serializers.SerializerMethodField()
     document_type = serializers.CharField(read_only=True)
     file_url = serializers.CharField(source='file.url', read_only=True)
-    uploaded_at = serializers.DateTimeField(source='uploaded_at', read_only=True)
     status = serializers.ChoiceField(
         choices=DocumentStatus.choices,
         required=False

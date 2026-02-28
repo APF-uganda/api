@@ -123,6 +123,12 @@ api_v1_patterns = [
     path("auth/", include("authentication.urls")),
     path("payments/", include("payments.urls")),
     path("documents/", include("Documents.urls")),
+    path("reports/", include("reports.urls")),
+    path("forum/", include("adminForum.urls")),
+    path("notifications/", include("notifications.urls")),
+    path("notifications/", include("AdminNotifications.urls")),
+    path("admin-management/", include("admin_management.urls")),
+    path("", include("profiles.urls")),
     path("", include("dashboard.urls")),
 ]
 
