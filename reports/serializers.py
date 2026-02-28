@@ -57,6 +57,7 @@ class GeneratedReportSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     file_size_mb = serializers.ReadOnlyField()
     is_expired = serializers.ReadOnlyField()
+    download_url = serializers.SerializerMethodField()
     
     class Meta:
         model = GeneratedReport
@@ -68,13 +69,19 @@ class GeneratedReportSerializer(serializers.ModelSerializer):
             'processing_started_at', 'processing_completed_at', 'processing_duration',
             'error_message', 'generated_by', 'generated_by_name',
             'created_at', 'expires_at', 'is_expired',
-            'download_count', 'last_downloaded_at'
+            'download_count', 'last_downloaded_at', 'download_url'
         ]
         read_only_fields = [
             'id', 'processing_started_at', 'processing_completed_at',
             'processing_duration', 'error_message', 'generated_by',
             'created_at', 'download_count', 'last_downloaded_at'
         ]
+    
+    def get_download_url(self, obj):
+        """Generate the download URL for the report"""
+        if obj.status == 'completed' and obj.file_path:
+            return f'/api/v1/reports/download/{obj.id}/'
+        return None
 
 
 class AnalyticsMetricSerializer(serializers.ModelSerializer):

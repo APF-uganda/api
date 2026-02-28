@@ -58,6 +58,31 @@ class PaymentService(PerformanceLoggingMixin):
         else:
             raise ValueError(f"Unsupported provider: {provider}")
     
+    def _get_currency(self, provider: str) -> str:
+        """
+        Get the appropriate currency based on provider and environment.
+        
+        MTN sandbox only supports EUR, but production uses UGX.
+        Airtel supports UGX in both sandbox and production.
+        
+        Args:
+            provider: Provider name ('mtn' or 'airtel')
+        
+        Returns:
+            Currency code ('EUR' or 'UGX')
+        """
+        import os
+        
+        # Get environment from settings
+        environment = os.getenv('PAYMENT_ENVIRONMENT', 'sandbox')
+        
+        # MTN sandbox requires EUR, production uses UGX
+        if provider == Payment.PROVIDER_MTN and environment == 'sandbox':
+            return 'EUR'
+        
+        # All other cases use UGX (Airtel sandbox/production, MTN production)
+        return 'UGX'
+    
     @PerformanceLoggingMixin.log_performance('payment_initiation')
     def initiate_payment(
         self,
@@ -131,7 +156,7 @@ class PaymentService(PerformanceLoggingMixin):
                 user=user,
                 phone_number=encrypted_phone,
                 amount=amount,
-                currency='UGX',
+                currency=self._get_currency(provider),
                 provider=provider,
                 transaction_reference=transaction_reference,
                 status=Payment.STATUS_PENDING,
@@ -184,21 +209,24 @@ class PaymentService(PerformanceLoggingMixin):
             try:
                 provider_service = self._get_provider_service(provider)
                 
+                # Get appropriate currency for provider and environment
+                currency = self._get_currency(provider)
+                
                 # Airtel requires a separate transaction_id parameter
                 if provider == Payment.PROVIDER_AIRTEL:
                     result = provider_service.request_to_pay(
                         phone_number=phone_number,
                         amount=amount,
-                        currency='UGX',
+                        currency=currency,
                         reference=transaction_reference,
-                        transaction_id=transaction_reference  # Use same reference as transaction_id
+                        transaction_id=transaction_reference
                     )
                 else:
                     # MTN uses reference only
                     result = provider_service.request_to_pay(
                         phone_number=phone_number,
                         amount=amount,
-                        currency='UGX',
+                        currency=currency,
                         reference=transaction_reference,
                         payer_message="APF Membership Fee"
                     )

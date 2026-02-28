@@ -178,11 +178,11 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "Africa/Kampala"  # Uganda timezone (EAT - UTC+3)
 
 USE_I18N = True
 
-USE_TZ = True
+USE_TZ = True  # Keep timezone-aware datetimes (recommended)
 
 
 # Static files (CSS, JavaScript, Images)
@@ -331,7 +331,7 @@ RATE_LIMIT_WINDOW = 900  # 15 minutes in seconds
 # EmailJS Configuration (Requires private key for server-side calls)
 EMAILJS_SERVICE_ID = env('EMAILJS_SERVICE_ID', default='')
 EMAILJS_TEMPLATE_ID_OTP = env('EMAILJS_TEMPLATE_ID_OTP', default='')
-EMAILJS_TEMPLATE_ID_PASSWORD_RESET = env('EMAILJS_TEMPLATE_ID_PASSWORD_RESET', default='')
+# Note: Password reset now uses the same template as OTP to save on template limits
 EMAILJS_TEMPLATE_ID_APPROVAL = env('EMAILJS_TEMPLATE_ID_APPROVAL', default='')
 EMAILJS_PUBLIC_KEY = env('EMAILJS_PUBLIC_KEY', default='')
 EMAILJS_PRIVATE_KEY = env('EMAILJS_PRIVATE_KEY', default='')
