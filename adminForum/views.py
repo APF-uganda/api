@@ -467,6 +467,10 @@ class ReportViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(status=status_filter)
 
         # Admins see all, users see only their reports
+        # Skip during schema generation
+        if getattr(self, 'swagger_fake_view', False):
+            return queryset
+        
         if not self.request.user.is_staff:
             queryset = queryset.filter(reporter=self.request.user)
 

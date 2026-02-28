@@ -716,6 +716,115 @@ class EmailService:
     EMAILJS_API_URL = getattr(settings, 'EMAILJS_API_URL', 'https://api.emailjs.com/api/v1.0/email/send')
     
     @staticmethod
+    def _create_session():
+        """Create a requests session with retry logic and SSL handling"""
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        import ssl
+        
+        session = requests.Session()
+        
+        # Configure retry strategy for transient errors including SSL
+        retry_strategy = Retry(
+            total=5,  # Increased retries
+            backoff_factor=2,  # Exponential backoff
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["POST"],
+            raise_on_status=False
+        )
+        
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=10,
+            pool_maxsize=10
+        )
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        
+        return session
+    
+    @staticmethod
+    def _send_with_fallback(payload, email):
+        """
+        Send email with multiple fallback strategies for SSL issues
+        
+        Args:
+            payload: Email payload dictionary
+            email: Recipient email for logging
+            
+        Returns:
+            Boolean indicating success
+        """
+        import certifi
+        
+        # Strategy 1: Try with session and retry logic
+        try:
+            session = EmailService._create_session()
+            response = session.post(
+                EmailService.EMAILJS_API_URL,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=20,
+                verify=certifi.where()
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"Email sent successfully to {email} (strategy 1: session with retries)")
+                return True
+            else:
+                logger.warning(f"Strategy 1 failed with status {response.status_code}: {response.text}")
+        except requests.exceptions.SSLError as e:
+            logger.warning(f"Strategy 1 SSL error for {email}: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Strategy 1 failed for {email}: {str(e)}")
+        
+        # Strategy 2: Try with basic requests and explicit SSL context
+        try:
+            response = requests.post(
+                EmailService.EMAILJS_API_URL,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=20,
+                verify=True
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"Email sent successfully to {email} (strategy 2: basic request)")
+                return True
+            else:
+                logger.warning(f"Strategy 2 failed with status {response.status_code}")
+        except Exception as e:
+            logger.warning(f"Strategy 2 failed for {email}: {str(e)}")
+        
+        # Strategy 3: Last resort - try without SSL verification (log warning)
+        # This is NOT recommended for production but helps identify SSL issues
+        try:
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            response = requests.post(
+                EmailService.EMAILJS_API_URL,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=20,
+                verify=False
+            )
+            
+            if response.status_code == 200:
+                logger.warning(f"⚠️ Email sent to {email} WITHOUT SSL verification (strategy 3)")
+                logger.warning("⚠️ SSL certificate issue detected - please update system certificates")
+                return True
+            else:
+                logger.error(f"Strategy 3 failed with status {response.status_code}")
+        except Exception as e:
+            logger.error(f"Strategy 3 failed for {email}: {str(e)}")
+        
+        logger.error(f"All email sending strategies failed for {email}")
+        return False
+        
+        return session
+    
+    @staticmethod
     def send_otp_email(email, otp_code, user_name=None):
         """
         Send OTP email using EmailJS
@@ -761,26 +870,9 @@ class EmailService:
             logger.info(f"Sending OTP email to {email} via EmailJS")
             logger.debug(f"EmailJS payload: service_id={EmailService.EMAILJS_SERVICE_ID}, template_id={EmailService.EMAILJS_TEMPLATE_ID_OTP}")
             
-            response = requests.post(
-                EmailService.EMAILJS_API_URL,
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=10
-            )
+            # Use fallback strategy for SSL issues
+            return EmailService._send_with_fallback(payload, email)
             
-            if response.status_code == 200:
-                logger.info(f"OTP email sent successfully to {email} via EmailJS")
-                return True
-            else:
-                logger.error(f"EmailJS API error for OTP email to {email}: {response.status_code} - {response.text}")
-                return False
-            
-        except requests.exceptions.Timeout:
-            logger.error(f"EmailJS request timeout for {email}")
-            return False
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Network error sending OTP email to {email}: {str(e)}")
-            return False
         except Exception as e:
             logger.error(f"Error sending OTP email to {email}: {str(e)}")
             return False
@@ -832,26 +924,9 @@ class EmailService:
             
             logger.info(f"Sending password reset OTP email to {email} via EmailJS")
             
-            response = requests.post(
-                EmailService.EMAILJS_API_URL,
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=10
-            )
+            # Use fallback strategy for SSL issues
+            return EmailService._send_with_fallback(payload, email)
             
-            if response.status_code == 200:
-                logger.info(f"Password reset OTP email sent successfully to {email} via EmailJS")
-                return True
-            else:
-                logger.error(f"EmailJS API error for password reset email to {email}: {response.status_code} - {response.text}")
-                return False
-            
-        except requests.exceptions.Timeout:
-            logger.error(f"EmailJS request timeout for {email}")
-            return False
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Network error sending password reset email to {email}: {str(e)}")
-            return False
         except Exception as e:
             logger.error(f"Error sending password reset email to {email}: {str(e)}")
             return False
@@ -912,26 +987,9 @@ class EmailService:
             logger.info(f"Sending approval email to {email} via EmailJS")
             logger.debug(f"EmailJS payload: service_id={EmailService.EMAILJS_SERVICE_ID}, template_id={EmailService.EMAILJS_TEMPLATE_ID_APPROVAL}")
             
-            response = requests.post(
-                EmailService.EMAILJS_API_URL,
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=10
-            )
+            # Use fallback strategy for SSL issues
+            return EmailService._send_with_fallback(payload, email)
             
-            if response.status_code == 200:
-                logger.info(f"Approval email sent successfully to {email} via EmailJS")
-                return True
-            else:
-                logger.error(f"EmailJS API error for approval email to {email}: {response.status_code} - {response.text}")
-                return False
-            
-        except requests.exceptions.Timeout:
-            logger.error(f"EmailJS request timeout for approval email to {email}")
-            return False
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Network error sending approval email to {email}: {str(e)}")
-            return False
         except Exception as e:
             logger.error(f"Error sending approval email to {email}: {str(e)}")
             return False

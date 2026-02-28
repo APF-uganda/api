@@ -9,7 +9,9 @@ from .views import (
     PaymentCancellationView,
     MTNWebhookView,
     AirtelWebhookView,
-    MembershipFeeView
+    MembershipFeeView,
+    AdminTransactionHistoryView,
+    AdminRevenueStatsView
 )
 
 app_name = 'payments'
@@ -27,4 +29,8 @@ urlpatterns = [
     
     # Configuration
     path('membership-fee/', MembershipFeeView.as_view(), name='membership-fee'),
+    
+    # Admin endpoints
+    path('admin/transactions/', AdminTransactionHistoryView.as_view(), name='admin-transactions'),
+    path('admin/revenue/', AdminRevenueStatsView.as_view(), name='admin-revenue'),
 ]

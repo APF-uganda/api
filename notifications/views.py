@@ -20,10 +20,14 @@ class NotificationViewSet(viewsets.ModelViewSet):
         return [IsAdminUser()]
 
     def get_queryset(self):
+        # Skip during schema generation
+        if getattr(self, 'swagger_fake_view', False):
+            return Notification.objects.none()
+        
         user = self.request.user
-        if user.is_staff:
+        if user and user.is_staff:
             return Notification.objects.all()
-        return Notification.objects.filter(user=user)
+        return Notification.objects.filter(user=user) if user else Notification.objects.none()
 
 
 class UserNotificationViewSet(viewsets.ModelViewSet):

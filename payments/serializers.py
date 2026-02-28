@@ -71,3 +71,58 @@ class MembershipFeeResponseSerializer(serializers.Serializer):
     """Serializer for membership fee response."""
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     currency = serializers.CharField()
+
+
+class AdminTransactionSerializer(serializers.ModelSerializer):
+    """Serializer for admin transaction history view."""
+    user_email = serializers.CharField(source='user.email', read_only=True)
+    user_name = serializers.SerializerMethodField()
+    application_id = serializers.IntegerField(source='application.id', read_only=True)
+    masked_phone = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    provider_display = serializers.CharField(source='get_provider_display', read_only=True)
+    
+    class Meta:
+        model = Payment
+        fields = [
+            'id',
+            'transaction_reference',
+            'provider_transaction_id',
+            'user_email',
+            'user_name',
+            'application_id',
+            'masked_phone',
+            'amount',
+            'currency',
+            'provider',
+            'provider_display',
+            'status',
+            'status_display',
+            'error_message',
+            'created_at',
+            'updated_at',
+            'completed_at',
+            'ip_address',
+        ]
+    
+    def get_user_name(self, obj):
+        """Get user's full name."""
+        if obj.user:
+            return f"{obj.user.first_name} {obj.user.last_name}".strip() or obj.user.email
+        return "N/A"
+    
+    def get_masked_phone(self, obj):
+        """Get masked phone number."""
+        return obj.get_masked_phone()
+
+
+class TransactionRevenueSerializer(serializers.Serializer):
+    """Serializer for revenue statistics."""
+    total_revenue = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_transactions = serializers.IntegerField()
+    completed_transactions = serializers.IntegerField()
+    pending_transactions = serializers.IntegerField()
+    failed_transactions = serializers.IntegerField()
+    mtn_revenue = serializers.DecimalField(max_digits=12, decimal_places=2)
+    airtel_revenue = serializers.DecimalField(max_digits=12, decimal_places=2)
+    currency = serializers.CharField()

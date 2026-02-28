@@ -332,6 +332,7 @@ RATE_LIMIT_WINDOW = 900  # 15 minutes in seconds
 EMAILJS_SERVICE_ID = env('EMAILJS_SERVICE_ID', default='')
 EMAILJS_TEMPLATE_ID_OTP = env('EMAILJS_TEMPLATE_ID_OTP', default='')
 # Note: Password reset now uses the same template as OTP to save on template limits
+EMAILJS_TEMPLATE_ID_PASSWORD_RESET = env('EMAILJS_TEMPLATE_ID_OTP', default='')  # Uses same template as OTP
 EMAILJS_TEMPLATE_ID_APPROVAL = env('EMAILJS_TEMPLATE_ID_APPROVAL', default='')
 EMAILJS_PUBLIC_KEY = env('EMAILJS_PUBLIC_KEY', default='')
 EMAILJS_PRIVATE_KEY = env('EMAILJS_PRIVATE_KEY', default='')
