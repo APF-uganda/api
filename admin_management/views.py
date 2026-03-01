@@ -6,6 +6,8 @@ from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from Documents.models import MemberDocument
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from .permissions import IsAdminUser
 from .serializers import (
     AdminMemberSerializer, SuspendMemberSerializer, 
@@ -60,6 +62,19 @@ class AdminMemberListView(APIView):
         
         return queryset.order_by('-created_at')
     
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Get all registered members with optional filtering",
+        manual_parameters=[
+            openapi.Parameter('status', openapi.IN_QUERY, description="Filter by status (ACTIVE, SUSPENDED)", type=openapi.TYPE_STRING),
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search by name or email", type=openapi.TYPE_STRING),
+        ],
+        responses={
+            200: openapi.Response('Success', AdminMemberSerializer(many=True)),
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required'
+        }
+    )
     def get(self, request):
         """
         Get all registered members with optional filtering
@@ -81,6 +96,18 @@ class AdminMemberSuspendView(APIView):
     """
     permission_classes = [IsAuthenticated, IsAdminUser]
     
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Suspend a member by ID",
+        request_body=SuspendMemberSerializer,
+        responses={
+            200: 'Member suspended successfully',
+            400: 'Bad request',
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required',
+            404: 'Member not found'
+        }
+    )
     def patch(self, request, member_id):
         """
         Suspend a member by ID
@@ -117,6 +144,17 @@ class AdminMemberReactivateView(APIView):
     """
     permission_classes = [IsAuthenticated, IsAdminUser]
     
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Reactivate a suspended member by ID",
+        responses={
+            200: 'Member reactivated successfully',
+            400: 'Bad request',
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required',
+            404: 'Member not found'
+        }
+    )
     def patch(self, request, member_id):
         """
         Reactivate a member by ID
@@ -143,6 +181,15 @@ class AdminPendingDocumentsView(APIView):
     """
     permission_classes = [IsAuthenticated, IsAdminUser]
     
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Get all pending documents uploaded by members for review",
+        responses={
+            200: openapi.Response('Success', AdminDocumentSerializer(many=True)),
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required'
+        }
+    )
     def get(self, request):
         """
         Get all pending documents uploaded by members
@@ -161,6 +208,18 @@ class AdminApproveDocumentView(APIView):
     """
     permission_classes = [IsAuthenticated, IsAdminUser]
     
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Approve a member document by ID",
+        request_body=ApproveDocumentSerializer,
+        responses={
+            200: 'Document approved successfully',
+            400: 'Bad request',
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required',
+            404: 'Document not found'
+        }
+    )
     def patch(self, request, document_id):
         """
         Approve a document by ID
@@ -194,6 +253,18 @@ class AdminRejectDocumentView(APIView):
     """
     permission_classes = [IsAuthenticated, IsAdminUser]
     
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Reject a member document by ID",
+        request_body=RejectDocumentSerializer,
+        responses={
+            200: 'Document rejected successfully',
+            400: 'Bad request',
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required',
+            404: 'Document not found'
+        }
+    )
     def patch(self, request, document_id):
         """
         Reject a document by ID
