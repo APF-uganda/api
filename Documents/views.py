@@ -10,6 +10,7 @@ from applications.models import Application
 from .models import Document, MemberDocument
 from .serializers import DocumentSerializer, MemberDocumentSerializer
 from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 
 @swagger_auto_schema(method='get', tags=["documents"])
@@ -67,7 +68,7 @@ class DocumentViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    @swagger_auto_schema(tags=["documents"])
+    
     def _get_user_application(self, user):
         return (
             Application.objects.filter(user=user)
@@ -75,7 +76,37 @@ class DocumentViewSet(viewsets.ViewSet):
             .first()
         )
     
-    @swagger_auto_schema(tags=["documents"])
+    @swagger_auto_schema(
+        operation_description="List all documents for the authenticated user",
+        manual_parameters=[
+            openapi.Parameter(
+                'type',
+                openapi.IN_QUERY,
+                description="Filter by document type (SYSTEM or USER)",
+                type=openapi.TYPE_STRING,
+                enum=['SYSTEM', 'USER']
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="List of documents",
+                examples={
+                    "application/json": [
+                        {
+                            "id": 1,
+                            "name": "passport.pdf",
+                            "type": "USER",
+                            "uploadedDate": "2026-03-02T10:00:00Z",
+                            "url": "/media/documents/passport.pdf"
+                        }
+                    ]
+                }
+            ),
+            401: "Unauthorized"
+        },
+        tags=["documents"],
+        security=[{'Bearer': []}]
+    )
     def list(self, request):
         app_docs = Document.objects.filter(application__user=request.user)
         member_docs = MemberDocument.objects.filter(user=request.user)
@@ -94,7 +125,47 @@ class DocumentViewSet(viewsets.ViewSet):
         combined.sort(key=lambda item: item.get('uploadedDate', ''), reverse=True)
         return Response(combined, status=status.HTTP_200_OK)
     
-    @swagger_auto_schema(tags=["documents"])
+    @swagger_auto_schema(
+        operation_description="Upload a new document",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['file'],
+            properties={
+                'file': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format=openapi.FORMAT_BINARY,
+                    description='Document file to upload'
+                ),
+                'type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Document type (USER or SYSTEM)',
+                    default='USER'
+                ),
+                'document_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Alternative field for document type',
+                    default='USER'
+                ),
+            },
+        ),
+        responses={
+            201: openapi.Response(
+                description="Document uploaded successfully",
+                examples={
+                    "application/json": {
+                        "id": 1,
+                        "name": "document.pdf",
+                        "type": "USER",
+                        "uploadedDate": "2026-03-02T10:00:00Z"
+                    }
+                }
+            ),
+            400: "File is required",
+            401: "Unauthorized"
+        },
+        tags=["documents"],
+        security=[{'Bearer': []}]
+    )
     def create(self, request):
         uploaded_file = request.FILES.get('file')
         if not uploaded_file:
@@ -130,7 +201,38 @@ class DocumentViewSet(viewsets.ViewSet):
         serializer = MemberDocumentSerializer(document, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @swagger_auto_schema(tags=["documents"], methods=['put', 'patch'])
+    @swagger_auto_schema(
+        methods=['put', 'patch'],
+        operation_description="Replace an existing document with a new file",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['file'],
+            properties={
+                'file': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format=openapi.FORMAT_BINARY,
+                    description='New document file'
+                ),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Document replaced successfully",
+                examples={
+                    "application/json": {
+                        "id": 1,
+                        "name": "new_document.pdf",
+                        "status": "pending"
+                    }
+                }
+            ),
+            400: "File is required",
+            404: "Document not found",
+            401: "Unauthorized"
+        },
+        tags=["documents"],
+        security=[{'Bearer': []}]
+    )
     @action(detail=True, methods=['put', 'patch'], url_path='replace')
     def replace(self, request, pk=None):
         uploaded_file = request.FILES.get('file')
@@ -178,7 +280,16 @@ class DocumentViewSet(viewsets.ViewSet):
         serializer = DocumentSerializer(document, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @swagger_auto_schema(tags=["documents"])
+    @swagger_auto_schema(
+        operation_description="Delete a document",
+        responses={
+            204: "Document deleted successfully",
+            404: "Document not found",
+            401: "Unauthorized"
+        },
+        tags=["documents"],
+        security=[{'Bearer': []}]
+    )
     def destroy(self, request, pk=None):
         document = MemberDocument.objects.filter(pk=pk, user=request.user).first()
         if not document:
@@ -209,7 +320,46 @@ class DocumentViewSet(viewsets.ViewSet):
         
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    @swagger_auto_schema(tags=["documents"])
+    @swagger_auto_schema(
+        method='patch',
+        operation_description="Admin review of a document - update status and provide feedback",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['status'],
+            properties={
+                'status': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['approved', 'pending', 'rejected', 'expired'],
+                    description='Document status'
+                ),
+                'admin_feedback': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Admin feedback/comments'
+                ),
+                'adminFeedback': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Alternative field for admin feedback'
+                ),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Document reviewed successfully",
+                examples={
+                    "application/json": {
+                        "id": 1,
+                        "status": "approved",
+                        "admin_feedback": "Document approved"
+                    }
+                }
+            ),
+            400: "Invalid status",
+            404: "Document not found",
+            403: "Admin access required"
+        },
+        tags=["documents"],
+        security=[{'Bearer': []}]
+    )
     @action(detail=True, methods=['patch'], url_path='admin-review', permission_classes=[IsAdminUser])
     def admin_review(self, request, pk=None):
         """
@@ -282,7 +432,39 @@ class DocumentViewSet(viewsets.ViewSet):
         )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @swagger_auto_schema(tags=["documents"])
+    @swagger_auto_schema(
+        method='patch',
+        operation_description="Approve a document (admin only)",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'admin_feedback': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Optional feedback message'
+                ),
+                'adminFeedback': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Alternative field for feedback'
+                ),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Document approved",
+                examples={
+                    "application/json": {
+                        "id": 1,
+                        "status": "approved",
+                        "admin_feedback": "Approved"
+                    }
+                }
+            ),
+            404: "Document not found",
+            403: "Admin access required"
+        },
+        tags=["documents"],
+        security=[{'Bearer': []}]
+    )
     @action(detail=True, methods=['patch'], url_path='approve', permission_classes=[IsAdminUser])
     def approve(self, request, pk=None):
         """
@@ -328,7 +510,39 @@ class DocumentViewSet(viewsets.ViewSet):
         )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @swagger_auto_schema(tags=["documents"])
+    @swagger_auto_schema(
+        method='patch',
+        operation_description="Reject a document (admin only)",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'admin_feedback': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Reason for rejection'
+                ),
+                'adminFeedback': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Alternative field for feedback'
+                ),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Document rejected",
+                examples={
+                    "application/json": {
+                        "id": 1,
+                        "status": "rejected",
+                        "admin_feedback": "Document not clear"
+                    }
+                }
+            ),
+            404: "Document not found",
+            403: "Admin access required"
+        },
+        tags=["documents"],
+        security=[{'Bearer': []}]
+    )
     @action(detail=True, methods=['patch'], url_path='reject', permission_classes=[IsAdminUser])
     def reject(self, request, pk=None):
         """
@@ -374,7 +588,22 @@ class DocumentViewSet(viewsets.ViewSet):
         )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @swagger_auto_schema(tags=["documents"])
+    @swagger_auto_schema(
+        method='get',
+        operation_description="Download a document file",
+        responses={
+            200: openapi.Response(
+                description="File download",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_FILE
+                )
+            ),
+            404: "Document not found or access denied",
+            401: "Unauthorized"
+        },
+        tags=["documents"],
+        security=[{'Bearer': []}]
+    )
     @action(detail=True, methods=['get'], url_path='download')
     def download(self, request, pk=None):
         """

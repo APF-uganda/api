@@ -6,6 +6,8 @@ from django.db.models import Prefetch, Count, Q, Max
 from django.utils import timezone
 from datetime import timedelta
 from django.contrib.auth import get_user_model
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from .models import ForumPost, Comment, Like, Category, Tag, Report, PostView
 from .serializers import (
     ForumPostListSerializer, ForumPostDetailSerializer,
@@ -36,6 +38,33 @@ class CategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly]
     lookup_field = 'slug'
 
+    @swagger_auto_schema(
+        tags=["forum"],
+        operation_description="List all forum categories with post counts",
+        responses={
+            200: openapi.Response(
+                description="List of categories",
+                schema=CategorySerializer(many=True)
+            )
+        }
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        tags=["forum"],
+        operation_description="Retrieve a category by slug",
+        responses={
+            200: openapi.Response(
+                description="Category details",
+                schema=CategorySerializer
+            ),
+            404: "Category not found"
+        }
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
     def get_queryset(self):
         """Optimize query with post counts"""
         return Category.objects.annotate(
@@ -54,6 +83,41 @@ class TagViewSet(viewsets.ModelViewSet):
     lookup_field = 'slug'
     filter_backends = [filters.SearchFilter]
     search_fields = ['name']
+
+    @swagger_auto_schema(
+        tags=["forum"],
+        operation_description="List all forum tags with search capability",
+        manual_parameters=[
+            openapi.Parameter(
+                'search',
+                openapi.IN_QUERY,
+                description="Search tags by name",
+                type=openapi.TYPE_STRING
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="List of tags",
+                schema=TagSerializer(many=True)
+            )
+        }
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        tags=["forum"],
+        operation_description="Retrieve a tag by slug",
+        responses={
+            200: openapi.Response(
+                description="Tag details",
+                schema=TagSerializer
+            ),
+            404: "Tag not found"
+        }
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
 
 
 class ForumPostViewSet(viewsets.ModelViewSet):
@@ -126,6 +190,84 @@ class ForumPostViewSet(viewsets.ModelViewSet):
             return ForumPostDetailSerializer
         return ForumPostListSerializer
 
+    @swagger_auto_schema(
+        tags=["forum"],
+        operation_description="List forum posts with filtering, search, and pagination",
+        manual_parameters=[
+            openapi.Parameter(
+                'status',
+                openapi.IN_QUERY,
+                description="Filter by post status",
+                type=openapi.TYPE_STRING,
+                enum=['draft', 'published', 'archived']
+            ),
+            openapi.Parameter(
+                'category',
+                openapi.IN_QUERY,
+                description="Filter by category slug",
+                type=openapi.TYPE_STRING
+            ),
+            openapi.Parameter(
+                'tag',
+                openapi.IN_QUERY,
+                description="Filter by tag slug",
+                type=openapi.TYPE_STRING
+            ),
+            openapi.Parameter(
+                'author',
+                openapi.IN_QUERY,
+                description="Filter by author ID",
+                type=openapi.TYPE_INTEGER
+            ),
+            openapi.Parameter(
+                'date_from',
+                openapi.IN_QUERY,
+                description="Filter posts from this date (YYYY-MM-DD)",
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_DATE
+            ),
+            openapi.Parameter(
+                'date_to',
+                openapi.IN_QUERY,
+                description="Filter posts until this date (YYYY-MM-DD)",
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_DATE
+            ),
+            openapi.Parameter(
+                'search',
+                openapi.IN_QUERY,
+                description="Search in title, content, and author name",
+                type=openapi.TYPE_STRING
+            ),
+            openapi.Parameter(
+                'ordering',
+                openapi.IN_QUERY,
+                description="Order by field (prefix with - for descending)",
+                type=openapi.TYPE_STRING,
+                enum=['created_at', '-created_at', 'views_count', '-views_count', 'likes_total', '-likes_total']
+            ),
+            openapi.Parameter(
+                'page',
+                openapi.IN_QUERY,
+                description="Page number",
+                type=openapi.TYPE_INTEGER,
+                default=1
+            ),
+            openapi.Parameter(
+                'page_size',
+                openapi.IN_QUERY,
+                description="Number of items per page (max: 100)",
+                type=openapi.TYPE_INTEGER,
+                default=10
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="List of forum posts",
+                schema=ForumPostListSerializer(many=True)
+            )
+        }
+    )
     def list(self, request, *args, **kwargs):
         """
         List forum posts with error handling
@@ -148,6 +290,17 @@ class ForumPostViewSet(viewsets.ModelViewSet):
             print("\n")
             raise
 
+    @swagger_auto_schema(
+        tags=["forum"],
+        operation_description="Retrieve a single forum post by ID. Records a view if user is authenticated and not the author.",
+        responses={
+            200: openapi.Response(
+                description="Forum post details",
+                schema=ForumPostDetailSerializer
+            ),
+            404: "Post not found"
+        }
+    )
     def retrieve(self, request, *args, **kwargs):
         """
         Record a unique view when post is retrieved

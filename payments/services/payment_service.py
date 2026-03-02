@@ -360,6 +360,18 @@ class PaymentService(PerformanceLoggingMixin):
                         from applications.models import Application
                         application = Application.objects.get(id=payment.application_id)
                         application.payment_status = 'success'
+                        
+                        # Auto-submit (approve) application after successful payment
+                        if application.status == 'pending':
+                            application.status = 'approved'
+                            logger.info(
+                                f"Application auto-approved after successful payment",
+                                extra={
+                                    "payment_id": str(payment.id),
+                                    "application_id": payment.application_id
+                                }
+                            )
+                        
                         application.save()
                         
                         logger.info(
@@ -565,6 +577,18 @@ class PaymentService(PerformanceLoggingMixin):
                             from applications.models import Application
                             application = Application.objects.get(id=payment.application_id)
                             application.payment_status = 'success'
+                            
+                            # Auto-submit (approve) application after successful payment
+                            if application.status == 'pending':
+                                application.status = 'approved'
+                                logger.info(
+                                    f"Webhook: Application auto-approved after successful payment",
+                                    extra={
+                                        "payment_id": str(payment.id),
+                                        "application_id": payment.application_id
+                                    }
+                                )
+                            
                             application.save()
                         except Application.DoesNotExist:
                             pass
@@ -615,6 +639,18 @@ class PaymentService(PerformanceLoggingMixin):
                             from applications.models import Application
                             application = Application.objects.get(id=payment.application_id)
                             application.payment_status = 'success'
+                            
+                            # Auto-submit (approve) application after successful payment
+                            if application.status == 'pending':
+                                application.status = 'approved'
+                                logger.info(
+                                    f"Webhook: Application auto-approved after successful payment",
+                                    extra={
+                                        "payment_id": str(payment.id),
+                                        "application_id": payment.application_id
+                                    }
+                                )
+                            
                             application.save()
                         except Application.DoesNotExist:
                             pass

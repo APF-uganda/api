@@ -7,6 +7,8 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
 import uuid
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from .models import OTP
 from .services import TokenService, EmailService
 from .serializers import (
@@ -26,6 +28,34 @@ class LoginView(APIView):
     # Test users that bypass OTP verification
     OTP_BYPASS_USERS = ['admin@apt.com', 'member@apf.com']
     
+    @swagger_auto_schema(
+        operation_description="Login with email and password. Sends OTP to email for verification.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['email', 'password'],
+            properties={
+                'email': openapi.Schema(type=openapi.TYPE_STRING, description='User email address'),
+                'password': openapi.Schema(type=openapi.TYPE_STRING, description='User password'),
+                'remember_me': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Keep user logged in for 30 days', default=False),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="OTP sent successfully",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "session_id": "uuid-string",
+                        "email": "user@example.com",
+                        "user_name": "user",
+                        "message": "OTP sent to your email"
+                    }
+                }
+            ),
+            400: "Validation error",
+            401: "Invalid credentials"
+        }
+    )
     def post(self, request):
         email = request.data.get("email")
         password = request.data.get("password")
@@ -113,6 +143,38 @@ class LoginView(APIView):
 class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Verify OTP code and receive JWT tokens",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['session_id', 'otp'],
+            properties={
+                'session_id': openapi.Schema(type=openapi.TYPE_STRING, description='Session ID from login response'),
+                'otp': openapi.Schema(type=openapi.TYPE_STRING, description='6-digit OTP code from email'),
+                'remember_me': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Keep user logged in for 30 days', default=False),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="OTP verified successfully",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "message": "Login successful",
+                        "access": "jwt-access-token",
+                        "refresh": "jwt-refresh-token",
+                        "user": {
+                            "id": 1,
+                            "email": "user@example.com",
+                            "role": "2"
+                        }
+                    }
+                }
+            ),
+            400: "Validation error or invalid OTP",
+            404: "Session not found"
+        }
+    )
     def post(self, request):
         session_id = request.data.get("session_id")
         otp_code = request.data.get("otp")
@@ -188,6 +250,30 @@ class ProfileView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
+    @swagger_auto_schema(
+        operation_description="Get current user's profile",
+        responses={
+            200: openapi.Response(
+                description="User profile",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "user": {
+                            "id": 1,
+                            "email": "user@example.com",
+                            "first_name": "John",
+                            "last_name": "Doe",
+                            "role": "2",
+                            "membership_status": "active"
+                        }
+                    }
+                }
+            ),
+            401: "Unauthorized"
+        },
+        tags=['Profile'],
+        security=[{'Bearer': []}]
+    )
     def get(self, request):
         """Get current user's profile"""
         serializer = UserProfileSerializer(request.user)
@@ -196,6 +282,36 @@ class ProfileView(APIView):
             "user": serializer.data
         })
     
+    @swagger_auto_schema(
+        operation_description="Update user profile",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'first_name': openapi.Schema(type=openapi.TYPE_STRING),
+                'last_name': openapi.Schema(type=openapi.TYPE_STRING),
+                'phone_number': openapi.Schema(type=openapi.TYPE_STRING),
+                'date_of_birth': openapi.Schema(type=openapi.TYPE_STRING, format='date'),
+                'gender': openapi.Schema(type=openapi.TYPE_STRING, enum=['male', 'female', 'other']),
+                'address': openapi.Schema(type=openapi.TYPE_STRING),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Profile updated",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "message": "Profile updated successfully",
+                        "user": {}
+                    }
+                }
+            ),
+            400: "Validation error",
+            401: "Unauthorized"
+        },
+        tags=['Profile'],
+        security=[{'Bearer': []}]
+    )
     def put(self, request):
         """Update user profile"""
         serializer = UserProfileUpdateSerializer(
@@ -228,6 +344,36 @@ class ProfilePictureUploadView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
+    @swagger_auto_schema(
+        operation_description="Upload profile picture (multipart/form-data)",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['profile_picture'],
+            properties={
+                'profile_picture': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format=openapi.FORMAT_BINARY,
+                    description='Profile picture file (JPEG, PNG, max 5MB)'
+                ),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Profile picture uploaded",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "message": "Profile picture uploaded successfully",
+                        "profile_picture_url": "/media/profile_pictures/user_1.jpg"
+                    }
+                }
+            ),
+            400: "Validation error",
+            401: "Unauthorized"
+        },
+        tags=['Profile'],
+        security=[{'Bearer': []}]
+    )
     def post(self, request):
         """Upload profile picture"""
         serializer = ProfilePictureUploadSerializer(data=request.data)
@@ -254,6 +400,24 @@ class ProfilePictureUploadView(APIView):
             "errors": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
     
+    @swagger_auto_schema(
+        operation_description="Delete profile picture",
+        responses={
+            200: openapi.Response(
+                description="Profile picture deleted",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "message": "Profile picture deleted successfully"
+                    }
+                }
+            ),
+            400: "No profile picture to delete",
+            401: "Unauthorized"
+        },
+        tags=['Profile'],
+        security=[{'Bearer': []}]
+    )
     def delete(self, request):
         """Delete profile picture"""
         if request.user.profile_picture:
@@ -280,6 +444,45 @@ class ChangePasswordView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
+    @swagger_auto_schema(
+        operation_description="Change user password (requires authentication)",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['current_password', 'new_password', 'confirm_password'],
+            properties={
+                'current_password': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format='password',
+                    description='Current password'
+                ),
+                'new_password': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format='password',
+                    description='New password (min 8 characters)'
+                ),
+                'confirm_password': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format='password',
+                    description='Confirm new password'
+                ),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Password changed successfully",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "message": "Password changed successfully"
+                    }
+                }
+            ),
+            400: "Validation error",
+            401: "Unauthorized"
+        },
+        tags=['Authentication'],
+        security=[{'Bearer': []}]
+    )
     def post(self, request):
         """Change password"""
         serializer = PasswordChangeSerializer(
@@ -309,6 +512,35 @@ class ForgotPasswordView(APIView):
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Request password reset OTP - Sends OTP to email",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['email'],
+            properties={
+                'email': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format='email',
+                    description='Email address of the account',
+                    example='user@example.com'
+                ),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="OTP sent (or email not found - security)",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "session_id": "uuid-string",
+                        "message": "Password reset OTP sent to your email"
+                    }
+                }
+            ),
+            400: "Validation error"
+        },
+        tags=['Authentication']
+    )
     def post(self, request):
         email = request.data.get("email")
         
@@ -371,6 +603,42 @@ class ResetPasswordView(APIView):
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Reset password using OTP code from email",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['session_id', 'otp', 'new_password'],
+            properties={
+                'session_id': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Session ID from forgot password response'
+                ),
+                'otp': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='6-digit OTP code from email'
+                ),
+                'new_password': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format='password',
+                    description='New password (min 8 characters)'
+                ),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Password reset successfully",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "message": "Password reset successfully"
+                    }
+                }
+            ),
+            400: "Validation error or invalid OTP",
+            404: "Session not found"
+        },
+        tags=['Authentication']
+    )
     def post(self, request):
         session_id = request.data.get("session_id")
         otp_code = request.data.get("otp")
@@ -454,6 +722,34 @@ class ResendLoginOTPView(APIView):
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Resend OTP for login using existing session ID",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['session_id'],
+            properties={
+                'session_id': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Session ID from original login request'
+                ),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="New OTP sent successfully",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "message": "New OTP sent to your email",
+                        "email": "user@example.com"
+                    }
+                }
+            ),
+            400: "Validation error - session_id required",
+            404: "Invalid or expired session"
+        },
+        tags=['Authentication']
+    )
     def post(self, request):
         session_id = request.data.get("session_id")
         
@@ -518,6 +814,34 @@ class ResendPasswordResetOTPView(APIView):
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Resend OTP for password reset using existing session ID",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['session_id'],
+            properties={
+                'session_id': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Session ID from forgot password request'
+                ),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="New OTP sent successfully",
+                examples={
+                    "application/json": {
+                        "success": True,
+                        "message": "New OTP sent to your email",
+                        "email": "user@example.com"
+                    }
+                }
+            ),
+            400: "Validation error - session_id required",
+            404: "Invalid or expired session"
+        },
+        tags=['Authentication']
+    )
     def post(self, request):
         session_id = request.data.get("session_id")
         

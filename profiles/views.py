@@ -48,27 +48,89 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     
-    @swagger_auto_schema(tags=["profiles"])
+    @swagger_auto_schema(
+        tags=["profiles"],
+        operation_description="List all user profiles (admin only)",
+        responses={
+            200: openapi.Response(
+                description="List of user profiles",
+                schema=UserProfileSerializer(many=True)
+            ),
+            403: "Permission denied - admin only"
+        }
+    )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
     
-    @swagger_auto_schema(tags=["profiles"])
+    @swagger_auto_schema(
+        tags=["profiles"],
+        operation_description="Retrieve a specific user profile by ID",
+        responses={
+            200: openapi.Response(
+                description="User profile details",
+                schema=UserProfileSerializer
+            ),
+            404: "Profile not found"
+        }
+    )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
     
-    @swagger_auto_schema(tags=["profiles"])
+    @swagger_auto_schema(
+        tags=["profiles"],
+        operation_description="Create a new user profile (admin only)",
+        request_body=UserProfileSerializer,
+        responses={
+            201: openapi.Response(
+                description="Profile created successfully",
+                schema=UserProfileSerializer
+            ),
+            400: "Invalid data"
+        }
+    )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
     
-    @swagger_auto_schema(tags=["profiles"])
+    @swagger_auto_schema(
+        tags=["profiles"],
+        operation_description="Update a user profile completely",
+        request_body=UserProfileUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="Profile updated successfully",
+                schema=UserProfileSerializer
+            ),
+            400: "Invalid data",
+            404: "Profile not found"
+        }
+    )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
     
-    @swagger_auto_schema(tags=["profiles"])
+    @swagger_auto_schema(
+        tags=["profiles"],
+        operation_description="Partially update a user profile",
+        request_body=UserProfileUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="Profile updated successfully",
+                schema=UserProfileSerializer
+            ),
+            400: "Invalid data",
+            404: "Profile not found"
+        }
+    )
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
     
-    @swagger_auto_schema(tags=["profiles"])
+    @swagger_auto_schema(
+        tags=["profiles"],
+        operation_description="Delete a user profile (admin only)",
+        responses={
+            204: "Profile deleted successfully",
+            404: "Profile not found"
+        }
+    )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
     

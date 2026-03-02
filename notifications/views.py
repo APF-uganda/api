@@ -2,6 +2,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from .models import Notification, UserNotification
 from .serializers import NotificationSerializer, UserNotificationSerializer
 
@@ -18,6 +20,47 @@ class NotificationViewSet(viewsets.ModelViewSet):
         if self.action in ["list", "retrieve"]:
             return [IsAuthenticated()]
         return [IsAdminUser()]
+
+    @swagger_auto_schema(
+        tags=["notifications"],
+        operation_description="List notifications. Admins see all, users see only their own.",
+        responses={
+            200: openapi.Response(
+                description="List of notifications",
+                schema=NotificationSerializer(many=True)
+            )
+        }
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        tags=["notifications"],
+        operation_description="Retrieve a specific notification by ID",
+        responses={
+            200: openapi.Response(
+                description="Notification details",
+                schema=NotificationSerializer
+            ),
+            404: "Notification not found"
+        }
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        tags=["notifications"],
+        operation_description="Create a new notification (admin only)",
+        request_body=NotificationSerializer,
+        responses={
+            201: openapi.Response(
+                description="Notification created successfully",
+                schema=NotificationSerializer
+            )
+        }
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
 
     def get_queryset(self):
         # Skip during schema generation
@@ -46,6 +89,29 @@ class UserNotificationViewSet(viewsets.ModelViewSet):
         # Application-specific Notification model is handled separately
         return UserNotification.objects.filter(user=self.request.user)
     
+    @swagger_auto_schema(
+        tags=["notifications"],
+        operation_description="List all notifications for the current user. Combines UserNotification (announcements, system messages) and application-specific Notification records.",
+        responses={
+            200: openapi.Response(
+                description="Combined list of all user notifications",
+                examples={
+                    "application/json": [
+                        {
+                            "id": 1,
+                            "title": "Welcome to APF",
+                            "message": "Your application has been received",
+                            "notification_type": "info",
+                            "priority": "medium",
+                            "is_read": False,
+                            "created_at": "2026-03-02T14:27:30.002748+03:00",
+                            "read_at": None
+                        }
+                    ]
+                }
+            )
+        }
+    )
     def list(self, request, *args, **kwargs):
         """
         List all notifications for the current user
