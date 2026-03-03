@@ -198,3 +198,50 @@ class EmailService:
         except Exception as e:
             logger.error(f"Error sending approval email to {email}: {str(e)}")
             return False
+
+    @staticmethod
+    def send_email_verification(email, verification_code, user_name=None, verification_url=None):
+        """
+        Send email verification code using SMTP
+        
+        Args:
+            email: Recipient email address
+            verification_code: 6-digit verification code
+            user_name: Optional user name for personalization
+            verification_url: Optional verification URL for one-click verification
+            
+        Returns:
+            Boolean indicating success or failure
+        """
+        try:
+            if not user_name:
+                user_name = email.split('@')[0]
+            
+            # Check if SMTP is configured
+            config = EmailService._get_email_config()
+            if not config['username'] or not config['password']:
+                logger.error("SMTP not properly configured. Missing EMAIL_HOST_USER or EMAIL_HOST_PASSWORD.")
+                return False
+            
+            # Render HTML template for email verification
+            context = {
+                'user_name': user_name,
+                'verification_code': verification_code,
+                'verification_url': verification_url,
+            }
+            html_content = render_to_string('email/email_verification.html', context)
+            
+            # Create and send email
+            email_message = EmailService._create_html_email(
+                subject="APF Portal - Verify Your Email Address",
+                html_content=html_content,
+                to_email=email
+            )
+            
+            email_message.send(fail_silently=False)
+            logger.info(f"Email verification sent successfully to {email} via SMTP")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error sending email verification to {email}: {str(e)}")
+            return False
