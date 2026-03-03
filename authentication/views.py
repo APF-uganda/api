@@ -10,7 +10,8 @@ import uuid
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from .models import OTP
-from .services import TokenService, EmailService
+from .services import TokenService
+from .email_service_smtp import EmailService
 from .serializers import (
     UserProfileSerializer, 
     UserProfileUpdateSerializer, 
@@ -121,10 +122,10 @@ class LoginView(APIView):
             expires_at=timezone.now() + timedelta(minutes=15)
         )
         
-        # Get user's display name from email
-        user_name = user.email.split('@')[0]
+        # Get user's first name or fallback to email username
+        user_name = user.first_name if user.first_name else user.email.split('@')[0]
         
-        # Send OTP email via EmailJS
+        # Send OTP email via SMTP
         EmailService.send_otp_email(
             email=user.email,
             otp_code=otp_code,
@@ -578,10 +579,10 @@ class ForgotPasswordView(APIView):
             expires_at=timezone.now() + timedelta(minutes=15)
         )
         
-        # Get user's display name
-        user_name = user.email.split('@')[0]
+        # Get user's first name or fallback to email username
+        user_name = user.first_name if user.first_name else user.email.split('@')[0]
         
-        # Send password reset OTP email via EmailJS
+        # Send password reset OTP email via SMTP
         EmailService.send_password_reset_email(
             email=user.email,
             otp_code=otp_code,
@@ -874,10 +875,10 @@ class ResendPasswordResetOTPView(APIView):
                 expires_at=timezone.now() + timedelta(minutes=15)
             )
             
-            # Get user's display name
-            user_name = user.email.split('@')[0]
+            # Get user's first name or fallback to email username
+            user_name = user.first_name if user.first_name else user.email.split('@')[0]
             
-            # Send password reset OTP email via EmailJS
+            # Send password reset OTP email via SMTP
             EmailService.send_password_reset_email(
                 email=user.email,
                 otp_code=otp_code,
