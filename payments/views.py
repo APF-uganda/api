@@ -19,7 +19,8 @@ from .serializers import (
     PaymentStatusResponseSerializer,
     PaymentRetryResponseSerializer,
     PaymentCancellationResponseSerializer,
-    MembershipFeeResponseSerializer
+    MembershipFeeResponseSerializer,
+    PaymentHistorySerializer
 )
 
 logger = logging.getLogger(__name__)
@@ -803,3 +804,79 @@ class AdminRevenueStatsView(APIView):
         
         serializer = TransactionRevenueSerializer(data)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
+class PaymentHistoryView(APIView):
+    """
+    GET /api/v1/payments/history/
+    Get payment history for the authenticated user.
+    
+    Supports optional query parameters:
+    - status: Filter by payment status (pending, completed, failed, etc.)
+    - limit: Number of results to return (default 20, max 100)
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Get payment history for the authenticated user",
+        manual_parameters=[
+            openapi.Parameter(
+                'status',
+                openapi.IN_QUERY,
+                description="Filter by payment status",
+                type=openapi.TYPE_STRING,
+                enum=['pending', 'processing', 'completed', 'failed', 'timeout', 'cancelled'],
+                required=False
+            ),
+            openapi.Parameter(
+                'limit',
+                openapi.IN_QUERY,
+                description="Number of results (default 20, max 100)",
+                type=openapi.TYPE_INTEGER,
+                required=False
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Payment history retrieved successfully",
+                schema=PaymentHistorySerializer(many=True)
+            ),
+            401: "Unauthorized - Authentication required"
+        },
+        tags=['Payments']
+    )
+    def get(self, request):
+        """
+        Get payment history for the current user.
+        
+        Steps:
+        1. Get payments for authenticated user
+        2. Apply optional filters
+        3. Serialize and return
+        """
+        # Step 1: Get payments for authenticated user
+        payments = Payment.objects.filter(user=request.user).order_by('-created_at')
+        
+        # Step 2: Apply optional filters
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            payments = payments.filter(status=status_filter)
+        
+        # Apply limit
+        try:
+            limit = int(request.query_params.get('limit', 20))
+            limit = min(max(limit, 1), 100)
+        except (ValueError, TypeError):
+            limit = 20
+        
+        payments = payments[:limit]
+        
+        # Step 3: Serialize and return
+        serializer = PaymentHistorySerializer(payments, many=True)
+        return Response({
+            'success': True,
+            'count': len(serializer.data),
+            'results': serializer.data
+        }, status=status.HTTP_200_OK)

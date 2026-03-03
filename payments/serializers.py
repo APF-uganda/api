@@ -73,6 +73,32 @@ class MembershipFeeResponseSerializer(serializers.Serializer):
     currency = serializers.CharField()
 
 
+class PaymentHistorySerializer(serializers.ModelSerializer):
+    """Serializer for payment history list endpoint."""
+    masked_phone = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Payment
+        fields = [
+            'id',
+            'transaction_reference',
+            'provider_transaction_id',
+            'amount',
+            'currency',
+            'provider',
+            'status',
+            'error_message',
+            'created_at',
+            'updated_at',
+            'completed_at',
+            'masked_phone',
+        ]
+        read_only_fields = fields
+
+    def get_masked_phone(self, obj):
+        return obj.get_masked_phone()
+
+
 class AdminTransactionSerializer(serializers.ModelSerializer):
     """Serializer for admin transaction history view."""
     user_email = serializers.CharField(source='user.email', read_only=True)
