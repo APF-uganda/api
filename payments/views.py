@@ -138,7 +138,7 @@ class PaymentInitiationView(APIView):
 class PaymentStatusView(APIView):
     """
     GET /api/v1/payments/status/{payment_id}/
-    Check payment status.
+    Check payment status using hybrid webhook-first with polling fallback.
     
     Supports both authenticated and unauthenticated requests to allow
     status checking for registration payments.
@@ -147,7 +147,7 @@ class PaymentStatusView(APIView):
     permission_classes = [AllowAny]  # Allow both authenticated and unauthenticated requests
     
     @swagger_auto_schema(
-        operation_description="Check the current status of a payment",
+        operation_description="Check the current status of a payment (webhook-first with polling fallback)",
         manual_parameters=[
             openapi.Parameter(
                 'payment_id',
@@ -169,13 +169,15 @@ class PaymentStatusView(APIView):
     )
     def get(self, request, payment_id):
         """
-        Check payment status.
+        Check payment status using hybrid approach.
         
         Steps:
         1. Get payment by ID
         2. Verify user owns the payment (if authenticated)
-        3. Call PaymentService.check_payment_status()
+        3. Call HybridPaymentService.check_payment_status_hybrid()
         4. Return current status and message
+        
+        Uses webhook-first approach with automatic polling fallback.
         
         Requirements: 1.6, 4.2
         """
@@ -194,9 +196,10 @@ class PaymentStatusView(APIView):
                     }
                 }, status=status.HTTP_403_FORBIDDEN)
         
-        # Step 3: Call PaymentService.check_payment_status()
-        payment_service = PaymentService()
-        current_status, message = payment_service.check_payment_status(payment)
+        # Step 3: Call HybridPaymentService.check_payment_status_hybrid()
+        from .services.hybrid_payment_service import HybridPaymentService
+        payment_service = HybridPaymentService()
+        current_status, message = payment_service.check_payment_status_hybrid(payment)
         
         # Step 4: Return current status and message
         return Response({

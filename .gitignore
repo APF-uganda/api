@@ -132,3 +132,12 @@ SWAGGER_TESTING_GUIDE.md
 add_swagger_example.py
 test_server.bat
 test_server.sh
+
+payments/IMPLEMENTATION_SUMMARY.md
+payments/MTN_API_TESTING.md
+payments/MTN_COLLECTION_INTEGRATION.md
+payments/QUICK_START_WEBHOOK.md
+payments/TESTING_GUIDE.md
+payments/WEBHOOK_POLLING_SETUP.md
+payments/ARCHITECTURE_DIAGRAM.md
+payments/CODE_EXAMPLES.md
