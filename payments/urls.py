@@ -10,6 +10,7 @@ from .views import (
     MTNWebhookView,
     AirtelWebhookView,
     MembershipFeeView,
+    PaymentHistoryView,
     AdminTransactionHistoryView,
     AdminRevenueStatsView
 )
@@ -22,6 +23,9 @@ urlpatterns = [
     path('status/<uuid:payment_id>/', PaymentStatusView.as_view(), name='payment-status'),
     path('<uuid:payment_id>/retry/', PaymentRetryView.as_view(), name='payment-retry'),
     path('<uuid:payment_id>/cancel/', PaymentCancellationView.as_view(), name='payment-cancel'),
+    
+    # History
+    path('history/', PaymentHistoryView.as_view(), name='payment-history'),
     
     # Webhooks
     path('webhooks/mtn/', MTNWebhookView.as_view(), name='webhook-mtn'),
