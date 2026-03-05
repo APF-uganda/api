@@ -5,8 +5,15 @@ from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from authentication.permissions import IsAdmin
 from django.shortcuts import get_object_or_404
+from django.core.mail import send_mail
+from django.conf import settings
+from django.utils import timezone
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
+from django.core.mail import send_mail
+from django.conf import settings
+from django.utils import timezone
 
 from .models import ContactMessage
 from .serializers import ContactMessageSerializer
@@ -24,6 +31,7 @@ from .serializers import ContactMessageSerializer
                     "submit": "/api/v1/contacts/submit/ [POST] - Public",
                     "list": "/api/v1/contacts/list/ [GET] - Admin only",
                     "toggle_read": "/api/v1/contacts/<id>/toggle-read/ [PATCH] - Admin only",
+                    "reply": "/api/v1/contacts/<id>/reply/ [POST] - Admin only",
                     "delete": "/api/v1/contacts/<id>/delete/ [DELETE] - Admin only"
                 }
             }
@@ -41,6 +49,7 @@ def contacts_root(request):
             'submit': '/api/v1/contacts/submit/ [POST] - Public',
             'list': '/api/v1/contacts/list/ [GET] - Admin only',
             'toggle_read': '/api/v1/contacts/<id>/toggle-read/ [PATCH]',
+            'reply': '/api/v1/contacts/<id>/reply/ [POST]',
             'delete': '/api/v1/contacts/<id>/delete/ [DELETE]'
         }
     })
@@ -83,7 +92,7 @@ def create_contact_message(request):
     )
 
 
-
+# --- ADMIN LIST ENDPOINT ---
 @swagger_auto_schema(
     method='get',
     operation_description="List all contact messages (admin only)",
@@ -99,6 +108,7 @@ def list_contact_messages(request):
     messages = ContactMessage.objects.all().order_by('-created_at')
     serializer = ContactMessageSerializer(messages, many=True)
     return Response(serializer.data)
+
 
 
 @swagger_auto_schema(
@@ -121,6 +131,56 @@ def toggle_message_read_status(request, pk):
         'is_read': message.is_read,
         'message': f"Message marked as {'read' if message.is_read else 'unread'}."
     }, status=status.HTTP_200_OK)
+
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_description="Send an email reply to an inquiry (admin only)",
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['reply_text'],
+        properties={'reply_text': openapi.Schema(type=openapi.TYPE_STRING, example='Hello, thank you for reaching out...')}
+    ),
+    responses={
+        200: openapi.Response(description="Reply sent successfully"),
+        400: openapi.Response(description="Missing reply text"),
+        500: openapi.Response(description="Email server error")
+    },
+    tags=['Contacts'],
+    security=[{'Bearer': []}]
+)
+@api_view(['POST'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAdmin])
+def send_inquiry_reply(request, pk):
+    """Send an email reply and mark as read/replied"""
+    inquiry = get_object_or_404(ContactMessage, pk=pk)
+    reply_text = request.data.get('reply_text')
+
+    if not reply_text:
+        return Response({'error': 'Reply text is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        # Send the actual email
+        send_mail(
+            subject=f"Re: {inquiry.subject}",
+            message=reply_text,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[inquiry.email],
+            fail_silently=False,
+        )
+
+      
+        if hasattr(inquiry, 'reply'): inquiry.reply = reply_text
+        if hasattr(inquiry, 'replied_at'): inquiry.replied_at = timezone.now()
+        
+        inquiry.is_read = True 
+        inquiry.save()
+
+        return Response({'message': 'Reply sent successfully'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'error': f"Failed to send email: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
