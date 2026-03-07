@@ -34,7 +34,7 @@ SECRET_KEY = env("SECRET_KEY", default="django-insecure-dev-key-change-in-produc
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool("DEBUG", default=False)
 
-SERVE_MEDIA = env.bool("SERVE_MEDIA", default=DEBUG)
+# SERVE_MEDIA = env.bool("SERVE_MEDIA", default=DEBUG)
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
@@ -58,11 +58,9 @@ INSTALLED_APPS = [
     "Documents",
     "applications.apps.ApplicationsConfig",
     "notifications",
-    "dashboard",
     "profiles",
     "reports",
-    "adminForum",
-    "AdminNotifications",
+    "community",
     "payments",
     "events",
     "admin_management",
@@ -75,7 +73,6 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # Add WhiteNoise
-    "django.middleware.common.CommonMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -171,6 +168,9 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
+    {
+        "NAME": "authentication.validators.StrongPasswordValidator",
+    },
 ]
 
 
@@ -209,6 +209,7 @@ AUTH_USER_MODEL = 'authentication.User'
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=[
+        "http://localhost:3001",
         "http://localhost:3000",
         "http://localhost:5173",
         "http://127.0.0.1:3000",
@@ -271,14 +272,15 @@ SWAGGER_SETTINGS = {
         }
     },
     "USE_SESSION_AUTH": False,
+    "DEFAULT_AUTO_SCHEMA_CLASS": "api.swagger.CustomAutoSchema",
 }
 
 # JWT Settings
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),  # Default, can be extended to 30 days with remember_me
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=7),  # 1 week access token
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # 30 days refresh token
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
@@ -333,7 +335,7 @@ EMAIL_PORT = env.int('EMAIL_PORT', default=587)
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='APF Portal <noreply@apfportal.com>')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default=f'APF Portal <{EMAIL_HOST_USER}>')
 
 SERVE_MEDIA=True
 

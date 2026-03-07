@@ -68,6 +68,16 @@ class PasswordChangeSerializer(serializers.Serializer):
     new_password = serializers.CharField(required=True, min_length=8)
     confirm_password = serializers.CharField(required=True)
     
+    def validate_new_password(self, value):
+        import re
+        if not re.search(r'[A-Za-z]', value):
+            raise serializers.ValidationError("Password must contain at least one letter.")
+        if not re.search(r'\d', value):
+            raise serializers.ValidationError("Password must contain at least one number.")
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\\/~`]', value):
+            raise serializers.ValidationError("Password must contain at least one special character.")
+        return value
+    
     def validate(self, attrs):
         if attrs['new_password'] != attrs['confirm_password']:
             raise serializers.ValidationError("New passwords don't match")

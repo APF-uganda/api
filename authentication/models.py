@@ -1,6 +1,9 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone
+from django.core.validators import RegexValidator
+from PIL import Image
+import os
 import secrets
 
 
@@ -49,24 +52,71 @@ class User(AbstractBaseUser, PermissionsMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    # Profile fields
+    # Profile Information (moved from profiles.UserProfile)
     first_name = models.CharField(max_length=100, blank=True)
     last_name = models.CharField(max_length=100, blank=True)
-    phone_number = models.CharField(max_length=20, blank=True)
+    middle_name = models.CharField(max_length=100, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
-    national_id_number = models.CharField(max_length=20, blank=True)
+    gender = models.CharField(
+        max_length=20,
+        choices=[
+            ('male', 'Male'),
+            ('female', 'Female'),
+            ('other', 'Other'),
+            ('prefer_not_to_say', 'Prefer not to say')
+        ],
+        blank=True
+    )
     
-    # Professional fields
-    icpau_registration_number = models.CharField(max_length=50, blank=True)
+    # Contact Information
+    phone_number = models.CharField(
+        max_length=20,
+        blank=True,
+        validators=[
+            RegexValidator(
+                regex=r'^\+?1?\d{9,15}$',
+                message="Phone number must be entered in the format: '+999999999'. Up to 15 digits allowed."
+            )
+        ]
+    )
+    national_id_number = models.CharField(max_length=20, blank=True)
+    alternative_phone = models.CharField(max_length=20, blank=True)
+    
+    # Address Information
+    address_line_1 = models.CharField(max_length=255, blank=True)
+    address_line_2 = models.CharField(max_length=255, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    state_province = models.CharField(max_length=100, blank=True)
+    postal_code = models.CharField(max_length=20, blank=True)
+    country = models.CharField(max_length=100, default='Uganda')
+    
+    # Professional Information
+    job_title = models.CharField(max_length=200, blank=True)
     organization = models.CharField(max_length=200, blank=True)
+    department = models.CharField(max_length=100, blank=True)
+    icpau_registration_number = models.CharField(max_length=50, blank=True)
     practising_status = models.CharField(max_length=50, default='Active')
     membership_category = models.CharField(max_length=50, default='Full Member')
-    
-    # Profile picture
-    profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
+    years_of_experience = models.PositiveIntegerField(null=True, blank=True)
+    specializations = models.TextField(
+        blank=True,
+        help_text="Areas of specialization, comma-separated"
+    )
     
     # Subscription management
     subscription_due_date = models.DateField(null=True, blank=True, help_text='Annual subscription renewal date')
+    
+    # Email notification preferences
+    email_notifications_enabled = models.BooleanField(default=True, help_text='Receive email notifications for forum activities')
+    email_new_posts = models.BooleanField(default=True, help_text='Receive emails when new posts are created')
+    email_new_comments = models.BooleanField(default=True, help_text='Receive emails when someone comments on posts you participate in')
+    email_post_replies = models.BooleanField(default=True, help_text='Receive emails when someone replies to your posts')
+    email_digest_frequency = models.CharField(
+        max_length=10,
+        choices=[('none', 'None'), ('daily', 'Daily'), ('weekly', 'Weekly')],
+        default='weekly',
+        help_text='Frequency of forum activity digest emails'
+    )
     
     objects = UserManager()
     
@@ -86,9 +136,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def full_name(self):
         """Get user's full name"""
-        if self.first_name and self.last_name:
-            return f"{self.first_name} {self.last_name}"
-        return self.email.split('@')[0].title()
+        names = [self.first_name, self.middle_name, self.last_name]
+        return ' '.join(filter(None, names)) or self.email.split('@')[0].title()
     
     @property
     def initials(self):
@@ -99,6 +148,91 @@ class User(AbstractBaseUser, PermissionsMixin):
         if len(email_name) >= 2:
             return f"{email_name[0]}{email_name[1]}".upper()
         return email_name[0].upper() if email_name else "U"
+    
+    def save(self, *args, **kwargs):
+        """Override save to handle profile picture processing and completion tracking."""
+        # Check if profile_picture field references a non-existent file
+        if self.profile_picture and not hasattr(self.profile_picture, 'file'):
+            try:
+                if hasattr(self.profile_picture, 'path'):
+                    file_path = self.profile_picture.path
+                    if not os.path.exists(file_path):
+                        print(f"Warning: Profile picture file not found: {file_path}. Clearing field.")
+                        self.profile_picture = None
+            except (ValueError, AttributeError, FileNotFoundError) as e:
+                print(f"Warning: Issue with profile picture: {e}. Clearing field.")
+                self.profile_picture = None
+        
+        # Process profile picture only if it's a new file upload
+        if self.profile_picture and hasattr(self.profile_picture, 'file'):
+            try:
+                self._process_profile_picture()
+            except Exception as e:
+                print(f"Warning: Failed to process profile picture: {e}")
+        
+        # Check if profile is complete
+        try:
+            self._update_profile_completion()
+        except Exception as e:
+            print(f"Warning: Failed to update profile completion: {e}")
+        
+        super().save(*args, **kwargs)
+    
+    def _process_profile_picture(self):
+        """Process and optimize profile picture."""
+        if not self.profile_picture:
+            return
+        
+        try:
+            if not hasattr(self.profile_picture, 'file'):
+                return
+            
+            if not hasattr(self.profile_picture, 'path'):
+                return
+                
+            try:
+                file_path = self.profile_picture.path
+                if not os.path.exists(file_path):
+                    return
+            except (ValueError, AttributeError):
+                return
+            
+            img = Image.open(self.profile_picture.path)
+            
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
+            
+            max_size = (400, 400)
+            if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
+                img.thumbnail(max_size, Image.Resampling.LANCZOS)
+            
+            img.save(self.profile_picture.path, 'JPEG', quality=85, optimize=True)
+            
+        except Exception as e:
+            print(f"Error processing profile picture: {e}")
+    
+    def _update_profile_completion(self):
+        """Update profile completion status based on filled fields."""
+        required_fields = [
+            self.first_name,
+            self.last_name,
+            self.phone_number,
+            self.city,
+            self.country
+        ]
+        
+        professional_fields = [
+            self.job_title,
+            self.organization
+        ]
+        
+        filled_required = sum(1 for field in required_fields if field)
+        filled_professional = sum(1 for field in professional_fields if field)
+        
+        self.is_profile_complete = (
+            filled_required >= 4 and
+            filled_professional >= 1
+        )
 
 
 class OTP(models.Model):

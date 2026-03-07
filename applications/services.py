@@ -4,10 +4,7 @@ from .models import Application
 from Documents.models import Document
 from notifications.services import create_notification
 from django.core.signing import TimestampSigner, SignatureExpired, BadSignature
-
-
 from django.core.cache import cache
-
 import random
 import uuid
 import logging
@@ -17,6 +14,9 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
+signer = TimestampSigner()
 
 from authentication.models import OTP 
 User = get_user_model()
@@ -51,7 +51,7 @@ def create_application_documents(application, uploaded_files, document_types=Non
             )
             
             # Log the actual saved file path for debugging
-            logger.info(f"✓ Document created: ID={document.id}, Original name={uploaded_file.name}, Saved as={document.file.name}")
+            logger.info(f"Document created: ID={document.id}, Original name={uploaded_file.name}, Saved as={document.file.name}")
             
             # Verify the file was actually saved to disk
             import os
@@ -94,7 +94,7 @@ def approve_application(application_id):
         
         # Send welcome announcement
         try:
-            from AdminNotifications.services import send_welcome_announcement
+            from notifications.announcement_services import send_welcome_announcement
             send_welcome_announcement(app.user)
         except Exception as e:
             print(f"Error sending welcome announcement: {e}")
@@ -136,33 +136,8 @@ def retry_application(application_id):
     app.status = "pending"
     app.save()
     return app
-import random
-import logging
 
 
-logger = logging.getLogger(__name__)
-
-
-
-logger = logging.getLogger(__name__)
-
-import uuid
-import random
-import logging
-from django.utils import timezone
-from datetime import timedelta
-
-from django.core.mail import EmailMultiAlternatives
-from django.template.loader import render_to_string
-from django.utils.html import strip_tags
-from django.conf import settings
-
-logger = logging.getLogger(__name__)
-
-from django.core.signing import TimestampSigner, SignatureExpired, BadSignature
-
-# This is our "Virtual Database" - it uses your SECRET_KEY to verify the code
-signer = TimestampSigner()
 
 def send_registration_otp(email, username):
     #Generate 6-digit code

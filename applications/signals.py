@@ -3,14 +3,35 @@
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, date
 from applications.models import Application
 from authentication.services import UserCreationService
 from authentication.email_service_smtp import EmailService
-from AdminNotifications.services import send_welcome_announcement
+from notifications.announcement_services import send_welcome_announcement
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def get_next_april_first():
+    """
+    Calculate the next April 1st renewal date.
+    
+    Returns:
+        date: The next April 1st (current year if before April 1st, next year if after)
+    """
+    today = timezone.now().date()
+    current_year = today.year
+    
+    # April 1st of current year
+    april_first_this_year = date(current_year, 4, 1)
+    
+    # If today is before April 1st this year, return April 1st this year
+    # Otherwise, return April 1st next year
+    if today < april_first_this_year:
+        return april_first_this_year
+    else:
+        return date(current_year + 1, 4, 1)
 
 
 @receiver(post_save, sender=Application)
@@ -37,8 +58,8 @@ def create_user_on_approval(sender, instance, created, **kwargs):
         if user:
             logger.info(f"Successfully created user {user.id} for approved application {instance.id}")
             
-            # Set subscription due date to 1 year from now for newly approved members
-            user.subscription_due_date = (timezone.now() + timedelta(days=365)).date()
+            # Set subscription due date to next April 1st for newly approved members
+            user.subscription_due_date = get_next_april_first()
             user.save(update_fields=['subscription_due_date'])
             logger.info(f"Set subscription due date for user {user.email} to {user.subscription_due_date}")
             
@@ -89,8 +110,8 @@ def send_welcome_notification_on_status_change(sender, instance, **kwargs):
             
             # If user already exists, send approval email, welcome notification and set subscription date
             if instance.user:
-                # Set subscription due date to 1 year from now
-                instance.user.subscription_due_date = (timezone.now() + timedelta(days=365)).date()
+                # Set subscription due date to next April 1st
+                instance.user.subscription_due_date = get_next_april_first()
                 instance.user.save(update_fields=['subscription_due_date'])
                 logger.info(f"Set subscription due date for user {instance.user.email} to {instance.user.subscription_due_date}")
                 

@@ -651,4 +651,4 @@ class DocumentViewSet(viewsets.ViewSet):
             return Response(
                 {'error': {'message': f'Error downloading file: {str(e)}'}},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            )            

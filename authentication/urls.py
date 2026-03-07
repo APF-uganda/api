@@ -2,14 +2,13 @@ from django.urls import path
 from .views import (
     LoginView, 
     VerifyOTPView, 
-    ProfileView, 
-    ProfilePictureUploadView, 
     ChangePasswordView,
     ForgotPasswordView,
     ResetPasswordView,
     ResendLoginOTPView,
     ResendPasswordResetOTPView
 )
+from .profile_views import UserProfileViewSet
 
 urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
@@ -18,7 +17,5 @@ urlpatterns = [
     path('forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
     path('resend-password-reset-otp/', ResendPasswordResetOTPView.as_view(), name='resend-password-reset-otp'),
-    path('profile/', ProfileView.as_view(), name='profile'),
-    path('profile/picture/', ProfilePictureUploadView.as_view(), name='profile-picture'),
-    path('profile/change-password/', ChangePasswordView.as_view(), name='change-password'),
+    path('change-password/', ChangePasswordView.as_view(), name='change-password'),
 ]
