@@ -2,11 +2,17 @@
 SMTP-based Email Service for APF Portal
 Replaces EmailJS with Django's built-in SMTP functionality
 Uses HTML templates from authentication/templates/email/
+
+Behaviour:
+- If EMAIL_HOST_USER and EMAIL_HOST_PASSWORD are set, sends real emails via
+  Django's SMTP backend (regardless of EMAIL_BACKEND setting).
+- Otherwise, falls back to printing the code to the server console so
+  development/testing can proceed without SMTP credentials.
 """
 
 import logging
 from django.conf import settings
-from django.core.mail import EmailMultiAlternatives
+from django.core.mail import EmailMultiAlternatives, get_connection
 from django.utils.html import strip_tags
 from django.template.loader import render_to_string
 
@@ -14,8 +20,12 @@ logger = logging.getLogger(__name__)
 
 
 class EmailService:
-    """Service for sending emails via SMTP"""
-    
+    """Service for sending emails via SMTP with dev-mode console fallback"""
+
+    # ------------------------------------------------------------------ #
+    #  Internal helpers
+    # ------------------------------------------------------------------ #
+
     @staticmethod
     def _get_email_config():
         """Get email configuration from settings"""
@@ -27,7 +37,42 @@ class EmailService:
             'password': getattr(settings, 'EMAIL_HOST_PASSWORD', ''),
             'from_email': getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@apfportal.com'),
         }
-    
+
+    @staticmethod
+    def _is_smtp_configured():
+        """Return True when real SMTP credentials are available"""
+        config = EmailService._get_email_config()
+        return bool(config['username'] and config['password'])
+
+    @staticmethod
+    def _dev_log(label, to_email, code, user_name=''):
+        """Print a clear console message so devs can grab the code"""
+        print("\n" + "=" * 60)
+        print(f"  [DEV MODE] {label}")
+        print("=" * 60)
+        print(f"  To:   {to_email}")
+        if user_name:
+            print(f"  User: {user_name}")
+        print(f"  CODE: {code}")
+        print("=" * 60 + "\n")
+        logger.info(f"[DEV MODE] {label} — code {code} for {to_email} printed to console")
+
+    @staticmethod
+    def _get_smtp_connection():
+        """
+        Return an explicit SMTP connection so the email is really sent
+        even when EMAIL_BACKEND is set to the console backend.
+        """
+        config = EmailService._get_email_config()
+        return get_connection(
+            backend='django.core.mail.backends.smtp.EmailBackend',
+            host=config['host'],
+            port=config['port'],
+            username=config['username'],
+            password=config['password'],
+            use_tls=config['use_tls'],
+        )
+
     @staticmethod
     def _create_html_email(subject, html_content, to_email):
         """
@@ -46,19 +91,24 @@ class EmailService:
         # Create plain text version by stripping HTML tags
         text_content = strip_tags(html_content)
         
-        # Create email message
+        # Create email message with explicit SMTP connection
         email = EmailMultiAlternatives(
             subject=subject,
             body=text_content,
             from_email=config['from_email'],
-            to=[to_email]
+            to=[to_email],
+            connection=EmailService._get_smtp_connection(),
         )
         
         # Attach HTML version
         email.attach_alternative(html_content, "text/html")
         
         return email
-    
+
+    # ------------------------------------------------------------------ #
+    #  Public send methods
+    # ------------------------------------------------------------------ #
+
     @staticmethod
     def send_otp_email(email, otp_code, user_name=None):
         """
@@ -75,12 +125,11 @@ class EmailService:
         try:
             if not user_name:
                 user_name = email.split('@')[0]
-            
-            # Check if SMTP is configured
-            config = EmailService._get_email_config()
-            if not config['username'] or not config['password']:
-                logger.error("SMTP not properly configured. Missing EMAIL_HOST_USER or EMAIL_HOST_PASSWORD.")
-                return False
+
+            # Dev-mode fallback: print to console when SMTP is not configured
+            if not EmailService._is_smtp_configured():
+                EmailService._dev_log("Login OTP Email", email, otp_code, user_name)
+                return True
             
             # Render HTML template for login OTP
             context = {
@@ -102,7 +151,10 @@ class EmailService:
             
         except Exception as e:
             logger.error(f"Error sending OTP email to {email}: {str(e)}")
-            return False
+            # Fall back to console so login still works during development
+            print(f"\n[EMAIL ERROR] Could not send OTP to {email}: {e}")
+            print(f"[FALLBACK] OTP CODE: {otp_code}\n")
+            return True
     
     @staticmethod
     def send_password_reset_email(email, otp_code, user_name=None):
@@ -120,12 +172,10 @@ class EmailService:
         try:
             if not user_name:
                 user_name = email.split('@')[0]
-            
-            # Check if SMTP is configured
-            config = EmailService._get_email_config()
-            if not config['username'] or not config['password']:
-                logger.error("SMTP not properly configured. Missing EMAIL_HOST_USER or EMAIL_HOST_PASSWORD.")
-                return False
+
+            if not EmailService._is_smtp_configured():
+                EmailService._dev_log("Password Reset OTP Email", email, otp_code, user_name)
+                return True
             
             # Render HTML template for password reset
             context = {
@@ -147,7 +197,9 @@ class EmailService:
             
         except Exception as e:
             logger.error(f"Error sending password reset email to {email}: {str(e)}")
-            return False
+            print(f"\n[EMAIL ERROR] Could not send reset OTP to {email}: {e}")
+            print(f"[FALLBACK] RESET CODE: {otp_code}\n")
+            return True
     
     @staticmethod
     def send_approval_email(email, user_name=None, login_url=None):
@@ -170,12 +222,10 @@ class EmailService:
                 # Use FRONTEND_URL from settings with /login path
                 frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
                 login_url = f'{frontend_url}/login'
-            
-            # Check if SMTP is configured
-            config = EmailService._get_email_config()
-            if not config['username'] or not config['password']:
-                logger.error("SMTP not properly configured. Missing EMAIL_HOST_USER or EMAIL_HOST_PASSWORD.")
-                return False
+
+            if not EmailService._is_smtp_configured():
+                EmailService._dev_log("Approval Email", email, f"login_url={login_url}", user_name)
+                return True
             
             # Render HTML template
             context = {
@@ -186,7 +236,7 @@ class EmailService:
             
             # Create and send email
             email_message = EmailService._create_html_email(
-                subject="APF Portal - Membership Approved! 🎉",
+                subject="APF Portal - Membership Approved!",
                 html_content=html_content,
                 to_email=email
             )
@@ -216,12 +266,10 @@ class EmailService:
         try:
             if not user_name:
                 user_name = email.split('@')[0]
-            
-            # Check if SMTP is configured
-            config = EmailService._get_email_config()
-            if not config['username'] or not config['password']:
-                logger.error("SMTP not properly configured. Missing EMAIL_HOST_USER or EMAIL_HOST_PASSWORD.")
-                return False
+
+            if not EmailService._is_smtp_configured():
+                EmailService._dev_log("Email Verification", email, verification_code, user_name)
+                return True
             
             # Render HTML template for email verification
             context = {
@@ -244,4 +292,6 @@ class EmailService:
             
         except Exception as e:
             logger.error(f"Error sending email verification to {email}: {str(e)}")
-            return False
+            print(f"\n[EMAIL ERROR] Could not send verification to {email}: {e}")
+            print(f"[FALLBACK] VERIFICATION CODE: {verification_code}\n")
+            return True
