@@ -4,6 +4,7 @@ URL configuration for profiles app.
 
 from django.urls import path
 from .views import UserProfileViewSet
+from .email_preferences_views import email_preferences
 
 # Define explicit URL patterns for all profile endpoints
 urlpatterns = [
@@ -33,6 +34,9 @@ urlpatterns = [
         'put': 'notification_preferences',
         'patch': 'notification_preferences'
     }), name='profile-notification-preferences'),
+    
+    # Email preferences
+    path('profiles/email-preferences/', email_preferences, name='profile-email-preferences'),
     
     # Information endpoints
     path('profiles/activity-log/', UserProfileViewSet.as_view({

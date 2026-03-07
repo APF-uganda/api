@@ -1,3 +1,6 @@
+import re
+import uuid
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
@@ -6,18 +9,13 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
-import uuid
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
 from .models import OTP
 from .services import TokenService
 from .email_service_smtp import EmailService
-from .serializers import (
-    UserProfileSerializer, 
-    UserProfileUpdateSerializer, 
-    PasswordChangeSerializer,
-    ProfilePictureUploadSerializer
-)
+from .serializers import PasswordChangeSerializer
 from .permissions import IsAuthenticated
 
 User = get_user_model()
@@ -37,7 +35,6 @@ class LoginView(APIView):
             properties={
                 'email': openapi.Schema(type=openapi.TYPE_STRING, description='User email address'),
                 'password': openapi.Schema(type=openapi.TYPE_STRING, description='User password'),
-                'remember_me': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Keep user logged in for 30 days', default=False),
             },
         ),
         responses={
@@ -55,12 +52,12 @@ class LoginView(APIView):
             ),
             400: "Validation error",
             401: "Invalid credentials"
-        }
+        },
+        tags=['Authentication']
     )
     def post(self, request):
         email = request.data.get("email")
         password = request.data.get("password")
-        remember_me = request.data.get("remember_me", False)
         
         # Validate input
         if not email or not password:
@@ -97,7 +94,7 @@ class LoginView(APIView):
         # Check if user should bypass OTP
         if email in self.OTP_BYPASS_USERS:
             # Generate JWT tokens directly without OTP
-            tokens = TokenService.generate_tokens(user, remember_me)
+            tokens = TokenService.generate_tokens(user)
             
             return Response({
                 "success": True,
@@ -126,11 +123,22 @@ class LoginView(APIView):
         user_name = user.first_name if user.first_name else user.email.split('@')[0]
         
         # Send OTP email via SMTP
-        EmailService.send_otp_email(
+        email_sent = EmailService.send_otp_email(
             email=user.email,
             otp_code=otp_code,
             user_name=user_name
         )
+        
+        if not email_sent:
+            # Clean up the OTP since email failed
+            otp_instance.delete()
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "EMAIL_SEND_FAILED",
+                    "message": "Failed to send OTP email. Please check server email configuration."
+                }
+            }, status=500)
         
         return Response({
             "success": True,
@@ -152,7 +160,6 @@ class VerifyOTPView(APIView):
             properties={
                 'session_id': openapi.Schema(type=openapi.TYPE_STRING, description='Session ID from login response'),
                 'otp': openapi.Schema(type=openapi.TYPE_STRING, description='6-digit OTP code from email'),
-                'remember_me': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Keep user logged in for 30 days', default=False),
             },
         ),
         responses={
@@ -174,12 +181,12 @@ class VerifyOTPView(APIView):
             ),
             400: "Validation error or invalid OTP",
             404: "Session not found"
-        }
+        },
+        tags=['Authentication']
     )
     def post(self, request):
         session_id = request.data.get("session_id")
         otp_code = request.data.get("otp")
-        remember_me = request.data.get("remember_me", False)
         
         # Validate input
         if not session_id or not otp_code:
@@ -228,12 +235,13 @@ class VerifyOTPView(APIView):
             }, status=401)
         
         # Mark OTP as used and delete it
+        user = otp_instance.user
         otp_instance.is_used = True
         otp_instance.save()
         otp_instance.delete()  # Remove after use for security
         
         # Generate JWT tokens for the user
-        tokens = TokenService.generate_tokens(otp_instance.user, remember_me)
+        tokens = TokenService.generate_tokens(user)
         
         return Response({
             "success": True,
@@ -242,200 +250,6 @@ class VerifyOTPView(APIView):
             "refresh": tokens['refresh_token'],
             "user": tokens['user']
         })
-
-
-class ProfileView(APIView):
-    """
-    Get and update user profile
-    """
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
-    
-    @swagger_auto_schema(
-        operation_description="Get current user's profile",
-        responses={
-            200: openapi.Response(
-                description="User profile",
-                examples={
-                    "application/json": {
-                        "success": True,
-                        "user": {
-                            "id": 1,
-                            "email": "user@example.com",
-                            "first_name": "John",
-                            "last_name": "Doe",
-                            "role": "2",
-                            "membership_status": "active"
-                        }
-                    }
-                }
-            ),
-            401: "Unauthorized"
-        },
-        tags=['Profile'],
-        security=[{'Bearer': []}]
-    )
-    def get(self, request):
-        """Get current user's profile"""
-        serializer = UserProfileSerializer(request.user)
-        return Response({
-            "success": True,
-            "user": serializer.data
-        })
-    
-    @swagger_auto_schema(
-        operation_description="Update user profile",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'first_name': openapi.Schema(type=openapi.TYPE_STRING),
-                'last_name': openapi.Schema(type=openapi.TYPE_STRING),
-                'phone_number': openapi.Schema(type=openapi.TYPE_STRING),
-                'date_of_birth': openapi.Schema(type=openapi.TYPE_STRING, format='date'),
-                'gender': openapi.Schema(type=openapi.TYPE_STRING, enum=['male', 'female', 'other']),
-                'address': openapi.Schema(type=openapi.TYPE_STRING),
-            },
-        ),
-        responses={
-            200: openapi.Response(
-                description="Profile updated",
-                examples={
-                    "application/json": {
-                        "success": True,
-                        "message": "Profile updated successfully",
-                        "user": {}
-                    }
-                }
-            ),
-            400: "Validation error",
-            401: "Unauthorized"
-        },
-        tags=['Profile'],
-        security=[{'Bearer': []}]
-    )
-    def put(self, request):
-        """Update user profile"""
-        serializer = UserProfileUpdateSerializer(
-            request.user, 
-            data=request.data, 
-            partial=True
-        )
-        
-        if serializer.is_valid():
-            serializer.save()
-            
-            # Return updated profile
-            profile_serializer = UserProfileSerializer(request.user)
-            return Response({
-                "success": True,
-                "message": "Profile updated successfully",
-                "user": profile_serializer.data
-            })
-        
-        return Response({
-            "success": False,
-            "errors": serializer.errors
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-
-class ProfilePictureUploadView(APIView):
-    """
-    Upload profile picture
-    """
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
-    
-    @swagger_auto_schema(
-        operation_description="Upload profile picture (multipart/form-data)",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=['profile_picture'],
-            properties={
-                'profile_picture': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    format=openapi.FORMAT_BINARY,
-                    description='Profile picture file (JPEG, PNG, max 5MB)'
-                ),
-            },
-        ),
-        responses={
-            200: openapi.Response(
-                description="Profile picture uploaded",
-                examples={
-                    "application/json": {
-                        "success": True,
-                        "message": "Profile picture uploaded successfully",
-                        "profile_picture_url": "/media/profile_pictures/user_1.jpg"
-                    }
-                }
-            ),
-            400: "Validation error",
-            401: "Unauthorized"
-        },
-        tags=['Profile'],
-        security=[{'Bearer': []}]
-    )
-    def post(self, request):
-        """Upload profile picture"""
-        serializer = ProfilePictureUploadSerializer(data=request.data)
-        
-        if serializer.is_valid():
-            # Delete old profile picture if exists
-            if request.user.profile_picture:
-                request.user.profile_picture.delete(save=False)
-            
-            # Save new profile picture
-            request.user.profile_picture = serializer.validated_data['profile_picture']
-            request.user.save()
-            
-            # Return updated profile
-            profile_serializer = UserProfileSerializer(request.user)
-            return Response({
-                "success": True,
-                "message": "Profile picture updated successfully",
-                "user": profile_serializer.data
-            })
-        
-        return Response({
-            "success": False,
-            "errors": serializer.errors
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    @swagger_auto_schema(
-        operation_description="Delete profile picture",
-        responses={
-            200: openapi.Response(
-                description="Profile picture deleted",
-                examples={
-                    "application/json": {
-                        "success": True,
-                        "message": "Profile picture deleted successfully"
-                    }
-                }
-            ),
-            400: "No profile picture to delete",
-            401: "Unauthorized"
-        },
-        tags=['Profile'],
-        security=[{'Bearer': []}]
-    )
-    def delete(self, request):
-        """Delete profile picture"""
-        if request.user.profile_picture:
-            request.user.profile_picture.delete(save=True)
-            
-            # Return updated profile
-            profile_serializer = UserProfileSerializer(request.user)
-            return Response({
-                "success": True,
-                "message": "Profile picture deleted successfully",
-                "user": profile_serializer.data
-            })
-        
-        return Response({
-            "success": False,
-            "message": "No profile picture to delete"
-        }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ChangePasswordView(APIView):
@@ -572,7 +386,7 @@ class ForgotPasswordView(APIView):
         session_id = uuid.uuid4()
         
         # Store OTP in database
-        OTP.objects.create(
+        otp_instance = OTP.objects.create(
             user=user,
             code=otp_code,
             session_id=session_id,
@@ -583,11 +397,21 @@ class ForgotPasswordView(APIView):
         user_name = user.first_name if user.first_name else user.email.split('@')[0]
         
         # Send password reset OTP email via SMTP
-        EmailService.send_password_reset_email(
+        email_sent = EmailService.send_password_reset_email(
             email=user.email,
             otp_code=otp_code,
             user_name=user_name
         )
+        
+        if not email_sent:
+            otp_instance.delete()
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "EMAIL_SEND_FAILED",
+                    "message": "Failed to send OTP email. Please check server email configuration."
+                }
+            }, status=500)
         
         return Response({
             "success": True,
@@ -662,6 +486,30 @@ class ResetPasswordView(APIView):
                 "error": {
                     "code": "VALIDATION_ERROR",
                     "message": "Password must be at least 8 characters long"
+                }
+            }, status=400)
+        if not re.search(r'[A-Za-z]', new_password):
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Password must contain at least one letter"
+                }
+            }, status=400)
+        if not re.search(r'\d', new_password):
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Password must contain at least one number"
+                }
+            }, status=400)
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\/~`]', new_password):
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Password must contain at least one special character"
                 }
             }, status=400)
         
@@ -776,7 +624,7 @@ class ResendLoginOTPView(APIView):
             otp_code = OTP.generate_code()
             
             # Create new OTP with same session_id
-            OTP.objects.create(
+            new_otp = OTP.objects.create(
                 user=user,
                 code=otp_code,
                 session_id=session_id,
@@ -786,12 +634,22 @@ class ResendLoginOTPView(APIView):
             # Get user's display name
             user_name = user.email.split('@')[0]
             
-            # Send OTP email via EmailJS
-            EmailService.send_otp_email(
+            # Send OTP email via SMTP
+            email_sent = EmailService.send_otp_email(
                 email=user.email,
                 otp_code=otp_code,
                 user_name=user_name
             )
+            
+            if not email_sent:
+                new_otp.delete()
+                return Response({
+                    "success": False,
+                    "error": {
+                        "code": "EMAIL_SEND_FAILED",
+                        "message": "Failed to send OTP email. Please check server email configuration."
+                    }
+                }, status=500)
             
             return Response({
                 "success": True,
@@ -868,7 +726,7 @@ class ResendPasswordResetOTPView(APIView):
             otp_code = OTP.generate_code()
             
             # Create new OTP with same session_id
-            OTP.objects.create(
+            new_otp = OTP.objects.create(
                 user=user,
                 code=otp_code,
                 session_id=session_id,
@@ -879,11 +737,21 @@ class ResendPasswordResetOTPView(APIView):
             user_name = user.first_name if user.first_name else user.email.split('@')[0]
             
             # Send password reset OTP email via SMTP
-            EmailService.send_password_reset_email(
+            email_sent = EmailService.send_password_reset_email(
                 email=user.email,
                 otp_code=otp_code,
                 user_name=user_name
             )
+            
+            if not email_sent:
+                new_otp.delete()
+                return Response({
+                    "success": False,
+                    "error": {
+                        "code": "EMAIL_SEND_FAILED",
+                        "message": "Failed to send OTP email. Please check server email configuration."
+                    }
+                }, status=500)
             
             return Response({
                 "success": True,

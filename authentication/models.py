@@ -68,6 +68,18 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Subscription management
     subscription_due_date = models.DateField(null=True, blank=True, help_text='Annual subscription renewal date')
     
+    # Email notification preferences
+    email_notifications_enabled = models.BooleanField(default=True, help_text='Receive email notifications for forum activities')
+    email_new_posts = models.BooleanField(default=True, help_text='Receive emails when new posts are created')
+    email_new_comments = models.BooleanField(default=True, help_text='Receive emails when someone comments on posts you participate in')
+    email_post_replies = models.BooleanField(default=True, help_text='Receive emails when someone replies to your posts')
+    email_digest_frequency = models.CharField(
+        max_length=10,
+        choices=[('none', 'None'), ('daily', 'Daily'), ('weekly', 'Weekly')],
+        default='weekly',
+        help_text='Frequency of forum activity digest emails'
+    )
+    
     objects = UserManager()
     
     USERNAME_FIELD = 'email'
