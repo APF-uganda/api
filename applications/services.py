@@ -3,11 +3,22 @@ from django.contrib.auth import get_user_model
 from .models import Application
 from Documents.models import Document
 from notifications.services import create_notification
+
+
+
+from django.core.cache import cache
+
+import random
+import uuid
+import logging
+from django.utils import timezone
+from datetime import timedelta
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
-from django.core.cache import cache
 from django.conf import settings
+
+from authentication.models import OTP 
 User = get_user_model()
 
 
@@ -131,38 +142,48 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+
+logger = logging.getLogger(__name__)
+
 def send_registration_otp(email, username):
-    # 1. Generate 6-digit OTP
-    otp_code = str(random.randint(100000, 999999))
+    #  Generate 6-digit code
+    otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
     
-    # 2. Store in cache (Valid for 10 minutes)
-    # Key format: otp_registration_arindajosey7@gmail.com
-    cache_key = f"otp_registration_{email}"
-    cache.set(cache_key, otp_code, timeout=600)
+  
+    expires_at = timezone.now() + timedelta(minutes=15)
     
+    # Create an OTP record. 
+   
     try:
-        # 3. Prepare Email Context
+        from django.core.cache import caches
+      
+        db_cache = caches['default'] 
+        db_cache.set(f"reg_otp_{email}", otp_code, timeout=900)
+    except Exception:
+       
+        print(f"\n[MANUAL OTP DEBUG] Code for {email}: {otp_code}\n")
+
+    try:
+        #  Prepare and Send Email
         context = {
-            'user_name': username or 'Valued Member',
-            'verification_code': otp_code
+            'user_name': username,
+            'verification_code': otp_code,
         }
         
-        # 4. Render HTML Template
-        # Ensure 'registration/email_otp.html' exists in your templates folder
         html_content = render_to_string('registration/email_otp.html', context)
-        text_content = strip_tags(html_content) # Fallback for text-only clients
+        text_content = strip_tags(html_content)
         
-        # 5. Send Email
-        subject = f"{otp_code} is your verification code"
-        from_email = settings.DEFAULT_FROM_EMAIL
-        
-        msg = EmailMultiAlternatives(subject, text_content, from_email, [email])
+        msg = EmailMultiAlternatives(
+            subject=f"{otp_code} is your verification code",
+            body=text_content,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[email]
+        )
         msg.attach_alternative(html_content, "text/html")
         msg.send()
         
-        logger.info(f"OTP sent successfully to {email}")
         return True
-        
     except Exception as e:
-        logger.error(f"Failed to send email to {email}: {str(e)}")
+        logger.error(f"Email failed: {str(e)}")
         raise e
