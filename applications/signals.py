@@ -7,7 +7,7 @@ from datetime import timedelta
 from applications.models import Application
 from authentication.services import UserCreationService
 from authentication.email_service_smtp import EmailService
-from AdminNotifications.services import send_welcome_announcement
+from notifications.announcement_services import send_welcome_announcement
 import logging
 
 logger = logging.getLogger(__name__)

@@ -1,96 +1,83 @@
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from django.contrib.auth import get_user_model
 import logging
-from .models import Application
-from rest_framework import viewsets, status
 
-from rest_framework.response import Response
-
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-
-from rest_framework.decorators import action
-
-from rest_framework.exceptions import ValidationError
-
-from rest_framework.permissions import AllowAny
-
-from rest_framework.pagination import PageNumberPagination
-
-from rest_framework import serializers
-
-from rest_framework_simplejwt.authentication import JWTAuthentication
-
-from django.core.files.uploadedfile import InMemoryUploadedFile
-
+from django.conf import settings
 from django.contrib.auth import get_user_model
-
-from django.core.signing import TimestampSigner, SignatureExpired, BadSignature
-
-from .models import Application
-
-from rest_framework import viewsets, status
-
+from django.db import DataError, IntegrityError
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from rest_framework.decorators import action
-
-from Documents.models import Document
-
-from .serializers import ApplicationSerializer, ApplicationListSerializer
-
-from . import services
-
+from authentication.permissions import (
+    AllowPublicApplicationSubmission,
+    IsAdmin,
+    IsAuthenticated,
+    IsMember,
+)
 from notifications.serializers import NotificationSerializer
 
-from authentication.permissions import AllowPublicApplicationSubmission
-
-from drf_yasg.utils import swagger_auto_schema
-
-from drf_yasg import openapi
-
-import logging
-
-from rest_framework.permissions import AllowAny
-
+from . import services
+from .dashboard_services import (
+    get_application_statistics,
+    get_recent_payments,
+    get_member_dashboard_data,
+    get_total_applications,
+    get_total_members,
+)
+from .dashboard_serializers import (
+    ApplicationStatisticsSerializer,
+    MemberDashboardSerializer,
+    TotalApplicationSerializer,
+    TotalMemberSerializer,
+)
+from .models import Application
+from .serializers import ApplicationListSerializer, ApplicationSerializer
 
 logger = logging.getLogger(__name__)
-
 User = get_user_model()
+
+APPLICATION_LIST_ONLY_FIELDS = (
+    "id",
+    "username",
+    "email",
+    "first_name",
+    "last_name",
+    "icpau_certificate_number",
+    "status",
+    "payment_status",
+    "submitted_at",
+    "updated_at",
+)
 
 
 class StandardResultsSetPagination(PageNumberPagination):
-
- page_size = 20
-
-page_size_query_param = 'page_size'
-
-max_page_size = 100 
-
-# Import the services you just wrote in services.py
-from . import services 
-
-logger = logging.getLogger(__name__)
-User = get_user_model()
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 100
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     queryset = Application.objects.all().order_by('-submitted_at')
     serializer_class = ApplicationSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def get_permissions(self):
-        """
-        Determines who can access which endpoint.
-        """
-        # These actions MUST be public for registration to work
-        public_actions = ['create', 'send_otp', 'verify_otp', 'check_availability']
-        
-        if self.action in public_actions:
-            return [AllowAny()]
-        
-        # Admin-only actions
-        return [IsAuthenticated()]
+        """Return permissions per action with one consistent policy path."""
+        public_actions = {"send_otp", "verify_otp", "check_availability"}
+
+        if self.action == "create":
+            permission_classes = [AllowPublicApplicationSubmission]
+        elif self.action in public_actions:
+            permission_classes = [AllowAny]
+        elif self.action == "member_dashboard":
+            permission_classes = [IsAuthenticated, IsMember]
+        else:
+            permission_classes = self.permission_classes
+
+        return [permission() for permission in permission_classes]
 
     @action(detail=False, methods=['post'], url_path='send-otp')
     def send_otp(self, request):
@@ -146,15 +133,106 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         Optimize queryset for different actions
         """
         if self.action == 'list':
-            # Optimize the queryset for list view to prevent N+1 queries
-            # Only select the fields needed for the list view
-            return Application.objects.only(
-                'id', 'username', 'email', 'first_name', 'last_name',
-                'status', 'payment_status', 'submitted_at', 'updated_at'
-            ).order_by('-submitted_at')
+            return Application.objects.only(*APPLICATION_LIST_ONLY_FIELDS).order_by('-submitted_at')
         return Application.objects.all().order_by('-submitted_at')
+
+    def _safe_created_application_payload(self, application):
+        """
+        Build a fallback response payload without touching reverse relations.
+        This prevents create() from failing if documents table/state is inconsistent.
+        """
+        return {
+            "id": application.id,
+            "username": application.username,
+            "email": application.email,
+            "first_name": application.first_name,
+            "last_name": application.last_name,
+            "name": f"{application.first_name} {application.last_name}".strip(),
+            "age_range": application.age_range,
+            "phone_number": application.phone_number,
+            "address": application.address,
+            "national_id_number": application.national_id_number,
+            "icpau_certificate_number": application.icpau_certificate_number,
+            "payment_method": application.payment_method,
+            "payment_phone": application.payment_phone,
+            "payment_status": application.payment_status,
+            "payment_transaction_reference": application.payment_transaction_reference,
+            "payment_error_message": application.payment_error_message,
+            "payment_amount": application.payment_amount,
+            "status": application.status,
+            "submitted_at": application.submitted_at,
+            "updated_at": application.updated_at,
+            "documents": [],
+        }
+
+    def _extract_application_data(self, request):
+        """Return validated input payload for application creation."""
+        if request.content_type == "application/json":
+            data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+        else:
+            data = request.POST.copy()
+
+        data.pop("document_types", None)
+        return data
+
+    def _extract_document_types(self, request):
+        """Normalize document_types from multipart or json payloads."""
+        if hasattr(request.data, "getlist"):
+            return request.data.getlist("document_types")
+
+        document_types = request.data.get("document_types", [])
+        if isinstance(document_types, str):
+            return [document_types]
+        return document_types
+
+    @staticmethod
+    def _should_refresh_payment(payment):
+        return payment.status in {"pending", "processing"}
+
+    @staticmethod
+    def _build_payment_info(payment, include_error_message=False):
+        if not payment:
+            return None
+
+        data = {
+            "id": str(payment.id),
+            "status": payment.status,
+            "transaction_reference": payment.transaction_reference,
+            "provider": payment.provider,
+            "amount": str(payment.amount),
+            "currency": payment.currency,
+            "created_at": payment.created_at,
+            "updated_at": payment.updated_at,
+            "completed_at": payment.completed_at,
+            "can_retry": payment.can_retry(),
+        }
+        if include_error_message:
+            data["error_message"] = payment.error_message
+        return data
+
+    def _refresh_pending_payment(self, payment):
+        if not self._should_refresh_payment(payment):
+            return
+
+        from payments.services.payment_service import PaymentService
+
+        PaymentService().check_payment_status(payment)
+        payment.refresh_from_db()
+
+    def _application_action_response(self, application, include_notification=False, message=None):
+        payload = {"application": self.get_serializer(application).data}
+
+        if include_notification:
+            notification = application.notifications.first()
+            payload["notification"] = NotificationSerializer(notification).data
+
+        if message:
+            payload["message"] = message
+
+        return Response(payload, status=status.HTTP_200_OK)
+
     @swagger_auto_schema(
-        tags=["applications"],
+        tags=["Applications"],
         operation_description="List all applications with pagination. Admins see all applications, members see only their own.",
         manual_parameters=[
             openapi.Parameter(
@@ -222,7 +300,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
 
     @swagger_auto_schema(
-        tags=["applications"],
+        tags=["Applications"],
         operation_description="Retrieve a single application by ID with all details including documents",
         responses={
             200: openapi.Response(
@@ -273,56 +351,61 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             logger.error(f"Error retrieving application: {str(e)}", exc_info=True)
             raise
 
-
-
-   
     def create(self, request, *args, **kwargs):
         """
         Create a new membership application (public endpoint)
         """
         try:
-            # Handle both JSON and form-data
-            if request.content_type == 'application/json':
-                # For JSON requests, use request.data directly
-                data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
-                # Remove document_types if present (handled separately)
-                if 'document_types' in data:
-                    data.pop('document_types')
-            else:
-                # For form-data requests, use request.POST
-                data = request.POST.copy()
-                if 'document_types' in data:
-                    data.pop('document_types')
+            data = self._extract_application_data(request)
 
             serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
 
             # Use serializer.save() so create() handles password hashing.
-            application = serializer.save()
+            try:
+                application = serializer.save()
+            except IntegrityError as exc:
+                logger.exception("Database integrity error while creating application")
+                message = str(exc) if settings.DEBUG else "Application conflicts with existing data."
+                return Response(
+                    {"errors": {"non_field_errors": [message]}},
+                    status=status.HTTP_409_CONFLICT
+                )
+            except DataError as exc:
+                logger.exception("Database data error while creating application")
+                message = str(exc) if settings.DEBUG else "Invalid data for one or more fields."
+                return Response(
+                    {"errors": {"non_field_errors": [message]}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             # Handle file uploads (only for multipart/form-data)
             uploaded_files = request.FILES.getlist('documents')
-            if hasattr(request.data, 'getlist'):
-                document_types = request.data.getlist('document_types')
-            else:
-                document_types = request.data.get('document_types', [])
-                if isinstance(document_types, str):
-                    document_types = [document_types]
+            document_types = self._extract_document_types(request)
 
             if uploaded_files:
                 services.create_application_documents(application, uploaded_files, document_types)
 
-            response_serializer = self.get_serializer(application)
-            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            try:
+                response_serializer = self.get_serializer(application)
+                response_data = response_serializer.data
+            except Exception:
+                logger.exception("Failed to serialize created application; returning safe payload")
+                response_data = self._safe_created_application_payload(application)
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
         except ValidationError as exc:
             return Response(
                 {"errors": exc.detail},
                 status=status.HTTP_409_CONFLICT
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to create application")
+            error_payload = {"message": "Failed to submit application"}
+            if settings.DEBUG:
+                error_payload["debug"] = str(exc)
             return Response(
-                {"error": {"message": "Failed to submit application"}},
+                {"error": error_payload},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -438,7 +521,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     "error": "No payment linked to this application. Please complete payment first.",
                     "debug": {
                         "application_id": application.id,
-                        "payment_status": application.payment_status,
+                        "payment_status": "none",
                         "application_status": application.status
                     }
                 }, status=status.HTTP_400_BAD_REQUEST)
@@ -447,13 +530,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             payment = application.current_payment
             
             # If payment is still pending/processing, check with provider
-            if payment.status in ['pending', 'processing']:
-                from payments.services.payment_service import PaymentService
-                payment_service = PaymentService()
-                current_status, message = payment_service.check_payment_status(payment)
-                
-                # Refresh payment from DB after status check
-                payment.refresh_from_db()
+            if self._should_refresh_payment(payment):
+                self._refresh_pending_payment(payment)
                 application.refresh_from_db()
             
             # Check if payment is completed
@@ -471,13 +549,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     }
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Payment is completed - application should already be approved by auto-approval
-            # But update payment_status just in case
-            if application.payment_status != 'success':
-                application.payment_status = 'success'
-                application.save()
-            
-            # If application is still pending (auto-approval didn't trigger), approve it now
+            # Payment is completed - if application is still pending, approve it now.
             if application.status == 'pending':
                 application.status = 'approved'
                 application.save()
@@ -545,33 +617,19 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 payment = application.current_payment
                 
                 # Optionally trigger a fresh status check
-                if request.query_params.get('refresh') == 'true' and payment.status in ['pending', 'processing']:
-                    from payments.services.payment_service import PaymentService
-                    payment_service = PaymentService()
-                    payment_service.check_payment_status(payment)
-                    payment.refresh_from_db()
+                if request.query_params.get('refresh') == 'true' and self._should_refresh_payment(payment):
+                    self._refresh_pending_payment(payment)
                     application.refresh_from_db()
                 
-                payment_info = {
-                    "id": str(payment.id),
-                    "status": payment.status,
-                    "transaction_reference": payment.transaction_reference,
-                    "provider": payment.provider,
-                    "amount": str(payment.amount),
-                    "currency": payment.currency,
-                    "created_at": payment.created_at,
-                    "updated_at": payment.updated_at,
-                    "completed_at": payment.completed_at,
-                    "can_retry": payment.can_retry()
-                }
+                payment_info = self._build_payment_info(payment)
             
             return Response({
                 "success": True,
                 "application": {
                     "id": application.id,
                     "status": application.status,
-                    "payment_status": application.payment_status,
-                    "email": application.email,
+                    "payment_status": payment_info["status"] if payment_info else "none",
+                    "email": application.user.email if application.user else "",
                     "submitted_at": application.submitted_at,
                     "updated_at": application.updated_at
                 },
@@ -627,16 +685,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"])
     def approve(self, request, pk=None):
         app = services.approve_application(pk)
-        app_serializer = self.get_serializer(app)
-
-        # Get the latest notification for this application
-        notification = app.notifications.first()
-        notif_serializer = NotificationSerializer(notification)
-
-        return Response({
-            "application": app_serializer.data,
-            "notification": notif_serializer.data
-        }, status=status.HTTP_200_OK)
+        return self._application_action_response(app, include_notification=True)
 
     @swagger_auto_schema(
         method='patch',
@@ -653,15 +702,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"])
     def reject(self, request, pk=None):
         app = services.reject_application(pk)
-        app_serializer = self.get_serializer(app)
-
-        notification = app.notifications.first()
-        notif_serializer = NotificationSerializer(notification)
-
-        return Response({
-            "application": app_serializer.data,
-            "notification": notif_serializer.data
-        }, status=status.HTTP_200_OK)
+        return self._application_action_response(app, include_notification=True)
 
     @swagger_auto_schema(
         method='patch',
@@ -678,12 +719,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"])
     def retry(self, request, pk=None):
         app = services.retry_application(pk)
-        app_serializer = self.get_serializer(app)
-
-        return Response({
-            "application": app_serializer.data,
-            "message": "Application reset to pending"
-        }, status=status.HTTP_200_OK)
+        return self._application_action_response(app, message="Application reset to pending")
     
     @swagger_auto_schema(
         method='get',
@@ -704,34 +740,31 @@ class ApplicationViewSet(viewsets.ModelViewSet):
        """
        Return recent applications for dashboard
        """
-       recent_apps = Application.objects.only(
-           'id', 'username', 'email', 'first_name', 'last_name',
-           'status', 'payment_status', 'submitted_at', 'updated_at'
-       ).order_by('-submitted_at')[:5]
+       recent_apps = Application.objects.only(*APPLICATION_LIST_ONLY_FIELDS).order_by('-submitted_at')[:5]
        # Use the list serializer for consistency
        serializer = ApplicationListSerializer(recent_apps, many=True)
        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @swagger_auto_schema(
-        method='get',
-        operation_description="Check if email or username is available (public endpoint)",
-        manual_parameters=[
-            openapi.Parameter('email', openapi.IN_QUERY, description="Email to check", type=openapi.TYPE_STRING),
-            openapi.Parameter('username', openapi.IN_QUERY, description="Username to check", type=openapi.TYPE_STRING)
-        ],
-        responses={
-            200: openapi.Response(
-                description="Availability status",
-                examples={
-                    "application/json": {
-                        "available": True,
-                        "field": "email"
-                    }
-                }
-            )
-        },
-        tags=['Applications']
-    )
+    # # @swagger_auto_schema(
+    #     method='get',
+    #     operation_description="Check if email is available (public endpoint)",
+    #     manual_parameters=[
+    #         openapi.Parameter('email', openapi.IN_QUERY, description="Email to check", type=openapi.TYPE_STRING),
+    #     ],
+    #     responses={
+    #         200: openapi.Response(
+    #             description="Availability status",
+    #             examples={
+    #                 "application/json": {
+    #                     "available": True,
+    #                     "field": "email"
+    #                 }
+    #             }
+    #         )
+    #     },
+    #     tags=['Applications']
+    # )
+    @swagger_auto_schema(method='get', auto_schema=None)
     @action(detail=False, methods=["get"], url_path="check-availability", permission_classes=[AllowAny])
     def check_availability(self, request):
         email = (request.query_params.get('email') or '').strip().lower()
@@ -787,29 +820,30 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             if not application.current_payment:
                 return Response({
                     "has_payment": False,
-                    "payment_status": application.payment_status,
+                    "payment_status": "none",
                     "message": "No payment linked to this application"
                 }, status=status.HTTP_200_OK)
             
             # Get the linked payment
             payment = application.current_payment
+            payment_info = self._build_payment_info(payment, include_error_message=True)
             
             # Return payment details
             return Response({
                 "has_payment": True,
-                "payment_id": str(payment.id),
-                "payment_status": payment.status,
-                "application_payment_status": application.payment_status,
-                "transaction_reference": payment.transaction_reference,
-                "provider": payment.provider,
-                "amount": str(payment.amount),
-                "currency": payment.currency,
-                "created_at": payment.created_at,
-                "updated_at": payment.updated_at,
-                "completed_at": payment.completed_at,
-                "error_message": payment.error_message,
-                "can_submit": payment.status == 'completed',
-                "message": self._get_payment_status_message(payment.status)
+                "payment_id": payment_info["id"],
+                "payment_status": payment_info["status"],
+                "application_payment_status": payment_info["status"],
+                "transaction_reference": payment_info["transaction_reference"],
+                "provider": payment_info["provider"],
+                "amount": payment_info["amount"],
+                "currency": payment_info["currency"],
+                "created_at": payment_info["created_at"],
+                "updated_at": payment_info["updated_at"],
+                "completed_at": payment_info["completed_at"],
+                "error_message": payment_info["error_message"],
+                "can_submit": payment_info["status"] == 'completed',
+                "message": self._get_payment_status_message(payment_info["status"])
             }, status=status.HTTP_200_OK)
             
         except Application.DoesNotExist:
@@ -833,3 +867,154 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             'cancelled': 'Payment was cancelled.'
         }
         return messages.get(status, 'Unknown payment status')
+
+    # ── Dashboard endpoints (consolidated from dashboard app) ──
+
+    @swagger_auto_schema(
+        method='get',
+        operation_description="Get total number of applications in the system",
+        responses={
+            200: TotalApplicationSerializer,
+        },
+        tags=['Applications'],
+    )
+    @action(detail=False, methods=['get'], url_path='total-applications', permission_classes=[AllowAny])  # TODO: Change to IsAdmin in production
+    def total_applications(self, request):
+        """GET /api/v1/applications/total-applications/ — total applications count."""
+        data = {"total_applications": get_total_applications()}
+        serializer = TotalApplicationSerializer(data)
+        return Response(serializer.data)
+
+    @swagger_auto_schema(
+        method='get',
+        operation_description="Get total number of members in the system",
+        responses={
+            200: TotalMemberSerializer,
+        },
+        tags=['Applications'],
+    )
+    @action(detail=False, methods=['get'], url_path='total-members', permission_classes=[AllowAny])  # TODO: Change to IsAdmin in production
+    def total_members(self, request):
+        """GET /api/v1/applications/total-members/ — total members count."""
+        data = {"total_members": get_total_members()}
+        serializer = TotalMemberSerializer(data)
+        return Response(serializer.data)
+
+    @swagger_auto_schema(
+        method='get',
+        operation_description="Get comprehensive application statistics including totals, status breakdown, revenue, and trends",
+        responses={
+            200: openapi.Response(
+                description="Application statistics with trends",
+                schema=ApplicationStatisticsSerializer,
+            )
+        },
+        tags=['Applications'],
+    )
+    @action(detail=False, methods=['get'], url_path='statistics', permission_classes=[IsAuthenticated, IsAdmin])
+    def statistics(self, request):
+        """GET /api/v1/applications/statistics/ — dashboard stats derived from applications."""
+        data = get_application_statistics()
+        serializer = ApplicationStatisticsSerializer(data)
+        return Response(serializer.data)
+
+    @swagger_auto_schema(
+        method='get',
+        operation_description="Get recent successful payments for dashboard display",
+        manual_parameters=[
+            openapi.Parameter('limit', openapi.IN_QUERY, description="Number of recent payments to return (default: 5)", type=openapi.TYPE_INTEGER, default=5),
+        ],
+        responses={
+            200: openapi.Response(description="List of recent payments")
+        },
+        tags=['Applications'],
+    )
+    @action(detail=False, methods=['get'], url_path='recent-payments', permission_classes=[IsAuthenticated, IsAdmin])
+    def recent_payments(self, request):
+        """GET /api/v1/applications/recent-payments/ — recent payments derived from applications."""
+        limit = int(request.query_params.get('limit', 5))
+        payments = get_recent_payments(limit)
+        return Response(payments)
+
+    @swagger_auto_schema(
+        method='get',
+        operation_description="Search applications and members by name, email, or phone",
+        manual_parameters=[
+            openapi.Parameter('q', openapi.IN_QUERY, description="Search query string", type=openapi.TYPE_STRING, required=True),
+        ],
+        responses={
+            200: openapi.Response(description="Search results containing applications and members")
+        },
+        tags=['Applications'],
+    )
+    @action(detail=False, methods=['get'], url_path='search', permission_classes=[IsAuthenticated, IsAdmin])
+    def search(self, request):
+        """GET /api/v1/applications/search/ — search applications and members."""
+        from django.db.models import Q
+        
+        query = request.query_params.get('q', '').strip()
+        if not query:
+            return Response({'results': []})
+        
+        results = []
+        
+        # Search applications
+        applications = Application.objects.filter(
+            Q(first_name__icontains=query) |
+            Q(last_name__icontains=query) |
+            Q(email__icontains=query) |
+            Q(username__icontains=query) |
+            Q(phone_number__icontains=query)
+        )[:20]
+        
+        for app in applications:
+            results.append({
+                'type': 'application',
+                'id': app.id,
+                'name': f"{app.first_name or ''} {app.last_name or ''}".strip() or app.username or app.email,
+                'email': app.email,
+                'status': app.status,
+                'membership_type': getattr(app, 'membership_category', ''),
+                'phone': getattr(app, 'phone_number', ''),
+                'created_at': app.submitted_at.isoformat() if app.submitted_at else None,
+            })
+        
+        # Search members (users with role=2)
+        members = User.objects.filter(
+            Q(first_name__icontains=query) |
+            Q(last_name__icontains=query) |
+            Q(email__icontains=query)
+        ).filter(role='2')[:20]
+        
+        for member in members:
+            results.append({
+                'type': 'member',
+                'id': member.id,
+                'name': f"{member.first_name or ''} {member.last_name or ''}".strip() or member.email,
+                'email': member.email,
+                'status': 'active' if member.is_active else 'inactive',
+                'membership_type': getattr(member, 'membership_category', ''),
+                'phone': '',
+                'created_at': member.created_at.isoformat() if hasattr(member, 'created_at') and member.created_at else None,
+            })
+        
+        return Response({'results': results})
+
+    @swagger_auto_schema(
+        method='get',
+        operation_description="Get comprehensive dashboard data for authenticated member including profile, documents, activity, and notifications",
+        responses={
+            200: openapi.Response(
+                description="Member dashboard data",
+                schema=MemberDashboardSerializer,
+            ),
+            401: "Authentication required"
+        },
+        tags=['Applications'],
+    )
+    @action(detail=False, methods=['get'], url_path='member-dashboard', permission_classes=[IsAuthenticated, IsMember])
+    def member_dashboard(self, request):
+        """GET /api/v1/applications/member-dashboard/ — member dashboard data."""
+        data = get_member_dashboard_data(request.user, request=request)
+        serializer = MemberDashboardSerializer(data)
+        return Response(serializer.data)
