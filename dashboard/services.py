@@ -106,23 +106,24 @@ def get_recent_applications(limit=5):
 
 def get_recent_payments(limit=5):
     """Get recent successful payments for dashboard display."""
-    from django.db.models import F
+    from payments.models import Payment
     
-    payments = Application.objects.filter(
-        payment_status='success'
-    ).select_related('user').annotate(
-        member_name=F('first_name'),
-        member_last_name=F('last_name')
-    ).order_by('-updated_at')[:limit]
+    payments = Payment.objects.filter(
+        status=Payment.STATUS_COMPLETED
+    ).select_related('user', 'application').order_by('-created_at')[:limit]
     
     return [{
-        'id': payment.id,
-        'payment_id': payment.payment_transaction_reference or f'PAY-{payment.id}',
-        'member_name': f"{payment.first_name} {payment.last_name}",
-        'amount': float(payment.payment_amount),
-        'payment_method': payment.payment_method,
-        'status': payment.payment_status,
-        'created_at': payment.updated_at,
+        'id': str(payment.id),
+        'payment_id': payment.transaction_reference,
+        'member_name': (
+            payment.user.full_name if payment.user 
+            else f"{payment.application.first_name} {payment.application.last_name}" if payment.application
+            else 'Unknown Member'
+        ),
+        'amount': float(payment.amount),
+        'payment_method': payment.provider,
+        'status': payment.status,
+        'created_at': payment.created_at,
     } for payment in payments]
 
 
@@ -153,7 +154,8 @@ def get_member_dashboard_data(user, request=None):
     profile = UserProfile.objects.filter(user=user).first()
     display_name = profile.get_full_name() if profile else user.full_name
     member_since = _get_member_since_date(user)
-    next_renewal_date = _safe_add_year(member_since) if member_since else None
+    # Use the subscription_due_date from user model (set to April 1st)
+    next_renewal_date = user.subscription_due_date if user.subscription_due_date else None
 
     app_docs = Document.objects.filter(application__user=user).order_by('-uploaded_at')[:10]
     member_docs = MemberDocument.objects.filter(user=user).order_by('-uploaded_at')[:10]
