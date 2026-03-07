@@ -124,7 +124,7 @@ api_v1_patterns = [
     path("payments/", include("payments.urls")),
     path("documents/", include("Documents.urls")),
     path("reports/", include("reports.urls")),
-    path("forum/", include("adminForum.urls")),
+    path("forum/", include("community.urls")),
     path("notifications/", include("notifications.urls")),
     path("notifications/", include("AdminNotifications.urls")),
     path("admin-management/", include("admin_management.urls")),
@@ -175,7 +175,7 @@ urlpatterns = [
     path("api/v1/payments/", include("payments.urls")),
     path("api/v1/documents/", include("Documents.urls")),
     path("api/v1/reports/", include("reports.urls")),
-    path("api/v1/forum/", include("adminForum.urls")),
+    path("api/v1/forum/", include("community.urls")),
     path("api/v1/notifications/", include("notifications.urls")),  # User notifications endpoints
     path("api/v1/notifications/", include("AdminNotifications.urls")),  # Admin announcements endpoints
     path("api/v1/admin-management/", include("admin_management.urls")),
