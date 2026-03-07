@@ -106,54 +106,17 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Subscription management
     subscription_due_date = models.DateField(null=True, blank=True, help_text='Annual subscription renewal date')
     
-    # Profile Picture
-    profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
-    
-    # Bio and Additional Info
-    bio = models.TextField(
-        max_length=1000,
-        blank=True,
-        help_text="Brief professional biography"
-    )
-    website = models.URLField(blank=True)
-    linkedin_profile = models.URLField(blank=True)
-    
-    # Preferences
-    preferred_language = models.CharField(
+    # Email notification preferences
+    email_notifications_enabled = models.BooleanField(default=True, help_text='Receive email notifications for forum activities')
+    email_new_posts = models.BooleanField(default=True, help_text='Receive emails when new posts are created')
+    email_new_comments = models.BooleanField(default=True, help_text='Receive emails when someone comments on posts you participate in')
+    email_post_replies = models.BooleanField(default=True, help_text='Receive emails when someone replies to your posts')
+    email_digest_frequency = models.CharField(
         max_length=10,
-        choices=[
-            ('en', 'English'),
-            ('sw', 'Swahili'),
-            ('lg', 'Luganda')
-        ],
-        default='en'
+        choices=[('none', 'None'), ('daily', 'Daily'), ('weekly', 'Weekly')],
+        default='weekly',
+        help_text='Frequency of forum activity digest emails'
     )
-    timezone = models.CharField(
-        max_length=50,
-        default='Africa/Kampala'
-    )
-    
-    # Privacy Settings
-    profile_visibility = models.CharField(
-        max_length=20,
-        choices=[
-            ('public', 'Public'),
-            ('members_only', 'Members Only'),
-            ('private', 'Private')
-        ],
-        default='members_only'
-    )
-    show_email = models.BooleanField(default=False)
-    show_phone = models.BooleanField(default=False)
-    
-    # Notification Preferences
-    email_notifications = models.BooleanField(default=True)
-    sms_notifications = models.BooleanField(default=False)
-    newsletter_subscription = models.BooleanField(default=True)
-    event_notifications = models.BooleanField(default=True)
-    
-    # Metadata
-    is_profile_complete = models.BooleanField(default=False)
     
     objects = UserManager()
     

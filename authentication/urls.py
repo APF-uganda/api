@@ -17,32 +17,5 @@ urlpatterns = [
     path('forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
     path('resend-password-reset-otp/', ResendPasswordResetOTPView.as_view(), name='resend-password-reset-otp'),
-    path('profile/change-password/', ChangePasswordView.as_view(), name='change-password'),
-
-    # Profile endpoints (consolidated from profiles app)
-    path('profile/', UserProfileViewSet.as_view({
-        'get': 'me',
-        'put': 'me',
-        'patch': 'me'
-    }), name='auth-profile-me'),
-    path('profile/upload-picture/', UserProfileViewSet.as_view({
-        'post': 'upload_picture'
-    }), name='auth-profile-upload-picture'),
-    path('profile/remove-picture/', UserProfileViewSet.as_view({
-        'delete': 'remove_picture'
-    }), name='auth-profile-remove-picture'),
-    path('profile/privacy-settings/', UserProfileViewSet.as_view({
-        'put': 'privacy_settings',
-        'patch': 'privacy_settings'
-    }), name='auth-profile-privacy-settings'),
-    path('profile/notification-preferences/', UserProfileViewSet.as_view({
-        'put': 'notification_preferences',
-        'patch': 'notification_preferences'
-    }), name='auth-profile-notification-preferences'),
-    path('profile/activity-log/', UserProfileViewSet.as_view({
-        'get': 'activity_log'
-    }), name='auth-profile-activity-log'),
-    path('profile/completion-status/', UserProfileViewSet.as_view({
-        'get': 'completion_status'
-    }), name='auth-profile-completion-status'),
+    path('change-password/', ChangePasswordView.as_view(), name='change-password'),
 ]

@@ -3,11 +3,32 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, date
 from payments.models import Payment
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def get_next_april_first():
+    """
+    Calculate the next April 1st renewal date.
+    
+    Returns:
+        date: The next April 1st (current year if before April 1st, next year if after)
+    """
+    today = timezone.now().date()
+    current_year = today.year
+    
+    # April 1st of current year
+    april_first_this_year = date(current_year, 4, 1)
+    
+    # If today is before April 1st this year, return April 1st this year
+    # Otherwise, return April 1st next year
+    if today < april_first_this_year:
+        return april_first_this_year
+    else:
+        return date(current_year + 1, 4, 1)
 
 
 @receiver(post_save, sender=Payment)
@@ -29,8 +50,8 @@ def update_subscription_on_payment_completion(sender, instance, created, **kwarg
         try:
             user = instance.user
             
-            # Set subscription due date to 1 year from now
-            new_due_date = (timezone.now() + timedelta(days=365)).date()
+            # Set subscription due date to next April 1st
+            new_due_date = get_next_april_first()
             user.subscription_due_date = new_due_date
             user.save(update_fields=['subscription_due_date'])
             

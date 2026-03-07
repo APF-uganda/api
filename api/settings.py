@@ -60,8 +60,9 @@ INSTALLED_APPS = [
     "notifications",
     "profiles",
     "reports",
-    "adminForum",
+    "community",
     "payments",
+    "events",
     "admin_management",
 ]
 
@@ -278,8 +279,8 @@ SWAGGER_SETTINGS = {
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=7),  # 1 week access token
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # 30 days refresh token
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
