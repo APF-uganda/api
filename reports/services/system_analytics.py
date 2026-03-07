@@ -37,7 +37,7 @@ class SystemMetricsCalculator(BaseMetricsCalculator):
         
         # Profile metrics
         users_with_profiles = User.objects.filter(
-            userprofile__isnull=False
+            profile__isnull=False
         ).count()
         
         recent_profile_updates = 0

@@ -23,14 +23,14 @@ class MembershipMetricsCalculator(BaseMetricsCalculator):
     def calculate(self, queryset=None, period_start: datetime = None, period_end: datetime = None) -> Dict[str, Any]:
         """Calculate membership metrics"""
         # Total counts
-        total_members = User.objects.filter(role='0').count()
+        total_members = User.objects.filter(role='2').count()
         total_admins = User.objects.filter(role='1').count()
         
         # New members in period
         new_members_period = 0
         if period_start and period_end:
             new_members_period = User.objects.filter(
-                role='0',
+                role='2',
                 created_at__gte=period_start,
                 created_at__lte=period_end
             ).count()
@@ -45,7 +45,7 @@ class MembershipMetricsCalculator(BaseMetricsCalculator):
         active_members = 0
         if period_start and period_end:
             active_members = User.objects.filter(
-                role='0',
+                role='2',
                 last_login__gte=period_start,
                 last_login__lte=period_end
             ).count()
@@ -102,13 +102,13 @@ class MembershipMetricsCalculator(BaseMetricsCalculator):
         """Calculate membership growth rate"""
         # Get members at start of period
         members_start = User.objects.filter(
-            role='0',
+            role='2',
             created_at__lt=period_start
         ).count()
         
         # Get members at end of period
         members_end = User.objects.filter(
-            role='0',
+            role='2',
             created_at__lte=period_end
         ).count()
         
@@ -161,7 +161,7 @@ class MembershipAnalyticsService(BaseAnalyticsService):
         growth_data = User.objects.filter(
             created_at__gte=period_start,
             created_at__lte=period_end,
-            role='0'
+            role='2'
         ).annotate(
             period=trunc_func('created_at')
         ).values('period').annotate(
@@ -225,7 +225,7 @@ class MembershipAnalyticsService(BaseAnalyticsService):
         activity_data = User.objects.filter(
             last_login__gte=period_start,
             last_login__lte=period_end,
-            role='0'
+            role='2'
         ).annotate(
             day=TruncDay('last_login')
         ).values('day').annotate(
@@ -249,7 +249,7 @@ class MembershipAnalyticsService(BaseAnalyticsService):
         
         # Additional summary data
         recent_members = User.objects.filter(
-            role='0',
+            role='2',
             created_at__gte=thirty_days_ago
         ).order_by('-created_at')[:5]
         

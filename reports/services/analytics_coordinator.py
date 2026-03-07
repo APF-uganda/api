@@ -102,41 +102,45 @@ class AnalyticsCoordinator:
                 'category': category
             }
     
-    def get_dashboard_summary(self) -> Dict[str, Any]:
+    def get_dashboard_summary(self, period: str = '30d') -> Dict[str, Any]:
         """
         Get summary data for admin dashboard
         Template Method Pattern: Defines algorithm structure
         """
-        cache_key = "dashboard_summary"
+        cache_key = f"dashboard_summary:{period}"
         
         cached_data = self.cache_manager.get(cache_key)
         if cached_data:
             return cached_data
         
-        # Get 30-day period
-        thirty_days_ago = timezone.now() - timezone.timedelta(days=30)
-        now = timezone.now()
+        period_start, period_end = self._get_period_dates(period)
+        membership_metrics = self.membership_service.get_metrics(period_start, period_end)
+        application_metrics = self.application_service.get_metrics(period_start, period_end)
+        system_metrics = self.system_service.get_metrics(period_start, period_end)
+        approved_members = application_metrics.get('status_breakdown', {}).get('approved', 0)
         
         # Collect key metrics from each service
         summary_data = {
             'key_metrics': {
-                'total_members': self.membership_service.get_metrics(thirty_days_ago, now)['total_members'],
-                'total_applications': self.application_service.get_metrics(thirty_days_ago, now)['total_applications'],
-                'pending_applications': self.application_service.get_metrics(thirty_days_ago, now)['status_breakdown']['pending'],
-                'active_users_30d': self.system_service.get_metrics(thirty_days_ago, now)['active_users_period'],
-                'system_health_score': self.system_service.get_metrics(thirty_days_ago, now)['system_health_score']
+                # Keep this aligned with dashboard cards: approved applications == total members
+                'total_members': approved_members,
+                'total_applications': application_metrics.get('total_applications', 0),
+                'pending_applications': application_metrics.get('status_breakdown', {}).get('pending', 0),
+                # "Active users" for reports cards means users with approved applications
+                'active_users_30d': approved_members,
+                'system_health_score': system_metrics.get('system_health_score', 0)
             },
             'recent_activity': {
-                'new_members_30d': self.membership_service.get_metrics(thirty_days_ago, now)['new_members_period'],
-                'new_applications_30d': self.application_service.get_metrics(thirty_days_ago, now)['applications_period'],
-                'profile_updates_30d': self.system_service.get_metrics(thirty_days_ago, now)['recent_profile_updates']
+                'new_members_30d': membership_metrics.get('new_members_period', 0),
+                'new_applications_30d': application_metrics.get('applications_period', 0),
+                'profile_updates_30d': system_metrics.get('recent_profile_updates', 0)
             },
             'trends': {
-                'membership_growth': self.membership_service.get_chart_data('membership_growth', '30d'),
-                'application_status': self.application_service.get_chart_data('application_status'),
-                'daily_activity': self.system_service.get_chart_data('daily_activity', '7d')
+                'membership_growth': self.membership_service.get_chart_data('membership_growth', period),
+                'application_status': self.application_service.get_chart_data('application_status', period),
+                'daily_activity': self.system_service.get_chart_data('daily_activity', '7d' if period == '7d' else period)
             },
-            'generated_at': now.isoformat()
+            'generated_at': period_end.isoformat()
         }
         
         # Cache for 5 minutes
@@ -209,7 +213,7 @@ class AnalyticsCoordinator:
             start_date = now - timezone.timedelta(days=30)
         elif period == '90d':
             start_date = now - timezone.timedelta(days=90)
-        elif period == '12m':
+        elif period in ['12m', '1y']:
             start_date = now - timezone.timedelta(days=365)
         else:
             start_date = now - timezone.timedelta(days=30)  # Default to 30 days

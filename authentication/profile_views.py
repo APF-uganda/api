@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
@@ -12,36 +13,68 @@ class UserProfileViewSet(viewsets.ViewSet):
     Handles profile operations for the authenticated user
     """
     permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
-    @swagger_auto_schema(
-        tags=["auth"],
-        operation_description="Get current user's profile information",
-        responses={200: openapi.Response(description="User profile data")}
-    )
-    def me(self, request):
-        """Get current user's profile"""
-        user = request.user
-        data = {
+    def _get_profile_picture_url(self, request, user):
+        if not user.profile_picture:
+            return None
+        try:
+            return request.build_absolute_uri(user.profile_picture.url)
+        except Exception:
+            return None
+
+    def _serialize_user(self, request, user):
+        picture_url = self._get_profile_picture_url(request, user)
+        return {
             'id': user.id,
             'email': user.email,
+            'full_name': user.full_name,
+            'initials': user.initials,
+            'profile_picture_url': picture_url,
+            'profile_picture': picture_url,
+            'user_role': str(user.role),
+            'role': str(user.role),
+            'date_joined': user.created_at,
             'first_name': user.first_name,
             'last_name': user.last_name,
+            'middle_name': user.middle_name,
+            'date_of_birth': user.date_of_birth,
+            'gender': user.gender,
             'phone_number': user.phone_number,
-            'profile_picture': user.profile_picture.url if user.profile_picture else None,
+            'alternative_phone': user.alternative_phone,
+            'address_line_1': user.address_line_1,
+            'address_line_2': user.address_line_2,
+            'city': user.city,
+            'state_province': user.state_province,
+            'postal_code': user.postal_code,
+            'country': user.country,
+            'job_title': user.job_title,
+            'organization': user.organization,
+            'department': user.department,
+            'icpau_registration_number': user.icpau_registration_number,
+            'years_of_experience': user.years_of_experience,
+            'specializations': user.specializations,
+            'bio': user.bio,
+            'website': user.website,
+            'linkedin_profile': user.linkedin_profile,
+            'preferred_language': user.preferred_language,
+            'timezone': user.timezone,
+            'profile_visibility': user.profile_visibility,
+            'show_email': user.show_email,
+            'show_phone': user.show_phone,
+            'email_notifications': user.email_notifications,
+            'sms_notifications': user.sms_notifications,
+            'newsletter_subscription': user.newsletter_subscription,
+            'event_notifications': user.event_notifications,
+            'created_at': user.created_at,
+            'updated_at': user.updated_at,
             'is_profile_complete': user.is_profile_complete,
         }
-        return Response(data)
 
-    @swagger_auto_schema(
-        tags=["auth"],
-        operation_description="Update current user's profile information",
-        responses={200: openapi.Response(description="Profile updated successfully")}
-    )
-    def update(self, request):
-        """Update current user's profile"""
+    def _update_profile(self, request):
         user = request.user
         data = request.data
-        
+
         allowed_fields = [
             'first_name', 'last_name', 'middle_name', 'phone_number', 'alternative_phone',
             'date_of_birth', 'gender', 'address_line_1', 'address_line_2', 'city',
@@ -53,29 +86,83 @@ class UserProfileViewSet(viewsets.ViewSet):
             'email_notifications', 'sms_notifications', 'newsletter_subscription',
             'event_notifications'
         ]
-        
+
+        boolean_fields = {
+            'show_email',
+            'show_phone',
+            'email_notifications',
+            'sms_notifications',
+            'newsletter_subscription',
+            'event_notifications',
+        }
+
+        def to_bool(value):
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.strip().lower() in {'true', '1', 'yes', 'on'}
+            return bool(value)
+
         for field in allowed_fields:
-            if field in data:
-                setattr(user, field, data[field])
-        
+            if field not in data:
+                continue
+
+            value = data[field]
+            if field in boolean_fields:
+                value = to_bool(value)
+            elif field == 'years_of_experience':
+                if value in (None, ''):
+                    value = None
+                else:
+                    try:
+                        value = int(value)
+                    except (TypeError, ValueError):
+                        return Response(
+                            {'error': 'years_of_experience must be a number'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+
+            setattr(user, field, value)
+
         user.save()
-        return Response({'message': 'Profile updated successfully'})
+        return Response(self._serialize_user(request, user))
+
+    @swagger_auto_schema(
+        tags=["auth"],
+        operation_description="Get current user's profile information",
+        responses={200: openapi.Response(description="User profile data")}
+    )
+    def me(self, request):
+        """Get current user's profile"""
+        user = request.user
+        if request.method in ['PUT', 'PATCH']:
+            return self._update_profile(request)
+        return Response(self._serialize_user(request, user))
+
+    @swagger_auto_schema(
+        tags=["auth"],
+        operation_description="Update current user's profile information",
+        responses={200: openapi.Response(description="Profile updated successfully")}
+    )
+    def update(self, request):
+        """Update current user's profile"""
+        return self._update_profile(request)
 
     @swagger_auto_schema(
         tags=["auth"],
         operation_description="Upload profile picture",
         responses={200: openapi.Response(description="Profile picture uploaded successfully")}
     )
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
     def upload_picture(self, request):
         """Upload profile picture"""
         if 'profile_picture' not in request.FILES:
             return Response({'error': 'No file provided'}, status=400)
         
         file = request.FILES['profile_picture']
-        allowed_types = ['image/jpeg', 'image/png', 'image/gif']
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
         if file.content_type not in allowed_types:
-            return Response({'error': 'Invalid file type. Only JPEG, PNG, and GIF are allowed.'}, status=400)
+            return Response({'error': 'Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.'}, status=400)
         
         user = request.user
         user.profile_picture = file
@@ -83,7 +170,9 @@ class UserProfileViewSet(viewsets.ViewSet):
         
         return Response({
             'message': 'Profile picture uploaded successfully',
-            'profile_picture': user.profile_picture.url if user.profile_picture else None
+            'profile_picture_url': self._get_profile_picture_url(request, user),
+            'profile_picture': self._get_profile_picture_url(request, user),
+            'initials': user.initials
         })
 
     @swagger_auto_schema(
@@ -100,7 +189,11 @@ class UserProfileViewSet(viewsets.ViewSet):
             user.profile_picture = None
             user.save()
         
-        return Response({'message': 'Profile picture removed successfully'})
+        return Response({
+            'message': 'Profile picture removed successfully',
+            'profile_picture_url': None,
+            'initials': user.initials
+        })
 
     @swagger_auto_schema(
         tags=["auth"],
