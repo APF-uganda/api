@@ -3,7 +3,11 @@ from django.contrib.auth import get_user_model
 from .models import Application
 from Documents.models import Document
 from notifications.services import create_notification
-
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.core.cache import cache
+from django.conf import settings
 User = get_user_model()
 
 
@@ -121,3 +125,44 @@ def retry_application(application_id):
     app.status = "pending"
     app.save()
     return app
+import random
+import logging
+
+
+logger = logging.getLogger(__name__)
+
+def send_registration_otp(email, username):
+    # 1. Generate 6-digit OTP
+    otp_code = str(random.randint(100000, 999999))
+    
+    # 2. Store in cache (Valid for 10 minutes)
+    # Key format: otp_registration_arindajosey7@gmail.com
+    cache_key = f"otp_registration_{email}"
+    cache.set(cache_key, otp_code, timeout=600)
+    
+    try:
+        # 3. Prepare Email Context
+        context = {
+            'user_name': username or 'Valued Member',
+            'verification_code': otp_code
+        }
+        
+        # 4. Render HTML Template
+        # Ensure 'registration/email_otp.html' exists in your templates folder
+        html_content = render_to_string('registration/email_otp.html', context)
+        text_content = strip_tags(html_content) # Fallback for text-only clients
+        
+        # 5. Send Email
+        subject = f"{otp_code} is your verification code"
+        from_email = settings.DEFAULT_FROM_EMAIL
+        
+        msg = EmailMultiAlternatives(subject, text_content, from_email, [email])
+        msg.attach_alternative(html_content, "text/html")
+        msg.send()
+        
+        logger.info(f"OTP sent successfully to {email}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to send email to {email}: {str(e)}")
+        raise e

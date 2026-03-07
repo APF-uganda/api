@@ -10,6 +10,9 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.contrib.auth import get_user_model
 from .models import Application
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.decorators import action
 from Documents.models import Document
 from .serializers import ApplicationSerializer, ApplicationListSerializer
 from . import services
@@ -18,6 +21,7 @@ from authentication.permissions import AllowPublicApplicationSubmission
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 import logging
+from rest_framework.permissions import AllowAny
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -51,24 +55,58 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     # Remove authentication_classes from class level - let DRF handle it via settings
     # authentication_classes = [JWTAuthentication]
-    
+    @action(detail=False, methods=['post'], url_path='send-otp')
+    def send_otp(self, request):
+        email = request.data.get('email')
+        username = request.data.get('user_name')
+
+        if not email:
+            return Response({'message': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # 1. Generate and Send the Email via your service
+            # Replace 'services.send_registration_otp' with your actual service function name
+            services.send_registration_otp(email, username)
+            
+            return Response({'status': 'OTP sent', 'message': f'Code sent to {email}'}, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error sending OTP: {str(e)}")
+            return Response({'message': 'Failed to send email. Check server logs.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Add your logic here or call your service
+        # print(f"Sending OTP to {email}")
+        
+        return Response({'status': 'OTP sent'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='verify-otp')
+    def verify_otp(self, request):
+        """
+        Custom action to verify OTP.
+        Accessed via POST /api/v1/applications/verify-otp/
+        """
+        return Response({'status': 'verified'}, status=status.HTTP_200_OK)
     def get_permissions(self):
         """
         Instantiates and returns the list of permissions that this view requires.
-        - Allow unauthenticated POST for public application submission
-        - Require admin authentication for all other operations
         """
-        if self.action == 'create':
-            # Allow anyone to create applications (public submission)
-            permission_classes = [AllowPublicApplicationSubmission]
-        elif self.action == 'recent' or self.action == 'list':
-            # Allow admin users to access recent and full application lists
+        # Group all public-facing registration actions together
+        print(f"DEBUG: Action is {self.action}")
+        public_actions = ['create', 'check_availability', 'send_otp', 'verify_otp']
+        
+        if self.action in public_actions:
+            # Use AllowAny or your custom public submission permission
+            from rest_framework.permissions import AllowAny
+            permission_classes = [AllowAny] 
+            
+        elif self.action in ['recent', 'list', 'retrieve', 'update', 'partial_update', 'destroy']:
+            # Require Admin for management operations
             from authentication.permissions import IsAuthenticated, IsAdmin
             permission_classes = [IsAuthenticated, IsAdmin]
+            
         else:
-            # All other actions (retrieve, update, partial_update, destroy, custom actions) require admin authentication
-            from authentication.permissions import IsAuthenticated, IsAdmin
-            permission_classes = [IsAuthenticated, IsAdmin]
+            # Default fallback to secure authentication
+            from authentication.permissions import IsAuthenticated
+            permission_classes = [IsAuthenticated]
         
         return [permission() for permission in permission_classes]
     
