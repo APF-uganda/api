@@ -171,10 +171,7 @@ def send_registration_otp(email, username):
    
     signed_token = signer.sign(f"{email}:{otp_code}")
     
-    # DEBUG: You will need to send this token back from React later
-    print(f"\n[SIGNER OTP] Email: {email} | Code: {otp_code}")
-    print(f"DEBUG: Token to send back: {signed_token}\n")
-
+    
     try:
         context = {'user_name': username, 'verification_code': otp_code}
         html_content = render_to_string('registration/email_otp.html', context)
