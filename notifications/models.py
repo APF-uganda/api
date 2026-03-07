@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from applications.models import Application
 
 class Notification(models.Model):
@@ -85,3 +86,58 @@ class UserNotification(models.Model):
             self.is_read = True
             self.read_at = timezone.now()
             self.save()
+
+
+class Announcement(models.Model):
+    """
+    Admin announcements sent to groups of users via email and/or in-app notifications.
+    Consolidated from the former AdminNotifications app.
+    """
+    AUDIENCE_CHOICES = [
+        ('all_users', 'All Users'),
+        ('members', 'Members'),
+        ('applicants', 'Applicants'),
+        ('admins', 'Admins'),
+        ('expired_members', 'Expired Members'),
+    ]
+    
+    CHANNEL_CHOICES = [
+        ('email', 'Email'),
+        ('in_app', 'In-App'),
+        ('both', 'Both'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('scheduled', 'Scheduled'),
+        ('sent', 'Sent'),
+    ]
+    
+    PRIORITY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+    ]
+    
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    audience = models.CharField(max_length=20, choices=AUDIENCE_CHOICES, default='all_users')
+    channel = models.CharField(max_length=10, choices=CHANNEL_CHOICES, default='both')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='created_announcements'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    scheduled_for = models.DateTimeField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
+    
+    class Meta:
+        db_table = 'AdminNotifications_announcement'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.title} ({self.status})"

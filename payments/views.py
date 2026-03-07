@@ -586,7 +586,7 @@ class AdminTransactionHistoryView(APIView):
     permission_classes = [IsAuthenticated]
     
     @swagger_auto_schema(
-        tags=["payments-admin"],
+        tags=["Payments"],
         operation_description="Get all payment transactions with filtering options",
         manual_parameters=[
             openapi.Parameter(
@@ -712,7 +712,7 @@ class AdminRevenueStatsView(APIView):
     permission_classes = [IsAuthenticated]
     
     @swagger_auto_schema(
-        tags=["payments-admin"],
+        tags=["Payments"],
         operation_description="Get revenue statistics including total revenue, transaction counts by status and provider",
         manual_parameters=[
             openapi.Parameter(

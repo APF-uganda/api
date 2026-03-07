@@ -33,14 +33,15 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     """
     ViewSet for user profile management.
     
-    Endpoints:
-    - GET /api/v1/profiles/ - List profiles (admin only)
-    - GET /api/v1/profiles/me/ - Get current user's profile
-    - PUT/PATCH /api/v1/profiles/me/ - Update current user's profile
-    - POST /api/v1/profiles/upload-picture/ - Upload profile picture
-    - DELETE /api/v1/profiles/remove-picture/ - Remove profile picture
-    - PUT /api/v1/profiles/privacy-settings/ - Update privacy settings
-    - PUT /api/v1/profiles/notification-preferences/ - Update notification preferences
+    Endpoints (consolidated under auth/):
+    - GET /api/v1/auth/profile/ - Get current user's profile
+    - PUT/PATCH /api/v1/auth/profile/ - Update current user's profile
+    - POST /api/v1/auth/profile/upload-picture/ - Upload profile picture
+    - DELETE /api/v1/auth/profile/remove-picture/ - Remove profile picture
+    - PUT /api/v1/auth/profile/privacy-settings/ - Update privacy settings
+    - PUT /api/v1/auth/profile/notification-preferences/ - Update notification preferences
+    - GET /api/v1/auth/profile/activity-log/ - Get profile activity log
+    - GET /api/v1/auth/profile/completion-status/ - Get profile completion status
     """
     
     serializer_class = UserProfileSerializer
@@ -49,7 +50,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     
     @swagger_auto_schema(
-        tags=["profiles"],
+        tags=["Authentication"],
         operation_description="List all user profiles (admin only)",
         responses={
             200: openapi.Response(
@@ -63,7 +64,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
     
     @swagger_auto_schema(
-        tags=["profiles"],
+        tags=["Authentication"],
         operation_description="Retrieve a specific user profile by ID",
         responses={
             200: openapi.Response(
@@ -77,7 +78,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         return super().retrieve(request, *args, **kwargs)
     
     @swagger_auto_schema(
-        tags=["profiles"],
+        tags=["Authentication"],
         operation_description="Create a new user profile (admin only)",
         request_body=UserProfileSerializer,
         responses={
@@ -92,7 +93,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
     
     @swagger_auto_schema(
-        tags=["profiles"],
+        tags=["Authentication"],
         operation_description="Update a user profile completely",
         request_body=UserProfileUpdateSerializer,
         responses={
@@ -108,7 +109,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
     
     @swagger_auto_schema(
-        tags=["profiles"],
+        tags=["Authentication"],
         operation_description="Partially update a user profile",
         request_body=UserProfileUpdateSerializer,
         responses={
@@ -124,7 +125,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         return super().partial_update(request, *args, **kwargs)
     
     @swagger_auto_schema(
-        tags=["profiles"],
+        tags=["Authentication"],
         operation_description="Delete a user profile (admin only)",
         responses={
             204: "Profile deleted successfully",

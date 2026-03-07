@@ -1,8 +1,10 @@
 from django.db import models
-from django.conf import settings
+from django.contrib.auth import get_user_model
 from applications.models import Application
 import os
 from datetime import datetime
+
+User = get_user_model()
 
 
 def get_application_document_path(instance, filename):
@@ -81,8 +83,10 @@ class Document(models.Model):
 
     def __str__(self):
         owner = None
-        if self.application and self.application.username:
-            owner = self.application.username
+        if self.application and self.application.user:
+            owner = self.application.user.email
+        elif self.application:
+            owner = f"Application {self.application.id}"
         return f"{self.file_name} - {owner or 'unknown'}"
 
 
@@ -92,7 +96,7 @@ class MemberDocument(models.Model):
     Stored separately from application documents.
     """
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        User,
         on_delete=models.CASCADE,
         related_name='member_documents',
     )
