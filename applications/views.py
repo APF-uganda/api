@@ -1,114 +1,137 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import AllowAny
-from rest_framework.pagination import PageNumberPagination
-from rest_framework import serializers
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from django.core.files.uploadedfile import InMemoryUploadedFile
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import get_user_model
+import logging
 from .models import Application
 from rest_framework import viewsets, status
+
 from rest_framework.response import Response
+
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+
 from rest_framework.decorators import action
-from Documents.models import Document
-from .serializers import ApplicationSerializer, ApplicationListSerializer
-from . import services
-from notifications.serializers import NotificationSerializer
-from authentication.permissions import AllowPublicApplicationSubmission
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
-import logging
+
+from rest_framework.exceptions import ValidationError
+
 from rest_framework.permissions import AllowAny
+
+from rest_framework.pagination import PageNumberPagination
+
+from rest_framework import serializers
+
+from rest_framework_simplejwt.authentication import JWTAuthentication
+
+from django.core.files.uploadedfile import InMemoryUploadedFile
+
+from django.contrib.auth import get_user_model
+
+from django.core.signing import TimestampSigner, SignatureExpired, BadSignature
+
+from .models import Application
+
+from rest_framework import viewsets, status
+
+from rest_framework.response import Response
+
+from rest_framework.decorators import action
+
+from Documents.models import Document
+
+from .serializers import ApplicationSerializer, ApplicationListSerializer
+
+from . import services
+
+from notifications.serializers import NotificationSerializer
+
+from authentication.permissions import AllowPublicApplicationSubmission
+
+from drf_yasg.utils import swagger_auto_schema
+
+from drf_yasg import openapi
+
+import logging
+
+from rest_framework.permissions import AllowAny
+
+
+logger = logging.getLogger(__name__)
+
+User = get_user_model()
+
+
+class StandardResultsSetPagination(PageNumberPagination):
+
+ page_size = 20
+
+page_size_query_param = 'page_size'
+
+max_page_size = 100 
+
+# Import the services you just wrote in services.py
+from . import services 
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
-class StandardResultsSetPagination(PageNumberPagination):
-    page_size = 20
-    page_size_query_param = 'page_size'
-    max_page_size = 100
-
 class ApplicationViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for handling membership application submissions.
-    Endpoints:
-    - POST /api/applications/ - Submit a new application (public)
-    - GET /api/applications/ - List all applications (admin only)
-    - GET /api/applications/{id}/ - Retrieve specific application (admin only)
-    - PUT/PATCH /api/applications/{id}/ - Update application (admin only)
-    - DELETE /api/applications/{id}/ - Delete application (admin only)
-    
-    Security:
-    - Public can submit applications (POST)
-    - Only admins can view, update, or delete applications
-    - JWT authentication required for admin operations
-    
-    Requirements: 9.2, 9.5, 10.5
-    """
-    # Don't use pagination for the main list endpoint to maintain frontend compatibility
-    # pagination_class = StandardResultsSetPagination
     queryset = Application.objects.all().order_by('-submitted_at')
     serializer_class = ApplicationSerializer
-    parser_classes = [JSONParser, MultiPartParser, FormParser]
-    # Remove authentication_classes from class level - let DRF handle it via settings
-    # authentication_classes = [JWTAuthentication]
+
+    def get_permissions(self):
+        """
+        Determines who can access which endpoint.
+        """
+        # These actions MUST be public for registration to work
+        public_actions = ['create', 'send_otp', 'verify_otp', 'check_availability']
+        
+        if self.action in public_actions:
+            return [AllowAny()]
+        
+        # Admin-only actions
+        return [IsAuthenticated()]
+
     @action(detail=False, methods=['post'], url_path='send-otp')
     def send_otp(self, request):
         email = request.data.get('email')
-        username = request.data.get('user_name')
+        username = request.data.get('user_name', 'Applicant')
 
         if not email:
-            return Response({'message': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'message': 'Email is required'}, status=400)
 
         try:
-            # 1. Generate and Send the Email via your service
-            # Replace 'services.send_registration_otp' with your actual service function name
-            services.send_registration_otp(email, username)
+            # Service returns the signed token (No DB used!)
+            token = services.send_registration_otp(email, username)
             
-            return Response({'status': 'OTP sent', 'message': f'Code sent to {email}'}, status=status.HTTP_200_OK)
+            return Response({
+                'status': 'OTP sent',
+                'token': token,  # <--- React must save this in state/localStorage
+                'message': f'Code sent to {email}'
+            }, status=200)
         except Exception as e:
             logger.error(f"Error sending OTP: {str(e)}")
-            return Response({'message': 'Failed to send email. Check server logs.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-        # Add your logic here or call your service
-        # print(f"Sending OTP to {email}")
-        
-        return Response({'status': 'OTP sent'}, status=status.HTTP_200_OK)
+            return Response({'message': 'Failed to send email.'}, status=500)
 
     @action(detail=False, methods=['post'], url_path='verify-otp')
     def verify_otp(self, request):
-        """
-        Custom action to verify OTP.
-        Accessed via POST /api/v1/applications/verify-otp/
-        """
-        return Response({'status': 'verified'}, status=status.HTTP_200_OK)
-    def get_permissions(self):
-        """
-        Instantiates and returns the list of permissions that this view requires.
-        """
-        # Group all public-facing registration actions together
-        print(f"DEBUG: Action is {self.action}")
-        public_actions = ['create', 'check_availability', 'send_otp', 'verify_otp']
+        email = request.data.get('email')
+        code = request.data.get('verification_code')
+        token = request.data.get('token') # <--- React must send this back
+
+        if not token:
+            return Response({'message': 'Session token missing. Request a new OTP.'}, status=400)
+
+        if services.verify_registration_otp(email, code, token):
+            return Response({
+                'status': 'verified', 
+                'message': 'Email verified successfully!'
+            }, status=200)
         
-        if self.action in public_actions:
-            # Use AllowAny or your custom public submission permission
-            from rest_framework.permissions import AllowAny
-            permission_classes = [AllowAny] 
-            
-        elif self.action in ['recent', 'list', 'retrieve', 'update', 'partial_update', 'destroy']:
-            # Require Admin for management operations
-            from authentication.permissions import IsAuthenticated, IsAdmin
-            permission_classes = [IsAuthenticated, IsAdmin]
-            
-        else:
-            # Default fallback to secure authentication
-            from authentication.permissions import IsAuthenticated
-            permission_classes = [IsAuthenticated]
-        
-        return [permission() for permission in permission_classes]
+        return Response({
+            'status': 'error',
+            'message': 'Invalid or expired verification code.'
+        }, status=400)
     
     def get_serializer_class(self):
         """

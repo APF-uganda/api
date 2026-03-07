@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from .models import Application
 from Documents.models import Document
 from notifications.services import create_notification
-
+from django.core.signing import TimestampSigner, SignatureExpired, BadSignature
 
 
 from django.core.cache import cache
@@ -146,44 +146,66 @@ logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
+import uuid
+import random
+import logging
+from django.utils import timezone
+from datetime import timedelta
+
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+from django.core.signing import TimestampSigner, SignatureExpired, BadSignature
+
+# This is our "Virtual Database" - it uses your SECRET_KEY to verify the code
+signer = TimestampSigner()
+
 def send_registration_otp(email, username):
-    #  Generate 6-digit code
+    #Generate 6-digit code
     otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
     
-  
-    expires_at = timezone.now() + timedelta(minutes=15)
-    
-    # Create an OTP record. 
    
-    try:
-        from django.core.cache import caches
-      
-        db_cache = caches['default'] 
-        db_cache.set(f"reg_otp_{email}", otp_code, timeout=900)
-    except Exception:
-       
-        print(f"\n[MANUAL OTP DEBUG] Code for {email}: {otp_code}\n")
+    signed_token = signer.sign(f"{email}:{otp_code}")
+    
+    # DEBUG: You will need to send this token back from React later
+    print(f"\n[SIGNER OTP] Email: {email} | Code: {otp_code}")
+    print(f"DEBUG: Token to send back: {signed_token}\n")
 
     try:
-        #  Prepare and Send Email
-        context = {
-            'user_name': username,
-            'verification_code': otp_code,
-        }
-        
+        context = {'user_name': username, 'verification_code': otp_code}
         html_content = render_to_string('registration/email_otp.html', context)
-        text_content = strip_tags(html_content)
         
         msg = EmailMultiAlternatives(
             subject=f"{otp_code} is your verification code",
-            body=text_content,
+            body=strip_tags(html_content),
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[email]
         )
         msg.attach_alternative(html_content, "text/html")
         msg.send()
         
-        return True
+        # We return the token so the ViewSet can send it to React
+        return signed_token 
     except Exception as e:
-        logger.error(f"Email failed: {str(e)}")
+        logger.error(f"Mail failed: {str(e)}")
         raise e
+
+def verify_registration_otp(email, code, signed_token):
+    """
+    Checks the code against the signed token. No database call required!
+    """
+    try:
+        # Check if the token is valid and less than 15 minutes (900s) old
+        original_value = signer.unsign(signed_token, max_age=900)
+        
+        # Verify the email and code match the stamp
+        if original_value == f"{email}:{code}":
+            return True
+    except (SignatureExpired, BadSignature):
+        # Token was tampered with or expired
+        return False
+    return False
