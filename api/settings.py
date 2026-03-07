@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     "adminForum",
     "AdminNotifications",
     "payments",
+    "events",
     "admin_management",
 ]
 

@@ -206,3 +206,5 @@ def verify_registration_otp(email, code, signed_token):
         # Token was tampered with or expired
         return False
     return False
+
+    
