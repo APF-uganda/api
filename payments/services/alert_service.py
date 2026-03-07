@@ -408,4 +408,4 @@ class AlertService:
                 'alert_count': 0,
                 'error': str(e),
                 'timestamp': timezone.now().isoformat()
-            }
+            }            

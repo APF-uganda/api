@@ -17,6 +17,7 @@ urlpatterns = [
     path('forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
     path('resend-password-reset-otp/', ResendPasswordResetOTPView.as_view(), name='resend-password-reset-otp'),
+<<<<<<< HEAD
     path('profile/change-password/', ChangePasswordView.as_view(), name='change-password'),
 
     # Profile endpoints (consolidated from profiles app)
@@ -45,4 +46,11 @@ urlpatterns = [
     path('profile/completion-status/', UserProfileViewSet.as_view({
         'get': 'completion_status'
     }), name='auth-profile-completion-status'),
+||||||| 65d17f5
+    path('profile/', ProfileView.as_view(), name='profile'),
+    path('profile/picture/', ProfilePictureUploadView.as_view(), name='profile-picture'),
+    path('profile/change-password/', ChangePasswordView.as_view(), name='change-password'),
+=======
+    path('change-password/', ChangePasswordView.as_view(), name='change-password'),
+>>>>>>> feature1
 ]

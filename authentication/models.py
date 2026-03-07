@@ -106,6 +106,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Subscription management
     subscription_due_date = models.DateField(null=True, blank=True, help_text='Annual subscription renewal date')
     
+<<<<<<< HEAD
     # Profile Picture
     profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
     
@@ -155,6 +156,21 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Metadata
     is_profile_complete = models.BooleanField(default=False)
     
+||||||| 65d17f5
+=======
+    # Email notification preferences
+    email_notifications_enabled = models.BooleanField(default=True, help_text='Receive email notifications for forum activities')
+    email_new_posts = models.BooleanField(default=True, help_text='Receive emails when new posts are created')
+    email_new_comments = models.BooleanField(default=True, help_text='Receive emails when someone comments on posts you participate in')
+    email_post_replies = models.BooleanField(default=True, help_text='Receive emails when someone replies to your posts')
+    email_digest_frequency = models.CharField(
+        max_length=10,
+        choices=[('none', 'None'), ('daily', 'Daily'), ('weekly', 'Weekly')],
+        default='weekly',
+        help_text='Frequency of forum activity digest emails'
+    )
+    
+>>>>>>> feature1
     objects = UserManager()
     
     USERNAME_FIELD = 'email'
