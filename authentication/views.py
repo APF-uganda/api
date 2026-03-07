@@ -1,14 +1,7 @@
-<<<<<<< HEAD
 import re
 import uuid
 import logging
 
-||||||| 65d17f5
-=======
-import re
-import uuid
-
->>>>>>> feature1
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny

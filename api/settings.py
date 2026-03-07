@@ -60,15 +60,7 @@ INSTALLED_APPS = [
     "notifications",
     "profiles",
     "reports",
-<<<<<<< HEAD
-    "adminForum",
-||||||| 65d17f5
-    "adminForum",
-    "AdminNotifications",
-=======
     "community",
-    "AdminNotifications",
->>>>>>> feature1
     "payments",
     "admin_management",
 ]

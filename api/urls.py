@@ -183,7 +183,6 @@ urlpatterns = [
     path("api/v1/reports/", include("reports.urls")),
     path("api/v1/forum/", include("community.urls")),
     path("api/v1/notifications/", include("notifications.urls")),  # User notifications endpoints
-    path("api/v1/notifications/", include("AdminNotifications.urls")),  # Admin announcements endpoints
     path("api/v1/admin-management/", include("admin_management.urls")),
     
     # Secure media files serving
