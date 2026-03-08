@@ -16,10 +16,11 @@ class UserProfileViewSet(viewsets.ViewSet):
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def _get_profile_picture_url(self, request, user):
-        if not user.profile_picture:
+        profile_picture = getattr(user, "profile_picture", None)
+        if not profile_picture:
             return None
         try:
-            return request.build_absolute_uri(user.profile_picture.url)
+            return request.build_absolute_uri(profile_picture.url)
         except Exception:
             return None
 
@@ -54,21 +55,21 @@ class UserProfileViewSet(viewsets.ViewSet):
             'icpau_registration_number': user.icpau_registration_number,
             'years_of_experience': user.years_of_experience,
             'specializations': user.specializations,
-            'bio': user.bio,
-            'website': user.website,
-            'linkedin_profile': user.linkedin_profile,
-            'preferred_language': user.preferred_language,
-            'timezone': user.timezone,
-            'profile_visibility': user.profile_visibility,
-            'show_email': user.show_email,
-            'show_phone': user.show_phone,
-            'email_notifications': user.email_notifications,
-            'sms_notifications': user.sms_notifications,
-            'newsletter_subscription': user.newsletter_subscription,
-            'event_notifications': user.event_notifications,
+            'bio': getattr(user, 'bio', ''),
+            'website': getattr(user, 'website', ''),
+            'linkedin_profile': getattr(user, 'linkedin_profile', ''),
+            'preferred_language': getattr(user, 'preferred_language', 'en'),
+            'timezone': getattr(user, 'timezone', 'Africa/Kampala'),
+            'profile_visibility': getattr(user, 'profile_visibility', 'members_only'),
+            'show_email': getattr(user, 'show_email', False),
+            'show_phone': getattr(user, 'show_phone', False),
+            'email_notifications': getattr(user, 'email_notifications', True),
+            'sms_notifications': getattr(user, 'sms_notifications', False),
+            'newsletter_subscription': getattr(user, 'newsletter_subscription', True),
+            'event_notifications': getattr(user, 'event_notifications', True),
             'created_at': user.created_at,
             'updated_at': user.updated_at,
-            'is_profile_complete': user.is_profile_complete,
+            'is_profile_complete': getattr(user, 'is_profile_complete', False),
         }
 
     def _update_profile(self, request):
@@ -122,7 +123,8 @@ class UserProfileViewSet(viewsets.ViewSet):
                             status=status.HTTP_400_BAD_REQUEST
                         )
 
-            setattr(user, field, value)
+            if hasattr(user, field):
+                setattr(user, field, value)
 
         user.save()
         return Response(self._serialize_user(request, user))
@@ -165,6 +167,8 @@ class UserProfileViewSet(viewsets.ViewSet):
             return Response({'error': 'Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.'}, status=400)
         
         user = request.user
+        if not hasattr(user, 'profile_picture'):
+            return Response({'error': 'Profile picture field is not configured for this user model.'}, status=400)
         user.profile_picture = file
         user.save()
         
@@ -184,6 +188,8 @@ class UserProfileViewSet(viewsets.ViewSet):
     def remove_picture(self, request):
         """Remove profile picture"""
         user = request.user
+        if not hasattr(user, 'profile_picture'):
+            return Response({'error': 'Profile picture field is not configured for this user model.'}, status=400)
         if user.profile_picture:
             user.profile_picture.delete()
             user.profile_picture = None

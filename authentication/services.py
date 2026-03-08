@@ -7,7 +7,7 @@ from django.contrib.auth.hashers import check_password, make_password, identify_
 from django.utils import timezone
 from django.core.cache import cache
 from django.conf import settings
-from datetime import timedelta
+from datetime import timedelta, date
 import uuid
 import requests
 import logging
@@ -16,6 +16,20 @@ from Documents.models import Document
 from rest_framework_simplejwt.tokens import RefreshToken
 
 logger = logging.getLogger(__name__)
+
+
+def get_annual_renewal_date(base_date=None):
+    """Calculate annual renewal date (+1 year from base date)."""
+    if base_date is None:
+        base_date = timezone.now().date()
+    elif hasattr(base_date, "date"):
+        base_date = base_date.date()
+
+    try:
+        return base_date.replace(year=base_date.year + 1)
+    except ValueError:
+        # Handle leap day
+        return base_date.replace(month=2, day=28, year=base_date.year + 1)
 
 
 class AuthenticationService:
@@ -613,6 +627,10 @@ class UserCreationService:
                     existing_user.is_active = True
                     # Re-applications should honor the latest approved password.
                     existing_user.password = password_to_store
+                    if not existing_user.subscription_due_date:
+                        existing_user.subscription_due_date = get_annual_renewal_date(
+                            application.updated_at or application.submitted_at
+                        )
                     existing_user.first_name = application.first_name or existing_user.first_name
                     existing_user.last_name = application.last_name or existing_user.last_name
                     existing_user.phone_number = application.phone_number or existing_user.phone_number
@@ -623,6 +641,7 @@ class UserCreationService:
                     existing_user.save(update_fields=[
                         'is_active',
                         'password',
+                        'subscription_due_date',
                         'first_name',
                         'last_name',
                         'phone_number',
@@ -647,7 +666,11 @@ class UserCreationService:
                         application=application,
                         document_type='passport_photo'
                     ).first()
-                    if passport_doc and not existing_user.profile_picture:
+                    if (
+                        passport_doc
+                        and hasattr(existing_user, "profile_picture")
+                        and not existing_user.profile_picture
+                    ):
                         existing_user.profile_picture = passport_doc.file
                     
                     existing_user.save()
@@ -666,6 +689,9 @@ class UserCreationService:
                 password=password_to_store,
                 role=UserRole.MEMBER,  # Set role to 2 (member) by default
                 is_active=True,
+                subscription_due_date=get_annual_renewal_date(
+                    application.updated_at or application.submitted_at
+                ),
                 first_name=application.first_name or '',
                 last_name=application.last_name or '',
                 phone_number=application.phone_number or '',
@@ -689,7 +715,11 @@ class UserCreationService:
                     application=application,
                     file_name__icontains='passport'
                 ).first()
-            if passport_doc and not user.profile_picture:
+            if (
+                passport_doc
+                and hasattr(user, "profile_picture")
+                and not user.profile_picture
+            ):
                 if passport_doc.file and passport_doc.file.storage.exists(passport_doc.file.name):
                     user.profile_picture = passport_doc.file
             user.save()

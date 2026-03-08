@@ -102,9 +102,47 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
         help_text="Areas of specialization, comma-separated"
     )
+
+    # Profile details
+    bio = models.TextField(
+        max_length=1000,
+        blank=True,
+        help_text="Brief professional biography",
+    )
+    profile_picture = models.ImageField(
+        upload_to='profile_pictures/',
+        null=True,
+        blank=True,
+    )
+    website = models.URLField(blank=True)
+    linkedin_profile = models.URLField(blank=True)
     
     # Subscription management
     subscription_due_date = models.DateField(null=True, blank=True, help_text='Annual subscription renewal date')
+
+    # Display and privacy preferences
+    preferred_language = models.CharField(
+        max_length=10,
+        choices=[('en', 'English'), ('sw', 'Swahili'), ('lg', 'Luganda')],
+        default='en',
+    )
+    timezone = models.CharField(max_length=50, default='Africa/Kampala')
+    profile_visibility = models.CharField(
+        max_length=20,
+        choices=[
+            ('public', 'Public'),
+            ('members_only', 'Members Only'),
+            ('private', 'Private'),
+        ],
+        default='members_only',
+    )
+    show_email = models.BooleanField(default=False)
+    show_phone = models.BooleanField(default=False)
+    is_profile_complete = models.BooleanField(default=False)
+    email_notifications = models.BooleanField(default=True)
+    sms_notifications = models.BooleanField(default=False)
+    newsletter_subscription = models.BooleanField(default=True)
+    event_notifications = models.BooleanField(default=True)
     
     # Email notification preferences
     email_notifications_enabled = models.BooleanField(default=True, help_text='Receive email notifications for forum activities')
@@ -151,20 +189,25 @@ class User(AbstractBaseUser, PermissionsMixin):
     
     def save(self, *args, **kwargs):
         """Override save to handle profile picture processing and completion tracking."""
+        profile_picture = getattr(self, "profile_picture", None)
+
         # Check if profile_picture field references a non-existent file
-        if self.profile_picture and not hasattr(self.profile_picture, 'file'):
+        if profile_picture and not hasattr(profile_picture, 'file'):
             try:
-                if hasattr(self.profile_picture, 'path'):
-                    file_path = self.profile_picture.path
+                if hasattr(profile_picture, 'path'):
+                    file_path = profile_picture.path
                     if not os.path.exists(file_path):
                         print(f"Warning: Profile picture file not found: {file_path}. Clearing field.")
-                        self.profile_picture = None
+                        if hasattr(self, "profile_picture"):
+                            self.profile_picture = None
             except (ValueError, AttributeError, FileNotFoundError) as e:
                 print(f"Warning: Issue with profile picture: {e}. Clearing field.")
-                self.profile_picture = None
+                if hasattr(self, "profile_picture"):
+                    self.profile_picture = None
         
         # Process profile picture only if it's a new file upload
-        if self.profile_picture and hasattr(self.profile_picture, 'file'):
+        profile_picture = getattr(self, "profile_picture", None)
+        if profile_picture and hasattr(profile_picture, 'file'):
             try:
                 self._process_profile_picture()
             except Exception as e:
@@ -180,24 +223,25 @@ class User(AbstractBaseUser, PermissionsMixin):
     
     def _process_profile_picture(self):
         """Process and optimize profile picture."""
-        if not self.profile_picture:
+        profile_picture = getattr(self, "profile_picture", None)
+        if not profile_picture:
             return
         
         try:
-            if not hasattr(self.profile_picture, 'file'):
+            if not hasattr(profile_picture, 'file'):
                 return
             
-            if not hasattr(self.profile_picture, 'path'):
+            if not hasattr(profile_picture, 'path'):
                 return
                 
             try:
-                file_path = self.profile_picture.path
+                file_path = profile_picture.path
                 if not os.path.exists(file_path):
                     return
             except (ValueError, AttributeError):
                 return
             
-            img = Image.open(self.profile_picture.path)
+            img = Image.open(profile_picture.path)
             
             if img.mode in ('RGBA', 'LA', 'P'):
                 img = img.convert('RGB')
@@ -206,7 +250,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
                 img.thumbnail(max_size, Image.Resampling.LANCZOS)
             
-            img.save(self.profile_picture.path, 'JPEG', quality=85, optimize=True)
+            img.save(profile_picture.path, 'JPEG', quality=85, optimize=True)
             
         except Exception as e:
             print(f"Error processing profile picture: {e}")

@@ -1,0 +1,34 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Deploy backend to DigitalOcean
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEP_HOST }}
+          username: ${{ secrets.DEP_USER }}
+          key: ${{ secrets.DEP_SSH_KEY }}
+          port: ${{ secrets.DEP_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+            BRANCH="${{ github.ref_name }}"
+            cd /var/www/apf/api
+            git fetch origin "$BRANCH"
+            git checkout "$BRANCH"
+            git pull origin "$BRANCH"
+            docker compose -f /var/www/apf/docker-compose.yaml up -d --build backend

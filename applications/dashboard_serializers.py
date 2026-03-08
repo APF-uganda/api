@@ -34,6 +34,7 @@ class MemberDashboardProfileSerializer(serializers.Serializer):
     membership_status = serializers.CharField()
     member_since = serializers.DateField(allow_null=True)
     next_renewal_date = serializers.DateField(allow_null=True)
+    subscription_due_date = serializers.DateField(allow_null=True, required=False)
 
 
 class MemberDashboardDocumentSerializer(serializers.Serializer):

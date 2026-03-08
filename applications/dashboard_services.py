@@ -8,7 +8,7 @@ from Documents.models import Document, MemberDocument
 from authentication.models import User, UserRole
 from profiles.models import UserProfile, ProfileActivityLog
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, date
 from django.db.models import Count, Q, Sum
 from decimal import Decimal
 
@@ -156,8 +156,19 @@ def get_member_dashboard_data(user, request=None):
     profile = UserProfile.objects.filter(user=user).first()
     display_name = profile.get_full_name() if profile else user.full_name
     member_since = _get_member_since_date(user)
-    # Use the subscription_due_date from user model (set to April 1st)
+    # Use the subscription_due_date from user model.
     next_renewal_date = user.subscription_due_date if user.subscription_due_date else None
+    if not next_renewal_date:
+        has_approved_application = Application.objects.filter(
+            user=user,
+            status='approved',
+        ).exists()
+        if has_approved_application:
+            base_date = member_since or timezone.now().date()
+            next_renewal_date = _safe_add_year(base_date)
+            User.objects.filter(pk=user.pk, subscription_due_date__isnull=True).update(
+                subscription_due_date=next_renewal_date
+            )
 
     app_docs = Document.objects.filter(application__user=user).order_by('-uploaded_at')[:10]
     member_docs = MemberDocument.objects.filter(user=user).order_by('-uploaded_at')[:10]
@@ -334,6 +345,7 @@ def get_member_dashboard_data(user, request=None):
             "membership_status": "Active" if user.is_active else "Inactive",
             "member_since": member_since,
             "next_renewal_date": next_renewal_date,
+            "subscription_due_date": next_renewal_date,
         },
         "documents": documents,
         "recent_activity": recent_activity,

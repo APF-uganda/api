@@ -10,25 +10,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def get_next_april_first():
+def get_annual_renewal_date(base_date=None):
     """
-    Calculate the next April 1st renewal date.
-    
-    Returns:
-        date: The next April 1st (current year if before April 1st, next year if after)
+    Calculate annual renewal date (+1 year from base date).
     """
-    today = timezone.now().date()
-    current_year = today.year
-    
-    # April 1st of current year
-    april_first_this_year = date(current_year, 4, 1)
-    
-    # If today is before April 1st this year, return April 1st this year
-    # Otherwise, return April 1st next year
-    if today < april_first_this_year:
-        return april_first_this_year
-    else:
-        return date(current_year + 1, 4, 1)
+    if base_date is None:
+        base_date = timezone.now().date()
+    elif hasattr(base_date, 'date'):
+        base_date = base_date.date()
+
+    try:
+        return base_date.replace(year=base_date.year + 1)
+    except ValueError:
+        return base_date.replace(month=2, day=28, year=base_date.year + 1)
 
 
 @receiver(post_save, sender=Payment)
@@ -50,8 +44,8 @@ def update_subscription_on_payment_completion(sender, instance, created, **kwarg
         try:
             user = instance.user
             
-            # Set subscription due date to next April 1st
-            new_due_date = get_next_april_first()
+            # Set subscription due date to one year from payment completion
+            new_due_date = get_annual_renewal_date(instance.completed_at or timezone.now())
             user.subscription_due_date = new_due_date
             user.save(update_fields=['subscription_due_date'])
             

@@ -8,6 +8,7 @@ from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -63,6 +64,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     queryset = Application.objects.all().order_by('-submitted_at')
     serializer_class = ApplicationSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_permissions(self):
         """Return permissions per action with one consistent policy path."""
@@ -167,7 +169,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
     def _extract_application_data(self, request):
         """Return validated input payload for application creation."""
-        if request.content_type == "application/json":
+        content_type = request.content_type or ""
+        if content_type.startswith("application/json"):
             data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
         else:
             data = request.POST.copy()

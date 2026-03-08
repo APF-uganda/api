@@ -4,6 +4,33 @@ import django.core.validators
 from django.db import migrations, models
 
 
+class AddFieldIfNotExists(migrations.AddField):
+    """Add a field only when the target column is missing."""
+
+    def _column_exists(self, state, app_label, schema_editor):
+        model = state.apps.get_model(app_label, self.model_name)
+        table_name = model._meta.db_table
+        field = model._meta.get_field(self.name)
+
+        with schema_editor.connection.cursor() as cursor:
+            table_description = schema_editor.connection.introspection.get_table_description(
+                cursor, table_name
+            )
+
+        existing_columns = {col.name.lower() for col in table_description}
+        return field.column.lower() in existing_columns
+
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        if self._column_exists(to_state, app_label, schema_editor):
+            return
+        super().database_forwards(app_label, schema_editor, from_state, to_state)
+
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        if not self._column_exists(from_state, app_label, schema_editor):
+            return
+        super().database_backwards(app_label, schema_editor, from_state, to_state)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -11,54 +38,54 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="address_line_1",
             field=models.CharField(blank=True, max_length=255),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="address_line_2",
             field=models.CharField(blank=True, max_length=255),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="alternative_phone",
             field=models.CharField(blank=True, max_length=20),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="bio",
             field=models.TextField(
                 blank=True, help_text="Brief professional biography", max_length=1000
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="city",
             field=models.CharField(blank=True, max_length=100),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="country",
             field=models.CharField(default="Uganda", max_length=100),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="department",
             field=models.CharField(blank=True, max_length=100),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="email_notifications",
             field=models.BooleanField(default=True),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="event_notifications",
             field=models.BooleanField(default=True),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="gender",
             field=models.CharField(
@@ -72,37 +99,37 @@ class Migration(migrations.Migration):
                 max_length=20,
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="is_profile_complete",
             field=models.BooleanField(default=False),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="job_title",
             field=models.CharField(blank=True, max_length=200),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="linkedin_profile",
             field=models.URLField(blank=True),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="middle_name",
             field=models.CharField(blank=True, max_length=100),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="newsletter_subscription",
             field=models.BooleanField(default=True),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="postal_code",
             field=models.CharField(blank=True, max_length=20),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="preferred_language",
             field=models.CharField(
@@ -111,7 +138,7 @@ class Migration(migrations.Migration):
                 max_length=10,
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="profile_visibility",
             field=models.CharField(
@@ -124,44 +151,44 @@ class Migration(migrations.Migration):
                 max_length=20,
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="show_email",
             field=models.BooleanField(default=False),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="show_phone",
             field=models.BooleanField(default=False),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="sms_notifications",
             field=models.BooleanField(default=False),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="specializations",
             field=models.TextField(
                 blank=True, help_text="Areas of specialization, comma-separated"
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="state_province",
             field=models.CharField(blank=True, max_length=100),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="timezone",
             field=models.CharField(default="Africa/Kampala", max_length=50),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="website",
             field=models.URLField(blank=True),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="years_of_experience",
             field=models.PositiveIntegerField(blank=True, null=True),
