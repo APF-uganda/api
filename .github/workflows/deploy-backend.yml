@@ -70,12 +70,19 @@ jobs:
             HEALTH_HOST="${HEALTH_HOST#https://}"
             HEALTH_HOST="${HEALTH_HOST%%/*}"
             HEALTH_HOST="${HEALTH_HOST%%:*}"
+            ALLOWED_HOST_FROM_ENV=""
+            if [ -f /var/www/apf/.env ]; then
+              ALLOWED_HOST_FROM_ENV="$(grep -m1 '^ALLOWED_HOSTS=' /var/www/apf/.env | cut -d'=' -f2- | cut -d',' -f1 | tr -d '\"' | xargs || true)"
+            fi
             health_ok=0
-            for host_header in "${HEALTH_HOST}" localhost backend 127.0.0.1; do
+            for host_header in "${ALLOWED_HOST_FROM_ENV}" "${HEALTH_HOST}" localhost backend 127.0.0.1; do
+              [ -n "${host_header}" ] || continue
               echo "Checking backend health with Host: ${host_header}"
-              if curl -4 -sS --fail --retry 20 --retry-delay 2 --retry-all-errors \
+              http_code="$(curl -4 -sS -o /tmp/backend-health.txt -w '%{http_code}' \
+                --retry 20 --retry-delay 2 --retry-all-errors \
                 -H "Host: ${host_header}" \
-                http://127.0.0.1:8000/ > /tmp/backend-health.txt; then
+                http://127.0.0.1:8000/ || true)"
+              if [ "${http_code}" -ge 200 ] && [ "${http_code}" -lt 500 ]; then
                 health_ok=1
                 break
               fi
