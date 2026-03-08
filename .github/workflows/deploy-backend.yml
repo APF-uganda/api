@@ -63,10 +63,15 @@ jobs:
             dc run --rm backend python manage.py migrate --check
             dc run --rm backend python manage.py check
             dc up -d backend
-            sleep 2
+            sleep 5
             docker inspect -f '{{.State.Running}}' apf_backend | grep -qx "true"
-            curl -sS --fail --retry 40 --retry-delay 3 --retry-connrefused \
-              http://localhost:8000/ > /tmp/backend-health.txt
+            if ! curl -4 -sS --fail --retry 60 --retry-delay 2 --retry-all-errors \
+              http://127.0.0.1:8000/ > /tmp/backend-health.txt; then
+              echo "Backend health check failed."
+              dc ps backend || true
+              dc logs --no-color --since "${START_TS}" --tail=200 backend || true
+              exit 1
+            fi
             echo "Backend health check passed."
             trap - EXIT
             echo "Backend deploy completed successfully."
