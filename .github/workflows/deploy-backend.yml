@@ -71,9 +71,21 @@ jobs:
             i=1
             max_attempts=40
             until [ "$i" -gt "$max_attempts" ]; do
-              if curl -fsS http://localhost:8000/ >/dev/null; then
+              state="$(docker inspect -f '{{.State.Status}}' apf_backend 2>/dev/null || echo missing)"
+              if [ "$state" != "running" ]; then
+                echo "Backend container state is '$state' during health check."
+                dc logs --no-color --since "${START_TS}" --tail=200 backend || true
+                exit 1
+              fi
+              code="$(curl -sS -o /tmp/backend-health.txt -w '%{http_code}' http://localhost:8000/ || true)"
+              if [ "$code" = "200" ]; then
                 echo "Backend health check passed."
                 break
+              fi
+              if [ $((i % 5)) -eq 0 ] || [ "$i" -eq 1 ]; then
+                echo "Health endpoint returned HTTP $code"
+                head -c 300 /tmp/backend-health.txt || true
+                echo
               fi
               if [ $((i % 5)) -eq 0 ]; then
                 echo "Backend not ready yet. Current backend container state:"
