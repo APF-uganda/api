@@ -24,9 +24,10 @@ jobs:
           key: ${{ secrets.DEP_SSH_KEY }}
           passphrase: ${{ secrets.DEP_SSH_PASSPHRASE }}
           port: ${{ secrets.DEP_PORT || 22 }}
+          command_timeout: 30m
           script_stop: true
           script: |
-            set -eu
+            set -euo pipefail
             dc() { docker compose -f /var/www/apf/docker-compose.yaml "$@"; }
             START_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
             dump_logs() {
