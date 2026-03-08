@@ -65,8 +65,22 @@ jobs:
             dc up -d backend
             sleep 5
             docker inspect -f '{{.State.Running}}' apf_backend | grep -qx "true"
-            if ! curl -4 -sS --fail --retry 60 --retry-delay 2 --retry-all-errors \
-              http://127.0.0.1:8000/ > /tmp/backend-health.txt; then
+            RAW_DEP_HOST="${{ secrets.DEP_HOST }}"
+            HEALTH_HOST="${RAW_DEP_HOST#http://}"
+            HEALTH_HOST="${HEALTH_HOST#https://}"
+            HEALTH_HOST="${HEALTH_HOST%%/*}"
+            HEALTH_HOST="${HEALTH_HOST%%:*}"
+            health_ok=0
+            for host_header in "${HEALTH_HOST}" localhost backend 127.0.0.1; do
+              echo "Checking backend health with Host: ${host_header}"
+              if curl -4 -sS --fail --retry 20 --retry-delay 2 --retry-all-errors \
+                -H "Host: ${host_header}" \
+                http://127.0.0.1:8000/ > /tmp/backend-health.txt; then
+                health_ok=1
+                break
+              fi
+            done
+            if [ "$health_ok" -ne 1 ]; then
               echo "Backend health check failed."
               dc ps backend || true
               dc logs --no-color --since "${START_TS}" --tail=200 backend || true
