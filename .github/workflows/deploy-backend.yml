@@ -32,3 +32,16 @@ jobs:
             git checkout "$BRANCH"
             git pull origin "$BRANCH"
             docker compose -f /var/www/apf/docker-compose.yaml up -d --build backend
+            i=1
+            until [ "$i" -gt 20 ]; do
+              if curl -fsS http://localhost:8000/ >/dev/null; then
+                echo "Backend health check passed."
+                exit 0
+              fi
+              echo "Waiting for backend... attempt $i/20"
+              sleep 3
+              i=$((i + 1))
+            done
+            echo "Backend health check failed."
+            docker compose -f /var/www/apf/docker-compose.yaml logs --tail=120 backend
+            exit 1
