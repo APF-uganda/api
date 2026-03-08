@@ -26,28 +26,59 @@ jobs:
           port: ${{ secrets.DEP_PORT || 22 }}
           script_stop: true
           script: |
-            set -e
+            set -eu
+            dc() { docker compose -f /var/www/apf/docker-compose.yaml "$@"; }
+            dump_logs() {
+              status="${1:-1}"
+              echo "Deployment failed with exit code ${status}"
+              echo "=== docker compose ps ==="
+              dc ps || true
+              echo "=== backend logs (last 200 lines) ==="
+              dc logs --no-color --tail=200 backend || true
+              echo "=== postgres logs (last 120 lines) ==="
+              dc logs --no-color --tail=120 postgres || true
+            }
+            on_exit() {
+              status=$?
+              if [ "$status" -ne 0 ]; then
+                dump_logs "$status"
+              fi
+              exit "$status"
+            }
+            trap on_exit EXIT
             BRANCH="${{ github.ref_name }}"
             cd /var/www/apf/api
             git fetch origin "$BRANCH"
             git checkout "$BRANCH"
             git pull origin "$BRANCH"
-            docker compose -f /var/www/apf/docker-compose.yaml up -d postgres
-            docker compose -f /var/www/apf/docker-compose.yaml build backend
-            docker compose -f /var/www/apf/docker-compose.yaml run --rm backend python manage.py makemigrations --check --dry-run
-            docker compose -f /var/www/apf/docker-compose.yaml run --rm backend python manage.py migrate --noinput
-            docker compose -f /var/www/apf/docker-compose.yaml run --rm backend python manage.py check
-            docker compose -f /var/www/apf/docker-compose.yaml up -d backend
+            dc up -d postgres
+            dc build backend
+            dc run --rm backend python manage.py makemigrations --check --dry-run
+            echo "=== Migration plan (before) ==="
+            dc run --rm backend python manage.py showmigrations --plan
+            dc run --rm backend python manage.py migrate --noinput
+            echo "=== Verifying all migrations are applied ==="
+            dc run --rm backend python manage.py migrate --check
+            dc run --rm backend python manage.py check
+            dc up -d backend
             i=1
-            until [ "$i" -gt 20 ]; do
+            max_attempts=40
+            until [ "$i" -gt "$max_attempts" ]; do
               if curl -fsS http://localhost:8000/ >/dev/null; then
                 echo "Backend health check passed."
-                exit 0
+                break
               fi
-              echo "Waiting for backend... attempt $i/20"
+              if [ $((i % 5)) -eq 0 ]; then
+                echo "Backend not ready yet. Current backend container state:"
+                dc ps backend || true
+              fi
+              echo "Waiting for backend... attempt $i/$max_attempts"
               sleep 3
               i=$((i + 1))
             done
-            echo "Backend health check failed."
-            docker compose -f /var/www/apf/docker-compose.yaml logs --tail=120 backend
-            exit 1
+            if [ "$i" -gt "$max_attempts" ]; then
+              echo "Backend health check failed."
+              exit 1
+            fi
+            trap - EXIT
+            echo "Backend deploy completed successfully."
