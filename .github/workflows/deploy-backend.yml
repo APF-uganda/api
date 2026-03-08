@@ -28,15 +28,16 @@ jobs:
           script: |
             set -eu
             dc() { docker compose -f /var/www/apf/docker-compose.yaml "$@"; }
+            START_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
             dump_logs() {
               status="${1:-1}"
               echo "Deployment failed with exit code ${status}"
               echo "=== docker compose ps ==="
               dc ps || true
               echo "=== backend logs (last 200 lines) ==="
-              dc logs --no-color --tail=200 backend || true
+              dc logs --no-color --since "${START_TS}" --tail=200 backend || true
               echo "=== postgres logs (last 120 lines) ==="
-              dc logs --no-color --tail=120 postgres || true
+              dc logs --no-color --since "${START_TS}" --tail=120 postgres || true
             }
             on_exit() {
               status=$?
@@ -61,6 +62,12 @@ jobs:
             dc run --rm backend python manage.py migrate --check
             dc run --rm backend python manage.py check
             dc up -d backend
+            sleep 2
+            if [ "$(docker inspect -f '{{.State.Running}}' apf_backend 2>/dev/null || echo false)" != "true" ]; then
+              echo "Backend container is not running after startup."
+              dc logs --no-color --since "${START_TS}" --tail=200 backend || true
+              exit 1
+            fi
             i=1
             max_attempts=40
             until [ "$i" -gt "$max_attempts" ]; do
