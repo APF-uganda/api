@@ -22,6 +22,7 @@ jobs:
           host: ${{ secrets.DEP_HOST }}
           username: ${{ secrets.DEP_USER }}
           key: ${{ secrets.DEP_SSH_KEY }}
+          passphrase: ${{ secrets.DEP_SSH_PASSPHRASE }}
           port: ${{ secrets.DEP_PORT || 22 }}
           script_stop: true
           script: |
@@ -31,7 +32,12 @@ jobs:
             git fetch origin "$BRANCH"
             git checkout "$BRANCH"
             git pull origin "$BRANCH"
-            docker compose -f /var/www/apf/docker-compose.yaml up -d --build backend
+            docker compose -f /var/www/apf/docker-compose.yaml up -d postgres
+            docker compose -f /var/www/apf/docker-compose.yaml build backend
+            docker compose -f /var/www/apf/docker-compose.yaml run --rm backend python manage.py makemigrations --check --dry-run
+            docker compose -f /var/www/apf/docker-compose.yaml run --rm backend python manage.py migrate --noinput
+            docker compose -f /var/www/apf/docker-compose.yaml run --rm backend python manage.py check
+            docker compose -f /var/www/apf/docker-compose.yaml up -d backend
             i=1
             until [ "$i" -gt 20 ]; do
               if curl -fsS http://localhost:8000/ >/dev/null; then
