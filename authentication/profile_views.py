@@ -55,21 +55,8 @@ class UserProfileViewSet(viewsets.ViewSet):
             'icpau_registration_number': user.icpau_registration_number,
             'years_of_experience': user.years_of_experience,
             'specializations': user.specializations,
-            'bio': getattr(user, 'bio', ''),
-            'website': getattr(user, 'website', ''),
-            'linkedin_profile': getattr(user, 'linkedin_profile', ''),
-            'preferred_language': getattr(user, 'preferred_language', 'en'),
-            'timezone': getattr(user, 'timezone', 'Africa/Kampala'),
-            'profile_visibility': getattr(user, 'profile_visibility', 'members_only'),
-            'show_email': getattr(user, 'show_email', False),
-            'show_phone': getattr(user, 'show_phone', False),
-            'email_notifications': getattr(user, 'email_notifications', True),
-            'sms_notifications': getattr(user, 'sms_notifications', False),
-            'newsletter_subscription': getattr(user, 'newsletter_subscription', True),
-            'event_notifications': getattr(user, 'event_notifications', True),
             'created_at': user.created_at,
             'updated_at': user.updated_at,
-            'is_profile_complete': getattr(user, 'is_profile_complete', False),
         }
 
     def _update_profile(self, request):
@@ -82,20 +69,9 @@ class UserProfileViewSet(viewsets.ViewSet):
             'state_province', 'postal_code', 'country', 'job_title', 'organization',
             'department', 'icpau_registration_number', 'practising_status',
             'membership_category', 'years_of_experience', 'specializations',
-            'bio', 'website', 'linkedin_profile', 'preferred_language', 'timezone',
-            'profile_visibility', 'show_email', 'show_phone',
-            'email_notifications', 'sms_notifications', 'newsletter_subscription',
-            'event_notifications'
         ]
 
-        boolean_fields = {
-            'show_email',
-            'show_phone',
-            'email_notifications',
-            'sms_notifications',
-            'newsletter_subscription',
-            'event_notifications',
-        }
+        boolean_fields = set()
 
         def to_bool(value):
             if isinstance(value, bool):
@@ -209,17 +185,8 @@ class UserProfileViewSet(viewsets.ViewSet):
     )
     @action(detail=False, methods=['put', 'patch'])
     def privacy_settings(self, request):
-        """Update privacy settings"""
-        user = request.user
-        data = request.data
-        
-        privacy_fields = ['profile_visibility', 'show_email', 'show_phone']
-        for field in privacy_fields:
-            if field in data:
-                setattr(user, field, data[field])
-        
-        user.save()
-        return Response({'message': 'Privacy settings updated successfully'})
+        """Update privacy settings - No privacy fields available in current schema"""
+        return Response({'message': 'Privacy settings feature not available'})
 
     @swagger_auto_schema(
         tags=["auth"],
@@ -229,11 +196,12 @@ class UserProfileViewSet(viewsets.ViewSet):
     )
     @action(detail=False, methods=['put', 'patch'])
     def notification_preferences(self, request):
-        """Update notification preferences"""
+        """Update notification preferences - Using email notification fields"""
         user = request.user
         data = request.data
         
-        notification_fields = ['email_notifications', 'sms_notifications', 'newsletter_subscription', 'event_notifications']
+        # Only update fields that exist in the database
+        notification_fields = ['email_notifications_enabled', 'email_new_posts', 'email_new_comments', 'email_post_replies', 'email_digest_frequency']
         for field in notification_fields:
             if field in data:
                 setattr(user, field, data[field])
@@ -261,8 +229,11 @@ class UserProfileViewSet(viewsets.ViewSet):
         filled_fields = total_fields - len(missing_required) - len(missing_professional)
         completion_percentage = int((filled_fields / total_fields) * 100) if total_fields > 0 else 0
         
+        # Calculate is_complete based on required fields
+        is_complete = len(missing_required) == 0
+        
         return Response({
-            'is_complete': user.is_profile_complete,
+            'is_complete': is_complete,
             'completion_percentage': completion_percentage,
             'missing_fields': missing_required + missing_professional
         })

@@ -103,46 +103,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         help_text="Areas of specialization, comma-separated"
     )
 
-    # Profile details
-    bio = models.TextField(
-        max_length=1000,
-        blank=True,
-        help_text="Brief professional biography",
-    )
-    profile_picture = models.ImageField(
-        upload_to='profile_pictures/',
-        null=True,
-        blank=True,
-    )
-    website = models.URLField(blank=True)
-    linkedin_profile = models.URLField(blank=True)
-    
     # Subscription management
     subscription_due_date = models.DateField(null=True, blank=True, help_text='Annual subscription renewal date')
-
-    # Display and privacy preferences
-    preferred_language = models.CharField(
-        max_length=10,
-        choices=[('en', 'English'), ('sw', 'Swahili'), ('lg', 'Luganda')],
-        default='en',
-    )
-    timezone = models.CharField(max_length=50, default='Africa/Kampala')
-    profile_visibility = models.CharField(
-        max_length=20,
-        choices=[
-            ('public', 'Public'),
-            ('members_only', 'Members Only'),
-            ('private', 'Private'),
-        ],
-        default='members_only',
-    )
-    show_email = models.BooleanField(default=False)
-    show_phone = models.BooleanField(default=False)
-    is_profile_complete = models.BooleanField(default=False)
-    email_notifications = models.BooleanField(default=True)
-    sms_notifications = models.BooleanField(default=False)
-    newsletter_subscription = models.BooleanField(default=True)
-    event_notifications = models.BooleanField(default=True)
     
     # Email notification preferences
     email_notifications_enabled = models.BooleanField(default=True, help_text='Receive email notifications for forum activities')
