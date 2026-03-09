@@ -206,6 +206,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = 'authentication.User'
 
 # CORS Settings
+# Temporarily allow all origins for debugging
+CORS_ORIGIN_ALLOW_ALL = True
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=[

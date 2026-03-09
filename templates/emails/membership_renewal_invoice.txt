@@ -1,0 +1,56 @@
+ACCOUNTANCY PRACTITIONERS FORUM
+P. O. Box 190657, GPO Kampala-Uganda
+Tel: 256 767 618 767 | Email: practitionersug@gmail.com
+
+========================================
+MEMBERSHIP RENEWAL INVOICE
+========================================
+
+Dear {{ user.first_name|default:user.full_name }},
+
+We hope this email finds you well. This is your annual membership renewal reminder for the Accountancy Practitioners Forum.
+
+As per our membership calendar, all members are required to renew their subscription annually for the period running from 1st April to 31st March.
+
+INVOICE DETAILS:
+----------------
+Invoice Number: {{ invoice_number }}
+Invoice Date: {{ invoice_date }}
+Due Date: {{ due_date }}
+Member Name: {{ user.full_name }}
+{% if membership_number %}Membership No: {{ membership_number }}{% endif %}
+
+INVOICE BREAKDOWN:
+------------------
+{{ membership_type }} Membership Renewal ({{ renewal_period }}): UGX {{ base_amount|floatformat:0 }}
+{% if previous_balance > 0 %}Previous Balance: UGX {{ previous_balance|floatformat:0 }}{% endif %}
+{% if discount > 0 %}Discount: -UGX {{ discount|floatformat:0 }}{% endif %}
+
+TOTAL AMOUNT DUE: UGX {{ total_amount|floatformat:0 }}
+
+PAYMENT INSTRUCTIONS:
+---------------------
+Please make payment via:
+• Mobile Money (MTN or Airtel)
+• Bank Transfer
+• Online Payment Portal
+
+Payment Reference: Use your invoice number {{ invoice_number }} as reference.
+
+Note: Membership year runs from 1st April to 31st March.
+
+For mobile money payments, use the payment option in your member portal at:
+http://localhost:3001/login
+
+If you have any questions or need assistance, please don't hesitate to contact us.
+
+Thank you for your continued membership with the Accountancy Practitioners Forum.
+
+Best regards,
+APF Uganda Secretariat
+
+----------------------------------------
+Accountancy Practitioners Forum Uganda
+P. O. Box 190657, GPO Kampala-Uganda
+Tel: 256 767 618 767
+Email: practitionersug@gmail.com
