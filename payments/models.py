@@ -38,10 +38,12 @@ class Payment(models.Model):
     # Provider choices
     PROVIDER_MTN = 'mtn'
     PROVIDER_AIRTEL = 'airtel'
+    PROVIDER_PESAPAL = 'pesapal'
     
     PROVIDER_CHOICES = [
         (PROVIDER_MTN, 'MTN Mobile Money'),
         (PROVIDER_AIRTEL, 'Airtel Money'),
+        (PROVIDER_PESAPAL, 'PesaPal'),
     ]
     
     # Identification

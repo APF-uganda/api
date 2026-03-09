@@ -12,6 +12,7 @@ from django.utils import timezone
 from payments.models import Payment, PaymentConfig
 from payments.services.mtn_service import MTNService
 from payments.services.airtel_service import AirtelService
+from payments.services.pesapal_service import PesaPalService
 from payments.utils import PhoneNumberEncryption, validate_phone_number
 from payments.logging_utils import (
     set_correlation_id,
@@ -36,6 +37,7 @@ class PaymentService(PerformanceLoggingMixin):
         """Initialize payment service with provider services."""
         self.mtn_service = MTNService()
         self.airtel_service = AirtelService()
+        self.pesapal_service = PesaPalService()
         self.phone_encryptor = PhoneNumberEncryption()
     
     def _get_provider_service(self, provider: str):
@@ -43,7 +45,7 @@ class PaymentService(PerformanceLoggingMixin):
         Get the appropriate provider service instance.
         
         Args:
-            provider: Provider name ('mtn' or 'airtel')
+            provider: Provider name ('mtn', 'airtel', or 'pesapal')
         
         Returns:
             Provider service instance
@@ -55,6 +57,8 @@ class PaymentService(PerformanceLoggingMixin):
             return self.mtn_service
         elif provider == Payment.PROVIDER_AIRTEL:
             return self.airtel_service
+        elif provider == Payment.PROVIDER_PESAPAL:
+            return self.pesapal_service
         else:
             raise ValueError(f"Unsupported provider: {provider}")
     
@@ -64,9 +68,10 @@ class PaymentService(PerformanceLoggingMixin):
         
         MTN sandbox only supports EUR, but production uses UGX.
         Airtel supports UGX in both sandbox and production.
+        PesaPal supports UGX in both sandbox and production.
         
         Args:
-            provider: Provider name ('mtn' or 'airtel')
+            provider: Provider name ('mtn', 'airtel', or 'pesapal')
         
         Returns:
             Currency code ('EUR' or 'UGX')
@@ -80,8 +85,32 @@ class PaymentService(PerformanceLoggingMixin):
         if provider == Payment.PROVIDER_MTN and environment == 'sandbox':
             return 'EUR'
         
-        # All other cases use UGX (Airtel sandbox/production, MTN production)
+        # All other cases use UGX (Airtel sandbox/production, MTN production, PesaPal sandbox/production)
         return 'UGX'
+    
+    def _detect_network_from_phone(self, phone_number: str) -> str:
+        """
+        Detect mobile network provider from phone number prefix.
+        
+        Args:
+            phone_number: Phone number in format 256XXXXXXXXX
+        
+        Returns:
+            Provider name ('mtn' or 'airtel') or None if unknown
+        """
+        # MTN prefixes
+        MTN_PREFIXES = ['25677', '25678', '25676']
+        # Airtel prefixes
+        AIRTEL_PREFIXES = ['25670', '25675', '25674']
+        
+        if len(phone_number) >= 5:
+            prefix = phone_number[:5]
+            if prefix in MTN_PREFIXES:
+                return Payment.PROVIDER_MTN
+            elif prefix in AIRTEL_PREFIXES:
+                return Payment.PROVIDER_AIRTEL
+        
+        return None
     
     @PerformanceLoggingMixin.log_performance('payment_initiation')
     def initiate_payment(
@@ -212,8 +241,17 @@ class PaymentService(PerformanceLoggingMixin):
                 # Get appropriate currency for provider and environment
                 currency = self._get_currency(provider)
                 
+                # PesaPal has different parameters
+                if provider == Payment.PROVIDER_PESAPAL:
+                    result = provider_service.request_to_pay(
+                        phone_number=phone_number,
+                        amount=amount,
+                        currency=currency,
+                        reference=transaction_reference,
+                        description="APF Membership Fee"
+                    )
                 # Airtel requires a separate transaction_id parameter
-                if provider == Payment.PROVIDER_AIRTEL:
+                elif provider == Payment.PROVIDER_AIRTEL:
                     result = provider_service.request_to_pay(
                         phone_number=phone_number,
                         amount=amount,
@@ -233,6 +271,23 @@ class PaymentService(PerformanceLoggingMixin):
                 
                 if result.get('success'):
                     # Payment request sent successfully
+                    # For PesaPal, store the order_tracking_id and redirect_url
+                    if provider == Payment.PROVIDER_PESAPAL:
+                        order_tracking_id = result.get('order_tracking_id')
+                        redirect_url = result.get('redirect_url')
+                        
+                        if order_tracking_id:
+                            payment.provider_transaction_id = order_tracking_id
+                        
+                        # Store redirect_url in provider_response for frontend to use
+                        if redirect_url:
+                            if not payment.provider_response:
+                                payment.provider_response = {}
+                            payment.provider_response['redirect_url'] = redirect_url
+                            payment.provider_response['order_tracking_id'] = order_tracking_id
+                        
+                        payment.save()
+                    
                     logger.info(
                         f"Payment request sent to provider",
                         extra={
@@ -327,9 +382,16 @@ class PaymentService(PerformanceLoggingMixin):
             provider_service = self._get_provider_service(payment.provider)
             
             # Step 2: Call provider's status check
+            # PesaPal uses order_tracking_id (stored in provider_transaction_id)
             # Airtel uses transaction_id, MTN uses transaction_reference
-            # Both are stored in transaction_reference field
-            result = provider_service.check_payment_status(payment.transaction_reference)
+            # Both MTN and Airtel are stored in transaction_reference field
+            if payment.provider == Payment.PROVIDER_PESAPAL:
+                # Use order_tracking_id for PesaPal
+                tracking_id = payment.provider_transaction_id or payment.transaction_reference
+                result = provider_service.check_payment_status(tracking_id)
+            else:
+                # Use transaction_reference for MTN and Airtel
+                result = provider_service.check_payment_status(payment.transaction_reference)
             
             if not result.get('success'):
                 # Status check failed (network error, etc.)
@@ -519,12 +581,15 @@ class PaymentService(PerformanceLoggingMixin):
                 return False
             
             # Step 2: Extract transaction reference from payload
-            # MTN uses 'referenceId', Airtel uses 'transaction.id'
+            # MTN uses 'referenceId', Airtel uses 'transaction.id', PesaPal uses 'OrderTrackingId'
             if provider == Payment.PROVIDER_MTN:
                 transaction_reference = payload.get('referenceId')
             elif provider == Payment.PROVIDER_AIRTEL:
                 transaction_data = payload.get('transaction', {})
                 transaction_reference = transaction_data.get('id')
+            elif provider == Payment.PROVIDER_PESAPAL:
+                # PesaPal IPN sends OrderTrackingId as query parameter
+                transaction_reference = payload.get('OrderTrackingId')
             else:
                 logger.error(f"Unknown provider in webhook: {provider}")
                 return False
@@ -538,7 +603,11 @@ class PaymentService(PerformanceLoggingMixin):
             
             # Step 3: Find Payment record
             try:
-                payment = Payment.objects.get(transaction_reference=transaction_reference)
+                # For PesaPal, search by provider_transaction_id (order_tracking_id)
+                if provider == Payment.PROVIDER_PESAPAL:
+                    payment = Payment.objects.get(provider_transaction_id=transaction_reference)
+                else:
+                    payment = Payment.objects.get(transaction_reference=transaction_reference)
             except Payment.DoesNotExist:
                 logger.warning(
                     f"Payment not found for webhook",
@@ -686,6 +755,75 @@ class PaymentService(PerformanceLoggingMixin):
                             "error": error_message
                         }
                     )
+            
+            elif provider == Payment.PROVIDER_PESAPAL:
+                # For PesaPal, we need to call GetTransactionStatus to verify
+                # The IPN just notifies us that status changed
+                order_tracking_id = transaction_reference
+                
+                # Call status check to get actual status
+                status_result = provider_service.check_payment_status(order_tracking_id)
+                
+                if status_result.get('success'):
+                    status = status_result.get('status')
+                    provider_tx_id = status_result.get('provider_transaction_id')
+                    
+                    if status == 'completed':
+                        payment.mark_completed(provider_tx_id, status_result.get('raw_response'))
+                        
+                        # Update linked application if exists
+                        if payment.application_id:
+                            try:
+                                from applications.models import Application
+                                application = Application.objects.get(id=payment.application_id)
+                                application.payment_status = 'success'
+                                
+                                # Auto-submit (approve) application after successful payment
+                                if application.status == 'pending':
+                                    application.status = 'approved'
+                                    logger.info(
+                                        f"Webhook: Application auto-approved after successful payment",
+                                        extra={
+                                            "payment_id": str(payment.id),
+                                            "application_id": payment.application_id
+                                        }
+                                    )
+                                
+                                application.save()
+                            except Application.DoesNotExist:
+                                pass
+                        
+                        logger.info(
+                            f"Webhook: PesaPal payment completed",
+                            extra={
+                                "payment_id": str(payment.id),
+                                "order_tracking_id": order_tracking_id,
+                                "provider_transaction_id": provider_tx_id
+                            }
+                        )
+                    elif status == 'failed':
+                        error_message = status_result.get('message', 'Payment failed')
+                        payment.mark_failed(error_message, status_result.get('raw_response'))
+                        
+                        # Update linked application if exists
+                        if payment.application_id:
+                            try:
+                                from applications.models import Application
+                                application = Application.objects.get(id=payment.application_id)
+                                application.payment_status = 'failed'
+                                application.payment_error_message = error_message
+                                application.save()
+                            except Application.DoesNotExist:
+                                pass
+                        
+                        logger.info(
+                            f"Webhook: PesaPal payment failed",
+                            extra={
+                                "payment_id": str(payment.id),
+                                "order_tracking_id": order_tracking_id,
+                                "error": error_message
+                            }
+                        )
             
             # Step 5: Return success
             return True

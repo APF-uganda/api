@@ -272,3 +272,124 @@ class EnhancedAirtelWebhookView(APIView):
         else:
             ip = request.META.get('REMOTE_ADDR')
         return ip
+
+
+
+class PesaPalWebhookView(APIView):
+    """
+    GET /api/v1/payments/webhooks/pesapal/
+    PesaPal IPN (Instant Payment Notification) handler.
+    
+    Note: PesaPal sends IPN as GET request with query parameters.
+    """
+    permission_classes = [AllowAny]  # Webhooks come from external service
+    
+    @swagger_auto_schema(
+        operation_description="""
+        Handle PesaPal IPN (Instant Payment Notification) callback.
+        
+        PesaPal sends notifications as GET requests with query parameters:
+        - OrderTrackingId: The order tracking ID
+        - OrderMerchantReference: The merchant reference
+        
+        Security:
+        - PesaPal doesn't use signature verification
+        - Verification is done by calling GetTransactionStatus API
+        - Idempotent processing (safe to retry)
+        
+        Tracking:
+        - Records all IPN notifications
+        - Maintains audit trail
+        """,
+        manual_parameters=[
+            openapi.Parameter(
+                'OrderTrackingId',
+                openapi.IN_QUERY,
+                description='PesaPal order tracking ID',
+                type=openapi.TYPE_STRING,
+                required=True
+            ),
+            openapi.Parameter(
+                'OrderMerchantReference',
+                openapi.IN_QUERY,
+                description='Merchant reference (transaction reference)',
+                type=openapi.TYPE_STRING,
+                required=True
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="IPN processed successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'message': openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            400: "Bad Request - Missing parameters",
+            404: "Not Found - Payment not found",
+            500: "Internal Server Error"
+        },
+        tags=['Payments - Webhooks']
+    )
+    def get(self, request):
+        """
+        Process PesaPal IPN callback.
+        
+        Steps:
+        1. Extract OrderTrackingId from query parameters
+        2. Process webhook using HybridPaymentService
+        3. Return appropriate HTTP status
+        """
+        # Extract parameters from query string
+        order_tracking_id = request.GET.get('OrderTrackingId')
+        merchant_reference = request.GET.get('OrderMerchantReference')
+        
+        if not order_tracking_id:
+            logger.warning(
+                "PesaPal IPN received without OrderTrackingId",
+                extra={"ip": self._get_client_ip(request)}
+            )
+            return Response({
+                'error': 'Missing OrderTrackingId parameter'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Log IPN receipt
+        logger.info(
+            "PesaPal IPN received",
+            extra={
+                "ip": self._get_client_ip(request),
+                "order_tracking_id": order_tracking_id,
+                "merchant_reference": merchant_reference
+            }
+        )
+        
+        # Build payload for webhook processing
+        payload = {
+            'OrderTrackingId': order_tracking_id,
+            'OrderMerchantReference': merchant_reference
+        }
+        
+        # Process webhook (no signature for PesaPal)
+        payment_service = HybridPaymentService()
+        success, message, http_status = payment_service.process_webhook_secure(
+            provider='pesapal',
+            payload=payload,
+            signature=''  # PesaPal doesn't use signatures
+        )
+        
+        # Return response
+        if success:
+            return Response({'message': message}, status=http_status)
+        else:
+            return Response({'error': message}, status=http_status)
+    
+    def _get_client_ip(self, request):
+        """Extract client IP address from request."""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
