@@ -343,13 +343,19 @@ SERVE_MEDIA=True
 PAYMENT_ENVIRONMENT = env('PAYMENT_ENVIRONMENT', default='sandbox')
 
 # MTN MoMo API Configuration
+MTN_BASE_URL = env('MTN_BASE_URL', default='https://sandbox.momodeveloper.mtn.com')
 MTN_API_USER = env('MTN_API_USER', default='')
 MTN_API_KEY = env('MTN_API_KEY', default='')
 MTN_SUBSCRIPTION_KEY = env('MTN_SUBSCRIPTION_KEY', default='')
+MTN_TARGET_ENVIRONMENT = env('MTN_TARGET_ENVIRONMENT', default='sandbox')
 
 # Airtel Money API Configuration
+AIRTEL_BASE_URL = env('AIRTEL_BASE_URL', default='https://openapiuat.airtel.ug')
 AIRTEL_CLIENT_ID = env('AIRTEL_CLIENT_ID', default='')
 AIRTEL_CLIENT_SECRET = env('AIRTEL_CLIENT_SECRET', default='')
+AIRTEL_COUNTRY = env('AIRTEL_COUNTRY', default='UG')
+AIRTEL_CURRENCY = env('AIRTEL_CURRENCY', default='UGX')
+
 
 # Phone number encryption key (generate with: Fernet.generate_key())
 PHONE_ENCRYPTION_KEY = env('PHONE_ENCRYPTION_KEY', default='')
