@@ -6,8 +6,11 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from authentication.permissions import IsAdmin
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from django.core.mail import send_mail
+from django.conf import settings
+from django.utils import timezone
 from .models import ContactMessage
-from .serializers import ContactMessageSerializer
+from .serializers import ContactMessageSerializer, ContactReplySerializer
 
 @swagger_auto_schema(
     method='get',
@@ -174,3 +177,91 @@ def list_contact_messages(request):
     messages = ContactMessage.objects.all().order_by('-created_at')
     serializer = ContactMessageSerializer(messages, many=True)
     return Response(serializer.data)
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_description="Reply to a contact message. The reply is sent via email to the inquirer.",
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['reply'],
+        properties={
+            'reply': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description='Reply message to send to the inquirer',
+                example='Thank you for reaching out. Here is the information you requested...'
+            ),
+        },
+    ),
+    responses={
+        200: openapi.Response(
+            description="Reply sent successfully",
+            examples={
+                "application/json": {
+                    "message": "Reply sent successfully to john@example.com",
+                    "data": {
+                        "id": 1,
+                        "reply": "Thank you for reaching out...",
+                        "replied_at": "2026-03-02T12:00:00Z"
+                    }
+                }
+            }
+        ),
+        400: "Validation error",
+        404: "Contact message not found",
+        500: "Failed to send email"
+    },
+    tags=['Contacts'],
+    security=[{'Bearer': []}]
+)
+@api_view(['POST'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAdmin])
+def reply_to_contact_message(request, message_id):
+    """
+    Reply to a contact message (admin only).
+    Sends the reply via email to the inquirer's email address.
+    """
+    try:
+        contact_msg = ContactMessage.objects.get(id=message_id)
+    except ContactMessage.DoesNotExist:
+        return Response(
+            {'error': 'Contact message not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    serializer = ContactReplySerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {'message': 'Validation error', 'errors': serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    reply_text = serializer.validated_data['reply']
+
+    # Send email to the inquirer
+    try:
+        send_mail(
+            subject=f"Re: {contact_msg.subject}",
+            message=reply_text,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[contact_msg.email],
+            fail_silently=False,
+        )
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to send email: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+    # Save the reply
+    contact_msg.reply = reply_text
+    contact_msg.replied_at = timezone.now()
+    contact_msg.replied_by = request.user
+    contact_msg.is_read = True
+    contact_msg.save()
+
+    return Response({
+        'message': f'Reply sent successfully to {contact_msg.email}',
+        'data': ContactMessageSerializer(contact_msg).data
+    })

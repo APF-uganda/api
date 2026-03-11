@@ -3,7 +3,22 @@ from django.contrib.auth import get_user_model
 from .models import Application
 from Documents.models import Document
 from notifications.services import create_notification
+from django.core.signing import TimestampSigner, SignatureExpired, BadSignature
+from django.core.cache import cache
+import random
+import uuid
+import logging
+from django.utils import timezone
+from datetime import timedelta
+from django.core.mail import EmailMultiAlternatives, get_connection
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.conf import settings
 
+logger = logging.getLogger(__name__)
+signer = TimestampSigner()
+
+from authentication.models import OTP 
 User = get_user_model()
 
 
@@ -36,7 +51,7 @@ def create_application_documents(application, uploaded_files, document_types=Non
             )
             
             # Log the actual saved file path for debugging
-            logger.info(f"✓ Document created: ID={document.id}, Original name={uploaded_file.name}, Saved as={document.file.name}")
+            logger.info(f"Document created: ID={document.id}, Original name={uploaded_file.name}, Saved as={document.file.name}")
             
             # Verify the file was actually saved to disk
             import os
@@ -79,7 +94,7 @@ def approve_application(application_id):
         
         # Send welcome announcement
         try:
-            from AdminNotifications.services import send_welcome_announcement
+            from notifications.announcement_services import send_welcome_announcement
             send_welcome_announcement(app.user)
         except Exception as e:
             print(f"Error sending welcome announcement: {e}")
@@ -121,3 +136,76 @@ def retry_application(application_id):
     app.status = "pending"
     app.save()
     return app
+
+
+
+def send_registration_otp(email, username):
+    #Generate 6-digit code
+    otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+    
+   
+    signed_token = signer.sign(f"{email}:{otp_code}")
+
+    if getattr(settings, "LOG_AUTH_TOKENS", False):
+        logger.warning(
+            "[AUTH TOKEN LOG] Registration OTP for %s | code=%s | signed_token=%s",
+            email,
+            otp_code,
+            signed_token,
+        )
+    
+    
+    try:
+        context = {'user_name': username, 'verification_code': otp_code}
+        html_content = render_to_string('registration/email_otp.html', context)
+
+        smtp_connection = get_connection(
+            backend='django.core.mail.backends.smtp.EmailBackend',
+            host=getattr(settings, 'EMAIL_HOST', 'smtp.gmail.com'),
+            port=getattr(settings, 'EMAIL_PORT', 587),
+            username=getattr(settings, 'EMAIL_HOST_USER', ''),
+            password=getattr(settings, 'EMAIL_HOST_PASSWORD', ''),
+            use_tls=getattr(settings, 'EMAIL_USE_TLS', True),
+            timeout=getattr(settings, 'EMAIL_TIMEOUT', 10),
+        )
+        
+        msg = EmailMultiAlternatives(
+            subject=f"{otp_code} is your verification code",
+            body=strip_tags(html_content),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[email],
+            connection=smtp_connection,
+        )
+        msg.attach_alternative(html_content, "text/html")
+        msg.send()
+        
+        # We return the token so the ViewSet can send it to React
+        return signed_token 
+    except Exception as e:
+        logger.error(f"Mail failed: {str(e)}")
+        logger.warning(
+            "[AUTH TOKEN FALLBACK] Registration OTP email failed for %s; use logged values | code=%s | signed_token=%s",
+            email,
+            otp_code,
+            signed_token,
+        )
+        # Fallback: return token so user can proceed using server logs when SMTP is unreachable.
+        return signed_token
+
+def verify_registration_otp(email, code, signed_token):
+    """
+    Checks the code against the signed token. No database call required!
+    """
+    try:
+        # Check if the token is valid and less than 15 minutes (900s) old
+        original_value = signer.unsign(signed_token, max_age=900)
+        
+        # Verify the email and code match the stamp
+        if original_value == f"{email}:{code}":
+            return True
+    except (SignatureExpired, BadSignature):
+        # Token was tampered with or expired
+        return False
+    return False
+
+    

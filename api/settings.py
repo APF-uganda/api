@@ -34,7 +34,7 @@ SECRET_KEY = env("SECRET_KEY", default="django-insecure-dev-key-change-in-produc
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool("DEBUG", default=False)
 
-SERVE_MEDIA = env.bool("SERVE_MEDIA", default=DEBUG)
+# SERVE_MEDIA = env.bool("SERVE_MEDIA", default=DEBUG)
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
@@ -58,12 +58,11 @@ INSTALLED_APPS = [
     "Documents",
     "applications.apps.ApplicationsConfig",
     "notifications",
-    "dashboard",
     "profiles",
     "reports",
-    "adminForum",
-    "AdminNotifications",
+    "community",
     "payments",
+    "events",
     "admin_management",
 ]
 
@@ -74,7 +73,6 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # Add WhiteNoise
-    "django.middleware.common.CommonMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -170,6 +168,9 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
+    {
+        "NAME": "authentication.validators.StrongPasswordValidator",
+    },
 ]
 
 
@@ -205,9 +206,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = 'authentication.User'
 
 # CORS Settings
+# Temporarily allow all origins for debugging
+CORS_ORIGIN_ALLOW_ALL = True
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=[
+        "http://localhost:3001",
         "http://localhost:3000",
         "http://localhost:5173",
         "http://127.0.0.1:3000",
@@ -270,14 +274,15 @@ SWAGGER_SETTINGS = {
         }
     },
     "USE_SESSION_AUTH": False,
+    "DEFAULT_AUTO_SCHEMA_CLASS": "api.swagger.CustomAutoSchema",
 }
 
 # JWT Settings
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),  # Default, can be extended to 30 days with remember_me
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=7),  # 1 week access token
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # 30 days refresh token
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
@@ -332,7 +337,9 @@ EMAIL_PORT = env.int('EMAIL_PORT', default=587)
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='APF Portal <noreply@apfportal.com>')
+EMAIL_TIMEOUT = env.int('EMAIL_TIMEOUT', default=10)
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default=f'APF Portal <{EMAIL_HOST_USER}>')
+LOG_AUTH_TOKENS = env.bool('LOG_AUTH_TOKENS', default=False)
 
 SERVE_MEDIA=True
 
@@ -340,13 +347,19 @@ SERVE_MEDIA=True
 PAYMENT_ENVIRONMENT = env('PAYMENT_ENVIRONMENT', default='sandbox')
 
 # MTN MoMo API Configuration
+MTN_BASE_URL = env('MTN_BASE_URL', default='https://sandbox.momodeveloper.mtn.com')
 MTN_API_USER = env('MTN_API_USER', default='')
 MTN_API_KEY = env('MTN_API_KEY', default='')
 MTN_SUBSCRIPTION_KEY = env('MTN_SUBSCRIPTION_KEY', default='')
+MTN_TARGET_ENVIRONMENT = env('MTN_TARGET_ENVIRONMENT', default='sandbox')
 
 # Airtel Money API Configuration
+AIRTEL_BASE_URL = env('AIRTEL_BASE_URL', default='https://openapiuat.airtel.ug')
 AIRTEL_CLIENT_ID = env('AIRTEL_CLIENT_ID', default='')
 AIRTEL_CLIENT_SECRET = env('AIRTEL_CLIENT_SECRET', default='')
+AIRTEL_COUNTRY = env('AIRTEL_COUNTRY', default='UG')
+AIRTEL_CURRENCY = env('AIRTEL_CURRENCY', default='UGX')
+
 
 # Phone number encryption key (generate with: Fernet.generate_key())
 PHONE_ENCRYPTION_KEY = env('PHONE_ENCRYPTION_KEY', default='')

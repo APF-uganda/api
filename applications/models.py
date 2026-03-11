@@ -62,6 +62,7 @@ class Application(models.Model):
         choices=[
             ('idle', 'Idle'),
             ('pending', 'Pending'),
+            ('completed', 'Completed'),
             ('success', 'Success'),
             ('failed', 'Failed')
         ],

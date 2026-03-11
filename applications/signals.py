@@ -3,14 +3,29 @@
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, date
 from applications.models import Application
 from authentication.services import UserCreationService
 from authentication.email_service_smtp import EmailService
-from AdminNotifications.services import send_welcome_announcement
+from notifications.announcement_services import send_welcome_announcement
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def get_annual_renewal_date(base_date=None):
+    """
+    Calculate annual renewal date (+1 year from base date).
+    """
+    if base_date is None:
+        base_date = timezone.now().date()
+    elif hasattr(base_date, 'date'):
+        base_date = base_date.date()
+
+    try:
+        return base_date.replace(year=base_date.year + 1)
+    except ValueError:
+        return base_date.replace(month=2, day=28, year=base_date.year + 1)
 
 
 @receiver(post_save, sender=Application)
@@ -37,8 +52,10 @@ def create_user_on_approval(sender, instance, created, **kwargs):
         if user:
             logger.info(f"Successfully created user {user.id} for approved application {instance.id}")
             
-            # Set subscription due date to 1 year from now for newly approved members
-            user.subscription_due_date = (timezone.now() + timedelta(days=365)).date()
+            # Set subscription due date to one year from approval
+            user.subscription_due_date = get_annual_renewal_date(
+                instance.updated_at or timezone.now()
+            )
             user.save(update_fields=['subscription_due_date'])
             logger.info(f"Set subscription due date for user {user.email} to {user.subscription_due_date}")
             
@@ -89,8 +106,10 @@ def send_welcome_notification_on_status_change(sender, instance, **kwargs):
             
             # If user already exists, send approval email, welcome notification and set subscription date
             if instance.user:
-                # Set subscription due date to 1 year from now
-                instance.user.subscription_due_date = (timezone.now() + timedelta(days=365)).date()
+                # Set subscription due date to one year from approval
+                instance.user.subscription_due_date = get_annual_renewal_date(
+                    instance.updated_at or timezone.now()
+                )
                 instance.user.save(update_fields=['subscription_due_date'])
                 logger.info(f"Set subscription due date for user {instance.user.email} to {instance.user.subscription_due_date}")
                 

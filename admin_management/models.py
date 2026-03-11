@@ -1,8 +1,11 @@
 from django.db import models
-from django.conf import settings
+from django.contrib.auth import get_user_model
 from authentication.models import User
 from Documents.models import MemberDocument
 from django.utils import timezone
+
+# Use get_user_model for consistency
+AuthUser = get_user_model()
 
 
 class MembershipStatus(models.TextChoices):
@@ -22,7 +25,7 @@ class SuspendedMember(models.Model):
     Tracks suspended members with reasons and timestamps
     """
     user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
+        AuthUser,
         on_delete=models.CASCADE,
         related_name='suspension_record'
     )
@@ -70,7 +73,7 @@ class ProcessedDocument(models.Model):
         help_text="When the document was approved (if applicable)"
     )
     approved_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        AuthUser,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

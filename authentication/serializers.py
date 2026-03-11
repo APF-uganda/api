@@ -13,6 +13,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     """
     full_name = serializers.SerializerMethodField()
     initials = serializers.SerializerMethodField()
+    profile_picture = serializers.SerializerMethodField()
     
     class Meta:
         model = User
@@ -39,6 +40,19 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if len(email_name) >= 2:
             return f"{email_name[0]}{email_name[1]}".upper()
         return email_name[0].upper() if email_name else "U"
+
+    def get_profile_picture(self, obj):
+        """Return profile picture URL when configured on the user model."""
+        picture = getattr(obj, 'profile_picture', None)
+        if not picture:
+            return None
+        try:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(picture.url)
+            return picture.url
+        except Exception:
+            return None
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
     """
@@ -67,6 +81,16 @@ class PasswordChangeSerializer(serializers.Serializer):
     current_password = serializers.CharField(required=True)
     new_password = serializers.CharField(required=True, min_length=8)
     confirm_password = serializers.CharField(required=True)
+    
+    def validate_new_password(self, value):
+        import re
+        if not re.search(r'[A-Za-z]', value):
+            raise serializers.ValidationError("Password must contain at least one letter.")
+        if not re.search(r'\d', value):
+            raise serializers.ValidationError("Password must contain at least one number.")
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\\/~`]', value):
+            raise serializers.ValidationError("Password must contain at least one special character.")
+        return value
     
     def validate(self, attrs):
         if attrs['new_password'] != attrs['confirm_password']:

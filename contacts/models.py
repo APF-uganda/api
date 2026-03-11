@@ -7,6 +7,12 @@ class ContactMessage(models.Model):
     message = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     is_read = models.BooleanField(default=False)
+    reply = models.TextField(blank=True, default='')
+    replied_at = models.DateTimeField(null=True, blank=True)
+    replied_by = models.ForeignKey(
+        'authentication.User', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='contact_replies'
+    )
     
     class Meta:
         ordering = ['-created_at']

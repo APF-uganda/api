@@ -67,6 +67,17 @@ class Payment(models.Model):
     currency = models.CharField(max_length=3, default='UGX')
     provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES)
     
+    # Payment method details (from Application model)
+    payment_method = models.CharField(max_length=20, help_text="Payment method used")
+    
+    # Credit card fields (for security - last 4 digits only)
+    card_last_four = models.CharField(max_length=4, blank=True, help_text="Last 4 digits of card")
+    card_expiry = models.CharField(max_length=10, blank=True, help_text="Card expiry MM/YY")
+    cardholder_name = models.CharField(max_length=100, blank=True, help_text="Name on card")
+    
+    # Application payment phone (mobile money)
+    payment_phone = models.CharField(max_length=20, blank=True, help_text="Phone number used for payment")
+    
     # Status tracking
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     
@@ -172,3 +183,7 @@ class PaymentConfig(models.Model):
             return Decimal('50000.00')  # Default fallback
         except (ValueError, TypeError):
             return Decimal('50000.00')  # Default fallback
+
+
+# Import webhook models so Django migration framework discovers them
+from payments.models_webhook import WebhookNotification, PaymentStatusCheck  

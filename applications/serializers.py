@@ -2,8 +2,12 @@ import re
 from datetime import date, timedelta
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
+from django.contrib.auth import get_user_model
+from django.db import DatabaseError, ProgrammingError
 from .models import Application
 from Documents.models import Document
+
+User = get_user_model()
 
 MTN_PREFIXES = (
     '25677', '25678', '25676', '25679' # MTN Uganda
@@ -72,7 +76,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
     Serializer for Application model.
     Includes comprehensive field validation for all application data.
     """
-    documents = DocumentSerializer(many=True, read_only=True)
+    documents = serializers.SerializerMethodField()
     name = serializers.SerializerMethodField()
     icpaCertNo = serializers.SerializerMethodField()
     
@@ -99,6 +103,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
         Validate email format.
         Requirements: 2.2, 10.4
         """
+        value = (value or '').strip()
         if not value:
             raise serializers.ValidationError("Email is required.")
         
@@ -110,6 +115,11 @@ class ApplicationSerializer(serializers.ModelSerializer):
         # Enforce uniqueness only for non-rejected applications
         if Application.objects.filter(email__iexact=value).exclude(status='rejected').exists():
             raise serializers.ValidationError("Membership Application with this email already exists.")
+
+        # Also block emails that already belong to an active user account.
+        # check-availability already enforces this, but create() must enforce server-side too.
+        if User.objects.filter(email__iexact=value, is_active=True).exists():
+            raise serializers.ValidationError("An active account with this email already exists.")
 
         return value
     
@@ -127,24 +137,6 @@ class ApplicationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Phone number must be in format 256XXXXXXXXX.")
         
         return value
-    
-    def validate_national_id_number(self, value):
-        """
-        Validate national ID number format.
-        Must start with CF or CM and be exactly 13 characters total (alphanumeric).
-        Requirements: 10.4
-        """
-        if not value:
-            raise serializers.ValidationError("National ID number is required.")
-        
-        # National ID pattern: CF or CM followed by 11 alphanumeric characters (13 characters total)
-        national_id_pattern = r'^(CF|CM)[A-Z0-9]{11}$'
-        if not re.match(national_id_pattern, value.upper()):
-            raise serializers.ValidationError(
-                "National ID must start with CF or CM and be exactly 13 characters (letters and numbers, e.g., CF12345ABC67 or CM1234567890A)."
-            )
-        
-        return value.upper()  # Normalize to uppercase
 
     def validate_username(self, value):
         if not value:
@@ -160,12 +152,21 @@ class ApplicationSerializer(serializers.ModelSerializer):
         Cross-field validation for payment data based on payment method.
         Requirements: 10.4
         """
+        # Frontend commonly uses "completed"; persist canonical value used by existing logic.
+        if data.get('payment_status') == 'completed':
+            data['payment_status'] = 'success'
+
         payment_method = data.get('payment_method')
         
         if not payment_method:
             raise serializers.ValidationError({
                 'payment_method': 'Payment method is required.'
             })
+
+        # Backward-compatible alias used by some clients
+        if payment_method == 'card':
+            payment_method = 'credit_card'
+            data['payment_method'] = payment_method
         
         # Validate MTN Mobile Money payment
         if payment_method == 'mtn':
@@ -316,3 +317,14 @@ class ApplicationSerializer(serializers.ModelSerializer):
     def get_icpaCertNo(self, obj):
         """Return ICPAU certificate number as icpaCertNo for frontend compatibility"""
         return obj.icpau_certificate_number or ""
+
+    def get_documents(self, obj):
+        """
+        Fail-safe for environments where documents table is temporarily missing
+        or mid-migration.
+        """
+        try:
+            qs = obj.documents.all()
+            return DocumentSerializer(qs, many=True, context=self.context).data
+        except (ProgrammingError, DatabaseError):
+            return []

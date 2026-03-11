@@ -13,6 +13,7 @@ from payments.models import Payment, PaymentConfig
 from payments.services.mtn_service import MTNService
 from payments.services.airtel_service import AirtelService
 from payments.services.pesapal_service import PesaPalService
+from payments.services.payment_gateway import PaymentGateway
 from payments.utils import PhoneNumberEncryption, validate_phone_number
 from payments.logging_utils import (
     set_correlation_id,
@@ -38,18 +39,23 @@ class PaymentService(PerformanceLoggingMixin):
         self.mtn_service = MTNService()
         self.airtel_service = AirtelService()
         self.pesapal_service = PesaPalService()
+        """Initialize payment service with payment gateway."""
+        self.gateway = PaymentGateway()
         self.phone_encryptor = PhoneNumberEncryption()
+
     
     def _get_provider_service(self, provider: str):
         """
-        Get the appropriate provider service instance.
-        
+        Get the appropriate provider service instance via gateway.
+    
         Args:
             provider: Provider name ('mtn', 'airtel', or 'pesapal')
         
+            provider: Provider name ('mtn' or 'airtel')
+    
         Returns:
             Provider service instance
-        
+    
         Raises:
             ValueError: If provider is not supported
         """
@@ -61,6 +67,8 @@ class PaymentService(PerformanceLoggingMixin):
             return self.pesapal_service
         else:
             raise ValueError(f"Unsupported provider: {provider}")
+        return self.gateway._get_service(provider)
+
     
     def _get_currency(self, provider: str) -> str:
         """
@@ -236,8 +244,6 @@ class PaymentService(PerformanceLoggingMixin):
             
             # Step 6: Call provider service to initiate payment
             try:
-                provider_service = self._get_provider_service(provider)
-                
                 # Get appropriate currency for provider and environment
                 currency = self._get_currency(provider)
                 
@@ -313,6 +319,17 @@ class PaymentService(PerformanceLoggingMixin):
                     )
                     return False, payment, error_msg
                     
+    
+                # Use payment gateway for unified interface
+                result = self.gateway.request_payment(
+                    provider=provider,
+                    phone_number=phone_number,
+                    amount=amount,
+                    currency=currency,
+                    reference=transaction_reference,
+                    payer_message="APF Membership Fee"
+                )
+        
             except ValueError as e:
                 # Provider not supported
                 payment.mark_failed(str(e))
@@ -342,6 +359,35 @@ class PaymentService(PerformanceLoggingMixin):
                     exc_info=True
                 )
                 return False, payment, "Payment service temporarily unavailable. Please try again."
+
+            # Step 7: Process provider response and return normalized result
+            provider_success = bool(result.get('success'))
+            provider_status = (result.get('status') or '').lower()
+            provider_message = result.get(
+                'message',
+                'Payment initiated successfully. Please confirm on your phone.'
+            )
+            provider_tx_id = result.get('provider_transaction_id')
+            response_data = result.get('raw_response')
+
+            # Failed response from provider
+            if not provider_success or provider_status == 'failed':
+                payment.mark_failed(provider_message, response_data)
+                return False, payment, provider_message
+
+            # Immediate completion from provider (rare, but supported)
+            if provider_status == 'completed':
+                payment.mark_completed(provider_tx_id, response_data)
+                return True, payment, provider_message
+
+            # Default: pending/processing - wait for webhook or polling updates
+            payment.status = Payment.STATUS_PROCESSING
+            payment.provider_transaction_id = provider_tx_id
+            if response_data:
+                payment.provider_response = response_data
+            payment.save()
+
+            return True, payment, provider_message
         
         except Exception as e:
             # Unexpected error before payment record creation
@@ -392,6 +438,11 @@ class PaymentService(PerformanceLoggingMixin):
             else:
                 # Use transaction_reference for MTN and Airtel
                 result = provider_service.check_payment_status(payment.transaction_reference)
+            # Step 1 & 2: Use payment gateway to check status
+            result = self.gateway.check_payment_status(
+                provider=payment.provider,
+                transaction_reference=payment.transaction_reference
+            )
             
             if not result.get('success'):
                 # Status check failed (network error, etc.)
@@ -563,14 +614,11 @@ class PaymentService(PerformanceLoggingMixin):
         Requirements: 3.6, 3.7, 8.3, 8.4, 8.8
         """
         try:
-            # Step 1: Get provider service and verify signature
-            provider_service = self._get_provider_service(provider)
-            
-            # Convert payload to string for signature verification
+            # Step 1: Verify webhook signature using gateway
             import json
             payload_str = json.dumps(payload, sort_keys=True)
-            
-            if not provider_service.verify_webhook_signature(payload_str, signature):
+
+            if not self.gateway.verify_webhook_signature(provider, payload_str, signature):
                 logger.warning(
                     f"Webhook signature verification failed",
                     extra={

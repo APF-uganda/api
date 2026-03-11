@@ -1,0 +1,98 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Deploy backend to DigitalOcean
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEP_HOST }}
+          username: ${{ secrets.DEP_USER }}
+          key: ${{ secrets.DEP_SSH_KEY }}
+          passphrase: ${{ secrets.DEP_SSH_PASSPHRASE }}
+          port: ${{ secrets.DEP_PORT || 22 }}
+          command_timeout: 30m
+          script_stop: true
+          script: |
+            set -euo pipefail
+            dc() { docker compose -f /var/www/apf/docker-compose.yaml "$@"; }
+            START_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+            dump_logs() {
+              status="${1:-1}"
+              echo "Deployment failed with exit code ${status}"
+              echo "=== docker compose ps ==="
+              dc ps || true
+              echo "=== backend logs (last 200 lines) ==="
+              dc logs --no-color --since "${START_TS}" --tail=200 backend || true
+              echo "=== postgres logs (last 120 lines) ==="
+              dc logs --no-color --since "${START_TS}" --tail=120 postgres || true
+            }
+            on_exit() {
+              status=$?
+              if [ "$status" -ne 0 ]; then
+                dump_logs "$status"
+              fi
+              exit "$status"
+            }
+            trap on_exit EXIT
+            BRANCH="${{ github.ref_name }}"
+            cd /var/www/apf/api
+            git fetch origin "$BRANCH"
+            git checkout "$BRANCH"
+            git pull origin "$BRANCH"
+            dc up -d postgres
+            dc build backend
+            dc run --rm backend python manage.py makemigrations --check --dry-run
+            echo "=== Migration plan (before) ==="
+            dc run --rm backend python manage.py showmigrations --plan
+            dc run --rm backend python manage.py migrate --noinput
+            echo "=== Verifying all migrations are applied ==="
+            dc run --rm backend python manage.py migrate --check
+            dc run --rm backend python manage.py check
+            dc up -d backend
+            sleep 5
+            docker inspect -f '{{.State.Running}}' apf_backend | grep -qx "true"
+            RAW_DEP_HOST="${{ secrets.DEP_HOST }}"
+            HEALTH_HOST="${RAW_DEP_HOST#http://}"
+            HEALTH_HOST="${HEALTH_HOST#https://}"
+            HEALTH_HOST="${HEALTH_HOST%%/*}"
+            HEALTH_HOST="${HEALTH_HOST%%:*}"
+            ALLOWED_HOST_FROM_ENV=""
+            if [ -f /var/www/apf/.env ]; then
+              ALLOWED_HOST_FROM_ENV="$(grep -m1 '^ALLOWED_HOSTS=' /var/www/apf/.env | cut -d'=' -f2- | cut -d',' -f1 | tr -d '\"' | xargs || true)"
+            fi
+            health_ok=0
+            for host_header in "${ALLOWED_HOST_FROM_ENV}" "${HEALTH_HOST}" localhost backend 127.0.0.1; do
+              [ -n "${host_header}" ] || continue
+              echo "Checking backend health with Host: ${host_header}"
+              http_code="$(curl -4 -sS -o /tmp/backend-health.txt -w '%{http_code}' \
+                --retry 20 --retry-delay 2 --retry-all-errors \
+                -H "Host: ${host_header}" \
+                http://127.0.0.1:8000/ || true)"
+              if [ "${http_code}" -ge 200 ] && [ "${http_code}" -lt 500 ]; then
+                health_ok=1
+                break
+              fi
+            done
+            if [ "$health_ok" -ne 1 ]; then
+              echo "Backend health check failed."
+              dc ps backend || true
+              dc logs --no-color --since "${START_TS}" --tail=200 backend || true
+              exit 1
+            fi
+            echo "Backend health check passed."
+            trap - EXIT
+            echo "Backend deploy completed successfully."

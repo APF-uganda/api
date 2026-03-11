@@ -7,16 +7,29 @@ from django.contrib.auth.hashers import check_password, make_password, identify_
 from django.utils import timezone
 from django.core.cache import cache
 from django.conf import settings
-from datetime import timedelta
+from datetime import timedelta, date
 import uuid
 import requests
 import logging
 from authentication.models import User, OTP, PasswordResetToken, AuthLog, AuthEventType, UserRole
-from profiles.models import UserProfile
 from Documents.models import Document
 from rest_framework_simplejwt.tokens import RefreshToken
 
 logger = logging.getLogger(__name__)
+
+
+def get_annual_renewal_date(base_date=None):
+    """Calculate annual renewal date (+1 year from base date)."""
+    if base_date is None:
+        base_date = timezone.now().date()
+    elif hasattr(base_date, "date"):
+        base_date = base_date.date()
+
+    try:
+        return base_date.replace(year=base_date.year + 1)
+    except ValueError:
+        # Handle leap day
+        return base_date.replace(month=2, day=28, year=base_date.year + 1)
 
 
 class AuthenticationService:
@@ -34,22 +47,29 @@ class AuthenticationService:
         Returns:
             User object if credentials are valid, None otherwise
         """
-        try:
-            user = User.objects.get(email=email)
-            logger.info(f"User found: {email}, is_active: {user.is_active}")
-            
-            password_valid = user.check_password(password)
-            logger.info(f"Password check result for {email}: {password_valid}")
-            
-            if user.is_active and password_valid:
-                logger.info(f"Authentication successful for {email}")
-                return user
-            else:
-                logger.warning(f"Authentication failed for {email} - active: {user.is_active}, password_valid: {password_valid}")
-        except User.DoesNotExist:
-            logger.warning(f"User not found: {email}")
+        normalized_email = (email or "").strip()
+        if not normalized_email or not password:
+            return None
+
+        user = User.objects.filter(email__iexact=normalized_email).first()
+        if not user:
+            logger.warning(f"User not found: {normalized_email}")
             # Return None to avoid revealing whether email exists
-            pass
+            return None
+
+        logger.info(f"User found: {normalized_email}, is_active: {user.is_active}")
+
+        password_valid = user.check_password(password)
+        logger.info(f"Password check result for {normalized_email}: {password_valid}")
+
+        if user.is_active and password_valid:
+            logger.info(f"Authentication successful for {normalized_email}")
+            return user
+
+        logger.warning(
+            f"Authentication failed for {normalized_email} - "
+            f"active: {user.is_active}, password_valid: {password_valid}"
+        )
         return None
     
     @staticmethod
@@ -173,13 +193,12 @@ class TokenService:
     """Service for handling JWT token generation and refresh"""
     
     @staticmethod
-    def generate_tokens(user, remember_me=False):
+    def generate_tokens(user):
         """
         Generate JWT access and refresh tokens for user
         
         Args:
             user: User object
-            remember_me: Boolean flag for extended refresh token lifetime
             
         Returns:
             Dictionary with access_token, refresh_token, and user info
@@ -190,11 +209,8 @@ class TokenService:
         refresh['email'] = user.email
         refresh['role'] = user.role
         
-        # Set refresh token expiration based on remember_me
-        if remember_me:
-            refresh.set_exp(lifetime=timedelta(days=30))
-        else:
-            refresh.set_exp(lifetime=timedelta(days=1))
+        # Fixed 1-day refresh token lifetime
+        refresh.set_exp(lifetime=timedelta(days=1))
         
         return {
             'access_token': str(refresh.access_token),
@@ -202,7 +218,10 @@ class TokenService:
             'user': {
                 'id': user.id,
                 'email': user.email,
-                'role': user.role
+                'role': user.role,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'full_name': user.full_name,
             }
         }
     
@@ -595,14 +614,26 @@ class UserCreationService:
         Returns:
             Tuple of (User object or None, error_message or None)
         """
-        from applications.models import Application
-        
         try:
+            application_email = (application.email or "").strip()
+            raw_or_hashed_password = application.password_hash
+            try:
+                identify_hasher(raw_or_hashed_password)
+                password_to_store = raw_or_hashed_password
+            except Exception:
+                password_to_store = make_password(raw_or_hashed_password)
+
             # Check if User already exists for the Application email
-            existing_user = User.objects.filter(email__iexact=application.email).first()
+            existing_user = User.objects.filter(email__iexact=application_email).first()
             if existing_user:
                 if not existing_user.is_active:
                     existing_user.is_active = True
+                    # Re-applications should honor the latest approved password.
+                    existing_user.password = password_to_store
+                    if not existing_user.subscription_due_date:
+                        existing_user.subscription_due_date = get_annual_renewal_date(
+                            application.updated_at or application.submitted_at
+                        )
                     existing_user.first_name = application.first_name or existing_user.first_name
                     existing_user.last_name = application.last_name or existing_user.last_name
                     existing_user.phone_number = application.phone_number or existing_user.phone_number
@@ -612,6 +643,8 @@ class UserCreationService:
                     )
                     existing_user.save(update_fields=[
                         'is_active',
+                        'password',
+                        'subscription_due_date',
                         'first_name',
                         'last_name',
                         'phone_number',
@@ -623,44 +656,45 @@ class UserCreationService:
                     application.user = existing_user
                     application.save(update_fields=['user'])
 
-                    # Create or update profile with application details
-                    profile, _ = UserProfile.objects.get_or_create(user=existing_user)
-                    profile.first_name = application.first_name or profile.first_name
-                    profile.last_name = application.last_name or profile.last_name
-                    profile.phone_number = application.phone_number or profile.phone_number
-                    profile.address_line_1 = application.address or profile.address_line_1
-                    profile.icpau_registration_number = (
-                        application.icpau_certificate_number or profile.icpau_registration_number
+                    # Update user profile with application details
+                    existing_user.first_name = application.first_name or existing_user.first_name
+                    existing_user.last_name = application.last_name or existing_user.last_name
+                    existing_user.phone_number = application.phone_number or existing_user.phone_number
+                    existing_user.address_line_1 = application.address or existing_user.address_line_1
+                    existing_user.icpau_registration_number = (
+                        application.icpau_certificate_number or existing_user.icpau_registration_number
                     )
+                    
                     passport_doc = Document.objects.filter(
                         application=application,
                         document_type='passport_photo'
                     ).first()
-                    if passport_doc and not profile.profile_picture:
-                        profile.profile_picture = passport_doc.file
-                    profile.save()
+                    if (
+                        passport_doc
+                        and hasattr(existing_user, "profile_picture")
+                        and not existing_user.profile_picture
+                    ):
+                        existing_user.profile_picture = passport_doc.file
+                    
+                    existing_user.save()
 
                     logger.info(
-                        f"Reactivated user {existing_user.id} from application {application.id} for {application.email}"
+                        f"Reactivated user {existing_user.id} from application {application.id} for {application_email}"
                     )
                     return existing_user, None
 
-                logger.warning(f"User already exists for email {application.email}")
+                logger.warning(f"User already exists for email {application_email}")
                 return None, "User already exists for this email"
-            
-            raw_or_hashed_password = application.password_hash
-            try:
-                identify_hasher(raw_or_hashed_password)
-                password_to_store = raw_or_hashed_password
-            except Exception:
-                password_to_store = make_password(raw_or_hashed_password)
 
             # Create User with email and password_hash from Application
             user = User.objects.create(
-                email=application.email,
+                email=application_email,
                 password=password_to_store,
                 role=UserRole.MEMBER,  # Set role to 2 (member) by default
                 is_active=True,
+                subscription_due_date=get_annual_renewal_date(
+                    application.updated_at or application.submitted_at
+                ),
                 first_name=application.first_name or '',
                 last_name=application.last_name or '',
                 phone_number=application.phone_number or '',
@@ -668,13 +702,13 @@ class UserCreationService:
                 icpau_registration_number=application.icpau_certificate_number or ''
             )
 
-            # Create or update profile with application details
-            profile, _ = UserProfile.objects.get_or_create(user=user)
-            profile.first_name = application.first_name or ''
-            profile.last_name = application.last_name or ''
-            profile.phone_number = application.phone_number or ''
-            profile.address_line_1 = application.address or ''
-            profile.icpau_registration_number = application.icpau_certificate_number or ''
+            # Update user profile with application details
+            user.first_name = application.first_name or ''
+            user.last_name = application.last_name or ''
+            user.phone_number = application.phone_number or ''
+            user.address_line_1 = application.address or ''
+            user.icpau_registration_number = application.icpau_certificate_number or ''
+            
             passport_doc = Document.objects.filter(
                 application=application,
                 document_type='passport_photo'
@@ -684,16 +718,20 @@ class UserCreationService:
                     application=application,
                     file_name__icontains='passport'
                 ).first()
-            if passport_doc and not profile.profile_picture:
+            if (
+                passport_doc
+                and hasattr(user, "profile_picture")
+                and not user.profile_picture
+            ):
                 if passport_doc.file and passport_doc.file.storage.exists(passport_doc.file.name):
-                    profile.profile_picture = passport_doc.file
-            profile.save()
+                    user.profile_picture = passport_doc.file
+            user.save()
             
             # Link User to Application via foreign key
             application.user = user
             application.save()
             
-            logger.info(f"Created user {user.id} from application {application.id} for {application.email}")
+            logger.info(f"Created user {user.id} from application {application.id} for {application_email}")
             
             return user, None
             

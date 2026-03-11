@@ -3,11 +3,26 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, date
 from payments.models import Payment
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def get_annual_renewal_date(base_date=None):
+    """
+    Calculate annual renewal date (+1 year from base date).
+    """
+    if base_date is None:
+        base_date = timezone.now().date()
+    elif hasattr(base_date, 'date'):
+        base_date = base_date.date()
+
+    try:
+        return base_date.replace(year=base_date.year + 1)
+    except ValueError:
+        return base_date.replace(month=2, day=28, year=base_date.year + 1)
 
 
 @receiver(post_save, sender=Payment)
@@ -29,8 +44,8 @@ def update_subscription_on_payment_completion(sender, instance, created, **kwarg
         try:
             user = instance.user
             
-            # Set subscription due date to 1 year from now
-            new_due_date = (timezone.now() + timedelta(days=365)).date()
+            # Set subscription due date to one year from payment completion
+            new_due_date = get_annual_renewal_date(instance.completed_at or timezone.now())
             user.subscription_due_date = new_due_date
             user.save(update_fields=['subscription_due_date'])
             
