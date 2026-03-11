@@ -85,9 +85,11 @@ class PaymentInitiationView(APIView):
         provider = validated_data['provider']
         application_id = validated_data.get('application_id')
         
-        # Step 2: Get membership fee from configuration
+        # Step 2: Get amount from request or use membership fee from configuration
         payment_service = PaymentService()
-        amount = payment_service.get_membership_fee()
+        amount = validated_data.get('amount')
+        if not amount:
+            amount = payment_service.get_membership_fee()
         
         # Get client info for audit
         ip_address = self._get_client_ip(request)
@@ -149,14 +151,22 @@ class PaymentInitiationView(APIView):
         
         # Step 4: Return payment ID and transaction reference
         if success:
-            return Response({
+            response_data = {
                 'success': True,
                 'payment_id': str(payment.id),
                 'transaction_reference': payment.transaction_reference,
                 'message': message,
                 'amount': str(payment.amount),
                 'currency': payment.currency
-            }, status=status.HTTP_200_OK)
+            }
+            
+            # For PesaPal, include redirect_url if available
+            if provider == 'pesapal' and payment.provider_response:
+                redirect_url = payment.provider_response.get('redirect_url')
+                if redirect_url:
+                    response_data['redirect_url'] = redirect_url
+            
+            return Response(response_data, status=status.HTTP_200_OK)
         else:
             return Response({
                 'success': False,
@@ -237,10 +247,16 @@ class PaymentStatusView(APIView):
                     }
                 }, status=status.HTTP_403_FORBIDDEN)
         
-        # Step 3: Call HybridPaymentService.check_payment_status_hybrid()
-        from .services.hybrid_payment_service import HybridPaymentService
-        payment_service = HybridPaymentService()
-        current_status, message = payment_service.check_payment_status_hybrid(payment)
+        # Step 3: Check payment status
+        # For PesaPal, use PaymentService directly
+        # For MTN/Airtel, use HybridPaymentService
+        if payment.provider == 'pesapal':
+            payment_service = PaymentService()
+            current_status, message = payment_service.check_payment_status(payment)
+        else:
+            from .services.hybrid_payment_service import HybridPaymentService
+            payment_service = HybridPaymentService()
+            current_status, message = payment_service.check_payment_status_hybrid(payment)
         
         # Step 4: Return current status and message
         return Response({

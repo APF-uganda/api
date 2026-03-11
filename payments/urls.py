@@ -14,6 +14,11 @@ from .views import (
     AdminTransactionHistoryView,
     AdminRevenueStatsView
 )
+from .views_webhook import (
+    EnhancedMTNWebhookView,
+    EnhancedAirtelWebhookView,
+    PesaPalWebhookView
+)
 
 app_name = 'payments'
 
@@ -30,6 +35,11 @@ urlpatterns = [
     # Webhooks
     path('webhooks/mtn/', MTNWebhookView.as_view(), name='webhook-mtn'),
     path('webhooks/airtel/', AirtelWebhookView.as_view(), name='webhook-airtel'),
+    path('webhooks/pesapal/', PesaPalWebhookView.as_view(), name='webhook-pesapal'),
+    
+    # Enhanced webhooks (v2)
+    path('webhooks/v2/mtn/', EnhancedMTNWebhookView.as_view(), name='webhook-mtn-v2'),
+    path('webhooks/v2/airtel/', EnhancedAirtelWebhookView.as_view(), name='webhook-airtel-v2'),
     
     # Configuration
     path('membership-fee/', MembershipFeeView.as_view(), name='membership-fee'),
