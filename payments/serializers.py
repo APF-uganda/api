@@ -14,8 +14,15 @@ class PaymentInitiationSerializer(serializers.Serializer):
         help_text="Phone number in format 256XXXXXXXXX"
     )
     provider = serializers.ChoiceField(
-        choices=['mtn', 'airtel'],
-        help_text="Payment provider (mtn or airtel)"
+        choices=['mtn', 'airtel', 'pesapal'],
+        help_text="Payment provider (mtn, airtel, or pesapal)"
+    )
+    amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        help_text="Payment amount (optional, defaults to membership fee)"
     )
     application_id = serializers.IntegerField(
         required=False,
