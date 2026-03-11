@@ -2,9 +2,12 @@ import re
 from datetime import date, timedelta
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
+from django.contrib.auth import get_user_model
 from django.db import DatabaseError, ProgrammingError
 from .models import Application
 from Documents.models import Document
+
+User = get_user_model()
 
 MTN_PREFIXES = (
     '25677', '25678', '25676', '25679' # MTN Uganda
@@ -100,6 +103,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
         Validate email format.
         Requirements: 2.2, 10.4
         """
+        value = (value or '').strip()
         if not value:
             raise serializers.ValidationError("Email is required.")
         
@@ -111,6 +115,11 @@ class ApplicationSerializer(serializers.ModelSerializer):
         # Enforce uniqueness only for non-rejected applications
         if Application.objects.filter(email__iexact=value).exclude(status='rejected').exists():
             raise serializers.ValidationError("Membership Application with this email already exists.")
+
+        # Also block emails that already belong to an active user account.
+        # check-availability already enforces this, but create() must enforce server-side too.
+        if User.objects.filter(email__iexact=value, is_active=True).exists():
+            raise serializers.ValidationError("An active account with this email already exists.")
 
         return value
     

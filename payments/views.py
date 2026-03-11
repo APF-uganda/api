@@ -97,15 +97,55 @@ class PaymentInitiationView(APIView):
         user = request.user if hasattr(request, 'user') and request.user and request.user.is_authenticated else None
         
         # Step 3: Call PaymentService.initiate_payment()
-        success, payment, message = payment_service.initiate_payment(
-            user=user,
-            phone_number=phone_number,
-            amount=amount,
-            provider=provider,
-            application_id=application_id,
-            ip_address=ip_address,
-            user_agent=user_agent
-        )
+        try:
+            result = payment_service.initiate_payment(
+                user=user,
+                phone_number=phone_number,
+                amount=amount,
+                provider=provider,
+                application_id=application_id,
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+        except Exception as e:
+            logger.error(
+                "Unhandled exception during payment initiation",
+                extra={
+                    'provider': provider,
+                    'phone_number': phone_number,
+                    'application_id': application_id,
+                    'error': str(e)
+                },
+                exc_info=True
+            )
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INTERNAL_ERROR',
+                    'message': 'Payment service temporarily unavailable. Please try again.'
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        if not isinstance(result, tuple) or len(result) != 3:
+            logger.error(
+                "Invalid response shape from PaymentService.initiate_payment",
+                extra={
+                    'provider': provider,
+                    'phone_number': phone_number,
+                    'application_id': application_id,
+                    'result_type': str(type(result)),
+                    'result_value': str(result)
+                }
+            )
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INTERNAL_ERROR',
+                    'message': 'Payment service response was invalid. Please try again.'
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        success, payment, message = result
         
         # Step 4: Return payment ID and transaction reference
         if success:

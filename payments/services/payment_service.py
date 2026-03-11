@@ -244,6 +244,35 @@ class PaymentService(PerformanceLoggingMixin):
                     exc_info=True
                 )
                 return False, payment, "Payment service temporarily unavailable. Please try again."
+
+            # Step 7: Process provider response and return normalized result
+            provider_success = bool(result.get('success'))
+            provider_status = (result.get('status') or '').lower()
+            provider_message = result.get(
+                'message',
+                'Payment initiated successfully. Please confirm on your phone.'
+            )
+            provider_tx_id = result.get('provider_transaction_id')
+            response_data = result.get('raw_response')
+
+            # Failed response from provider
+            if not provider_success or provider_status == 'failed':
+                payment.mark_failed(provider_message, response_data)
+                return False, payment, provider_message
+
+            # Immediate completion from provider (rare, but supported)
+            if provider_status == 'completed':
+                payment.mark_completed(provider_tx_id, response_data)
+                return True, payment, provider_message
+
+            # Default: pending/processing - wait for webhook or polling updates
+            payment.status = Payment.STATUS_PROCESSING
+            payment.provider_transaction_id = provider_tx_id
+            if response_data:
+                payment.provider_response = response_data
+            payment.save()
+
+            return True, payment, provider_message
         
         except Exception as e:
             # Unexpected error before payment record creation
