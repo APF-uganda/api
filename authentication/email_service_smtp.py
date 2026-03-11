@@ -35,6 +35,7 @@ class EmailService:
             'use_tls': getattr(settings, 'EMAIL_USE_TLS', True),
             'username': getattr(settings, 'EMAIL_HOST_USER', ''),
             'password': getattr(settings, 'EMAIL_HOST_PASSWORD', ''),
+            'timeout': getattr(settings, 'EMAIL_TIMEOUT', 10),
             'from_email': getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@apfportal.com'),
         }
 
@@ -43,6 +44,11 @@ class EmailService:
         """Return True when real SMTP credentials are available"""
         config = EmailService._get_email_config()
         return bool(config['username'] and config['password'])
+
+    @staticmethod
+    def _should_log_auth_tokens():
+        """Explicit opt-in to mirror OTPs in server logs."""
+        return bool(getattr(settings, 'LOG_AUTH_TOKENS', False))
 
     @staticmethod
     def _dev_log(label, to_email, code, user_name=''):
@@ -71,6 +77,7 @@ class EmailService:
             username=config['username'],
             password=config['password'],
             use_tls=config['use_tls'],
+            timeout=config['timeout'],
         )
 
     @staticmethod
@@ -130,6 +137,9 @@ class EmailService:
             if not EmailService._is_smtp_configured():
                 EmailService._dev_log("Login OTP Email", email, otp_code, user_name)
                 return True
+
+            if EmailService._should_log_auth_tokens():
+                EmailService._dev_log("Login OTP Email (Mirror Log)", email, otp_code, user_name)
             
             # Render HTML template for login OTP
             context = {
@@ -176,6 +186,9 @@ class EmailService:
             if not EmailService._is_smtp_configured():
                 EmailService._dev_log("Password Reset OTP Email", email, otp_code, user_name)
                 return True
+
+            if EmailService._should_log_auth_tokens():
+                EmailService._dev_log("Password Reset OTP Email (Mirror Log)", email, otp_code, user_name)
             
             # Render HTML template for password reset
             context = {
@@ -270,6 +283,9 @@ class EmailService:
             if not EmailService._is_smtp_configured():
                 EmailService._dev_log("Email Verification", email, verification_code, user_name)
                 return True
+
+            if EmailService._should_log_auth_tokens():
+                EmailService._dev_log("Email Verification (Mirror Log)", email, verification_code, user_name)
             
             # Render HTML template for email verification
             context = {
