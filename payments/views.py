@@ -10,6 +10,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.shortcuts import get_object_or_404
+from authentication.permissions import IsAdmin
 
 from .models import Payment
 from .services.payment_service import PaymentService
@@ -623,7 +624,7 @@ class AdminTransactionHistoryView(APIView):
     Supports filtering by status, provider, and date range.
     """
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
     
     @swagger_auto_schema(
         tags=["Payments"],
@@ -749,7 +750,7 @@ class AdminRevenueStatsView(APIView):
     Get revenue statistics for admin dashboard.
     """
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
     
     @swagger_auto_schema(
         tags=["Payments"],

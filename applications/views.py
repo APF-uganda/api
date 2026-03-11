@@ -881,7 +881,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         },
         tags=['Applications'],
     )
-    @action(detail=False, methods=['get'], url_path='total-applications', permission_classes=[AllowAny])  # TODO: Change to IsAdmin in production
+    @action(detail=False, methods=['get'], url_path='total-applications', permission_classes=[IsAuthenticated, IsAdmin])
     def total_applications(self, request):
         """GET /api/v1/applications/total-applications/ — total applications count."""
         data = {"total_applications": get_total_applications()}
@@ -896,7 +896,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         },
         tags=['Applications'],
     )
-    @action(detail=False, methods=['get'], url_path='total-members', permission_classes=[AllowAny])  # TODO: Change to IsAdmin in production
+    @action(detail=False, methods=['get'], url_path='total-members', permission_classes=[IsAuthenticated, IsAdmin])
     def total_members(self, request):
         """GET /api/v1/applications/total-members/ — total members count."""
         data = {"total_members": get_total_members()}
