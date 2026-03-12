@@ -12,7 +12,8 @@ except ImportError:
 
 try:
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import letter, A4
+    # Added landscape to imports
+    from reportlab.lib.pagesizes import letter, A4, landscape 
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
@@ -47,13 +48,10 @@ class ReportGenerator:
             ext = self.report.file_format.lower()
             if ext == 'excel': ext = 'xlsx'
             
-          
             filename = f"report_{uuid.uuid4().hex[:10]}.{ext}"
-           
             relative_path = os.path.join('reports', filename)
             absolute_path = os.path.join(settings.MEDIA_ROOT, relative_path)
 
-           
             os.makedirs(os.path.dirname(absolute_path), exist_ok=True)
 
             # 4. Generate actual file
@@ -66,7 +64,6 @@ class ReportGenerator:
             else:
                 self._generate_csv(data, absolute_path)
 
-          
             self.report.file_path = relative_path
             self.report.file_size = os.path.getsize(absolute_path)
             self.report.status = 'completed'
@@ -80,7 +77,6 @@ class ReportGenerator:
             return relative_path
 
         except Exception as e:
-          
             self.report.status = 'failed'
             self.report.error_message = str(e)
             self.report.save()
@@ -88,110 +84,98 @@ class ReportGenerator:
             raise e
 
     def _generate_pdf(self, data, path):
-        """Generate PDF report using ReportLab"""
+        """Generate PDF report with Landscape orientation and word wrapping"""
         if not REPORTLAB_AVAILABLE:
-            # Fallback to CSV if ReportLab is not installed
             csv_path = path.replace('.pdf', '.csv')
             self._generate_csv(data, csv_path)
-            # Rename to keep .pdf extension but it's actually CSV
             os.rename(csv_path, path)
             return
         
+        
         doc = SimpleDocTemplate(
             path, 
-            pagesize=A4,
-            rightMargin=30,
-            leftMargin=30,
+            pagesize=landscape(A4),
+            rightMargin=20,
+            leftMargin=20,
             topMargin=30,
             bottomMargin=30
         )
         elements = []
         styles = getSampleStyleSheet()
         
+        
+        body_style = ParagraphStyle(
+            'BodyStyle',
+            parent=styles['Normal'],
+            fontSize=7,
+            leading=8,
+            wordWrap='CJK' 
+        )
+
         # Title
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=styles['Heading1'],
-            fontSize=16,
+            fontSize=18,
             textColor=colors.HexColor('#5E2590'),
-            spaceAfter=20,
-            alignment=1  # Center alignment
+            spaceAfter=15,
+            alignment=1 
         )
-        title = Paragraph(self.report.title, title_style)
-        elements.append(title)
+        elements.append(Paragraph(self.report.title, title_style))
         
-        # Report info
-        info_style = ParagraphStyle(
-            'InfoStyle',
-            parent=styles['Normal'],
-            fontSize=9,
-            textColor=colors.grey,
-            spaceAfter=20,
-            alignment=1  # Center alignment
-        )
         info_text = f"Generated: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')} | Report Type: {self.template.get_report_type_display()}"
-        info = Paragraph(info_text, info_style)
-        elements.append(info)
+        elements.append(Paragraph(info_text, styles['Normal']))
         elements.append(Spacer(1, 0.2*inch))
         
-        # Table data
         if data:
-            # Prepare table data
             headers = list(data[0].keys())
-            table_data = [headers]
             
-            # Limit rows for very large datasets
+            
+            table_data = []
+            header_row = [Paragraph(f"<b>{h.replace('_', ' ').upper()}</b>", body_style) for h in headers]
+            table_data.append(header_row)
+            
             max_rows = 1000
-            data_to_show = data[:max_rows]
+            for row in data[:max_rows]:
+                table_data.append([Paragraph(str(row.get(h, '')), body_style) for h in headers])
             
-            for row in data_to_show:
-                table_data.append([str(row.get(h, ''))[:100] for h in headers])  # Truncate long values
             
-            # Add note if data was truncated
-            if len(data) > max_rows:
-                elements.append(Paragraph(
-                    f"<i>Note: Showing first {max_rows} of {len(data)} records. Download as Excel/CSV for complete data.</i>",
-                    styles['Normal']
-                ))
-                elements.append(Spacer(1, 0.1*inch))
-            
-            # Calculate column widths dynamically
             available_width = doc.width
             num_cols = len(headers)
-            col_width = available_width / num_cols
             
-            # Create table with dynamic column widths
-            table = Table(table_data, colWidths=[col_width] * num_cols, repeatRows=1)
+         
+            col_widths = []
+            for h in headers:
+                h_low = h.lower()
+                if 'email' in h_low:
+                    col_widths.append(available_width * 0.22) # Email gets 22%
+                elif 'name' in h_low:
+                    col_widths.append(available_width * 0.15) # Names get 15%
+                elif 'id' in h_low or 'status' in h_low:
+                    col_widths.append(available_width * 0.08) # Small IDs get 8%
+                else:
+                    # Distribute rest equally
+                    remaining_count = sum(1 for x in headers if 'email' not in x.lower() and 'name' not in x.lower() and 'id' not in x.lower() and 'status' not in x.lower())
+                    if remaining_count == 0: remaining_count = 1
+                    col_widths.append((available_width * 0.55) / remaining_count)
+
+            table = Table(table_data, colWidths=col_widths, repeatRows=1)
             
-            # Style the table
             table.setStyle(TableStyle([
-                # Header styling
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#5E2590')),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 9),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
-                ('TOPPADDING', (0, 0), (-1, 0), 10),
-                
-                # Body styling
-                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 1), (-1, -1), 7),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 5),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 5),
-                ('TOPPADDING', (0, 1), (-1, -1), 5),
-                ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F8F8')]),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
             ]))
             
             elements.append(table)
         else:
             elements.append(Paragraph("No data available for this report.", styles['Normal']))
         
-        # Build PDF
         doc.build(elements)
 
     def _generate_csv(self, data, path):
