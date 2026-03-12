@@ -85,7 +85,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'password_hash', 'first_name', 'last_name', 'name',
             'age_range', 'phone_number', 'address', 'national_id_number', 'icpau_certificate_number',
-            'icpaCertNo',
+            'organization', 'icpaCertNo',
             'payment_method', 'payment_phone',
             'payment_card_number', 'payment_card_expiry', 'payment_card_cvv',
             'payment_cardholder_name',
