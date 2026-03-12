@@ -40,6 +40,7 @@ class Application(models.Model):
     address = models.TextField()
     national_id_number = models.CharField(max_length=20, blank=True)
     icpau_certificate_number = models.CharField(max_length=50, blank=True)
+    organization = models.CharField(max_length=200, blank=True, help_text='Organization/Firm name')
     
     # Payment Information
     payment_method = models.CharField(max_length=20)
