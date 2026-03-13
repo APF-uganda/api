@@ -293,3 +293,93 @@ class AdminRejectDocumentView(APIView):
                 {'error': message},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+
+# Membership Invoice Management Views
+
+from rest_framework import viewsets
+from rest_framework.decorators import action
+from .models import MembershipInvoice
+from .serializers import MembershipInvoiceSerializer
+from .membership_renewal_service import MembershipRenewalService
+
+
+class MembershipInvoiceViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for viewing membership invoices (admin only)
+    """
+    queryset = MembershipInvoice.objects.all().select_related('user')
+    serializer_class = MembershipInvoiceSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    
+    def get_queryset(self):
+        """Filter invoices based on user role"""
+        user = self.request.user
+        
+        # Admin can see all invoices
+        if user.role == '1':  # Admin
+            queryset = MembershipInvoice.objects.all().select_related('user')
+        else:
+            # Members can only see their own invoices
+            queryset = MembershipInvoice.objects.filter(user=user)
+        
+        # Apply filters
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(invoice_number__icontains=search) |
+                Q(user__email__icontains=search) |
+                Q(user__full_name__icontains=search)
+            )
+        
+        return queryset.order_by('-invoice_date', '-created_at')
+    
+    @action(detail=True, methods=['post'])
+    def resend(self, request, pk=None):
+        """Resend invoice email"""
+        invoice = self.get_object()
+        
+        # Check if user is admin
+        if request.user.role != '1':
+            return Response(
+                {'error': 'Only admins can resend invoices'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Resend email
+        success, message = MembershipRenewalService.send_renewal_invoice_email(
+            invoice.user,
+            invoice=invoice
+        )
+        
+        if success:
+            return Response({'message': message})
+        else:
+            return Response(
+                {'error': message},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Get invoice statistics"""
+        queryset = self.get_queryset()
+        
+        stats = {
+            'total': queryset.count(),
+            'pending': queryset.filter(status='pending').count(),
+            'partial': queryset.filter(status='partial').count(),
+            'paid': queryset.filter(status='paid').count(),
+            'overdue': queryset.filter(status='overdue').count(),
+            'cancelled': queryset.filter(status='cancelled').count(),
+            'total_amount': sum(inv.total_amount for inv in queryset),
+            'total_paid': sum(inv.amount_paid for inv in queryset),
+            'total_outstanding': sum(inv.balance_due for inv in queryset),
+        }
+        
+        return Response(stats)

@@ -86,6 +86,7 @@ class PaymentService(PerformanceLoggingMixin):
         amount: Decimal,
         provider: str,
         application_id: Optional[int] = None,
+        invoice_number: Optional[str] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
     ) -> Tuple[bool, Optional[Payment], str]:
@@ -107,6 +108,7 @@ class PaymentService(PerformanceLoggingMixin):
             amount: Payment amount
             provider: Payment provider ('mtn' or 'airtel')
             application_id: Optional application ID to link payment
+            invoice_number: Optional membership renewal invoice number
             ip_address: Optional IP address for audit
             user_agent: Optional user agent for audit
         
@@ -154,6 +156,7 @@ class PaymentService(PerformanceLoggingMixin):
                 currency=self._get_currency(provider),
                 provider=provider,
                 transaction_reference=transaction_reference,
+                invoice_number=invoice_number,
                 status=Payment.STATUS_PENDING,
                 application_id=application_id,
                 ip_address=ip_address,

@@ -1,12 +1,14 @@
 """
 Membership Renewal Service
-Handles sending membership renewal invoices via email
+Handles sending membership renewal invoices via email and creating invoice records
 """
 import logging
-from datetime import datetime, timedelta
-from django.core.mail import EmailMessage
+from datetime import datetime, timedelta, date
+from decimal import Decimal
+from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.conf import settings
 from django.template.loader import render_to_string
+from django.utils import timezone
 from authentication.models import User
 
 logger = logging.getLogger(__name__)
@@ -45,11 +47,94 @@ class MembershipRenewalService:
         return end_year, end_year + 1
     
     @staticmethod
-    def generate_invoice_number():
-        """Generate unique invoice number"""
+    def generate_invoice_number(user_id=None):
+        """
+        Generate unique invoice number
+        Format: INV-YYYY-MMDDHHMMSS or INV-YYYY-USERID-MMDDHHMMSS
+        """
         current_year = datetime.now().year
         timestamp = datetime.now().strftime('%m%d%H%M%S')
+        
+        if user_id:
+            return f"INV-{current_year}-{user_id}-{timestamp}"
         return f"INV-{current_year}-{timestamp}"
+    
+    @staticmethod
+    def create_membership_invoice(user, send_email=True):
+        """
+        Create a membership renewal invoice record in the database
+        
+        Args:
+            user: User object
+            send_email: Whether to send email notification
+            
+        Returns:
+            tuple (invoice_object, success: bool, message: str)
+        """
+        from admin_management.models import MembershipInvoice
+        
+        try:
+            # Get next membership year
+            next_start_year, next_end_year = MembershipRenewalService.get_next_membership_year()
+            
+            # Check if invoice already exists for this period
+            period_start = date(next_start_year, 4, 1)
+            period_end = date(next_end_year, 3, 31)
+            
+            existing_invoice = MembershipInvoice.objects.filter(
+                user=user,
+                period_start=period_start,
+                period_end=period_end
+            ).first()
+            
+            if existing_invoice:
+                logger.info(f"Invoice already exists for {user.email}: {existing_invoice.invoice_number}")
+                return existing_invoice, True, f"Invoice {existing_invoice.invoice_number} already exists"
+            
+            # Calculate amounts
+            amounts = MembershipRenewalService.calculate_renewal_amount(user)
+            
+            # Generate invoice number
+            invoice_number = MembershipRenewalService.generate_invoice_number(user.id)
+            
+            # Create invoice record
+            invoice = MembershipInvoice.objects.create(
+                invoice_number=invoice_number,
+                user=user,
+                invoice_date=timezone.now().date(),
+                due_date=timezone.now().date() + timedelta(days=30),
+                period_start=period_start,
+                period_end=period_end,
+                base_amount=Decimal(str(amounts['base_amount'])),
+                previous_balance=Decimal(str(amounts['previous_balance'])),
+                discount=Decimal(str(amounts['discount'])),
+                total_amount=Decimal(str(amounts['total'])),
+                amount_paid=Decimal('0.00'),
+                balance_due=Decimal(str(amounts['total'])),
+                status=MembershipInvoice.STATUS_PENDING
+            )
+            
+            logger.info(f"Created invoice {invoice_number} for {user.email}")
+            
+            # Send email if requested
+            if send_email:
+                email_success, email_message = MembershipRenewalService.send_renewal_invoice_email(
+                    user, 
+                    invoice=invoice
+                )
+                
+                if email_success:
+                    invoice.email_sent = True
+                    invoice.email_sent_at = timezone.now()
+                    invoice.save()
+                
+                return invoice, email_success, email_message
+            
+            return invoice, True, f"Invoice {invoice_number} created successfully"
+            
+        except Exception as e:
+            logger.error(f"Failed to create invoice for {user.email}: {str(e)}")
+            return None, False, f"Failed to create invoice: {str(e)}"
     
     @staticmethod
     def calculate_renewal_amount(user):
@@ -76,69 +161,72 @@ class MembershipRenewalService:
         }
     
     @staticmethod
-    def send_renewal_invoice_email(user, letterhead_url=None):
+    def send_renewal_invoice_email(user, letterhead_url=None, invoice=None):
         """
         Send membership renewal invoice email to a user
         
         Args:
             user: User object
             letterhead_url: Optional URL to letterhead image
+            invoice: Optional MembershipInvoice object (if not provided, creates one)
             
         Returns:
             tuple (success: bool, message: str)
         """
         try:
-            # Calculate amounts
-            amounts = MembershipRenewalService.calculate_renewal_amount(user)
+            # Create invoice if not provided
+            if invoice is None:
+                invoice, created, message = MembershipRenewalService.create_membership_invoice(
+                    user, 
+                    send_email=False
+                )
+                if not created:
+                    return False, message
             
-            # Get membership years
-            next_start_year, next_end_year = MembershipRenewalService.get_next_membership_year()
-            renewal_period = f"Apr {next_start_year} - Mar {next_end_year}"
-            
-            # Generate invoice details
-            invoice_number = MembershipRenewalService.generate_invoice_number()
-            invoice_date = datetime.now().strftime('%d/%m/%Y')
-            due_date = (datetime.now() + timedelta(days=30)).strftime('%d/%m/%Y')
+            # Get membership years from invoice
+            renewal_period = f"Apr {invoice.period_start.year} - Mar {invoice.period_end.year}"
             
             # Prepare email context
             context = {
                 'user': user,
-                'invoice_number': invoice_number,
-                'invoice_date': invoice_date,
-                'due_date': due_date,
+                'invoice_number': invoice.invoice_number,
+                'invoice_date': invoice.invoice_date.strftime('%d/%m/%Y'),
+                'due_date': invoice.due_date.strftime('%d/%m/%Y'),
                 'renewal_period': renewal_period,
                 'membership_type': getattr(user, 'membership_category', 'Full Member'),
                 'membership_number': getattr(user, 'icpau_registration_number', ''),
-                'base_amount': amounts['base_amount'],
-                'previous_balance': amounts['previous_balance'],
-                'discount': amounts['discount'],
-                'total_amount': amounts['total'],
+                'base_amount': invoice.base_amount,
+                'previous_balance': invoice.previous_balance,
+                'discount': invoice.discount,
+                'total_amount': invoice.total_amount,
                 'letterhead_url': letterhead_url,
+                'frontend_url': getattr(settings, 'FRONTEND_URL', 'http://localhost:3001'),
             }
             
             # Render email template
             html_message = render_to_string('emails/membership_renewal_invoice.html', context)
             text_message = render_to_string('emails/membership_renewal_invoice.txt', context)
             
-            # Create email
+            # Create email with proper multipart structure
             subject = f'Membership Renewal Invoice - {renewal_period}'
             from_email = settings.DEFAULT_FROM_EMAIL
             recipient_list = [user.email]
             
-            email = EmailMessage(
+            # Create multipart email (text + HTML)
+            email = EmailMultiAlternatives(
                 subject=subject,
-                body=text_message,
+                body=text_message,  # Plain text version
                 from_email=from_email,
                 to=recipient_list,
             )
-            email.content_subtype = 'html'
-            email.body = html_message
+            # Attach HTML version as alternative
+            email.attach_alternative(html_message, "text/html")
             
             # Send email
             email.send(fail_silently=False)
             
-            logger.info(f"Renewal invoice sent to {user.email} - Invoice: {invoice_number}")
-            return True, f"Invoice {invoice_number} sent successfully"
+            logger.info(f"Renewal invoice sent to {user.email} - Invoice: {invoice.invoice_number}")
+            return True, f"Invoice {invoice.invoice_number} sent successfully"
             
         except Exception as e:
             logger.error(f"Failed to send renewal invoice to {user.email}: {str(e)}")

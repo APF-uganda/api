@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from authentication.models import User, UserRole
 from Documents.models import MemberDocument
-from .models import MembershipStatus, DocumentStatus, SuspendedMember, ProcessedDocument
+from .models import MembershipStatus, DocumentStatus, SuspendedMember, ProcessedDocument, MembershipInvoice, InvoicePaymentLink
 
 
 class AdminMemberSerializer(serializers.ModelSerializer):
@@ -108,3 +108,55 @@ class RejectDocumentSerializer(serializers.Serializer):
     
     class Meta:
         fields = ['reason']
+
+
+
+# Membership Invoice Serializers
+
+class MembershipInvoiceSerializer(serializers.ModelSerializer):
+    """Serializer for membership invoices"""
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user_name = serializers.CharField(source='user.full_name', read_only=True)
+    
+    class Meta:
+        model = MembershipInvoice
+        fields = [
+            'id',
+            'invoice_number',
+            'user_email',
+            'user_name',
+            'invoice_date',
+            'due_date',
+            'period_start',
+            'period_end',
+            'base_amount',
+            'previous_balance',
+            'discount',
+            'total_amount',
+            'amount_paid',
+            'balance_due',
+            'status',
+            'email_sent',
+            'email_sent_at',
+            'created_at',
+            'updated_at',
+            'paid_at',
+        ]
+        read_only_fields = ['balance_due', 'created_at', 'updated_at', 'paid_at']
+
+
+class InvoicePaymentLinkSerializer(serializers.ModelSerializer):
+    """Serializer for invoice payment links"""
+    invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
+    payment_reference = serializers.CharField(source='payment.transaction_reference', read_only=True)
+    
+    class Meta:
+        model = InvoicePaymentLink
+        fields = [
+            'id',
+            'invoice_number',
+            'payment_reference',
+            'amount',
+            'created_at',
+        ]
+        read_only_fields = ['created_at']

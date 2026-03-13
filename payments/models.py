@@ -48,6 +48,7 @@ class Payment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     transaction_reference = models.CharField(max_length=100, unique=True, db_index=True)
     provider_transaction_id = models.CharField(max_length=200, null=True, blank=True)
+    invoice_number = models.CharField(max_length=50, null=True, blank=True, db_index=True, help_text="Membership renewal invoice number")
     
     # User and application linkage
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='payments', null=True, blank=True)
