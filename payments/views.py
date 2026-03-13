@@ -85,6 +85,7 @@ class PaymentInitiationView(APIView):
         phone_number = validated_data['phone_number']
         provider = validated_data['provider']
         application_id = validated_data.get('application_id')
+        invoice_number = validated_data.get('invoice_number')
         
         # Step 2: Get amount from request or use membership fee from configuration
         payment_service = PaymentService()
@@ -107,6 +108,7 @@ class PaymentInitiationView(APIView):
                 amount=amount,
                 provider=provider,
                 application_id=application_id,
+                invoice_number=invoice_number,
                 ip_address=ip_address,
                 user_agent=user_agent
             )

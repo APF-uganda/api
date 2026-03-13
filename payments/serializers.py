@@ -29,6 +29,13 @@ class PaymentInitiationSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Optional application ID to link payment"
     )
+    invoice_number = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        max_length=50,
+        help_text="Optional membership renewal invoice number"
+    )
     
     def validate_phone_number(self, value):
         """Validate phone number format."""
@@ -83,6 +90,7 @@ class MembershipFeeResponseSerializer(serializers.Serializer):
 class PaymentHistorySerializer(serializers.ModelSerializer):
     """Serializer for payment history list endpoint."""
     masked_phone = serializers.SerializerMethodField()
+    invoice_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Payment
@@ -90,6 +98,7 @@ class PaymentHistorySerializer(serializers.ModelSerializer):
             'id',
             'transaction_reference',
             'provider_transaction_id',
+            'invoice_number',
             'amount',
             'currency',
             'provider',
@@ -99,11 +108,34 @@ class PaymentHistorySerializer(serializers.ModelSerializer):
             'updated_at',
             'completed_at',
             'masked_phone',
+            'invoice_details',
         ]
         read_only_fields = fields
 
     def get_masked_phone(self, obj):
         return obj.get_masked_phone()
+    
+    def get_invoice_details(self, obj):
+        """Get invoice details if payment is linked to an invoice."""
+        if not obj.invoice_number:
+            return None
+        
+        try:
+            from admin_management.models import MembershipInvoice
+            invoice = MembershipInvoice.objects.filter(invoice_number=obj.invoice_number).first()
+            if invoice:
+                return {
+                    'invoice_number': invoice.invoice_number,
+                    'total_amount': str(invoice.total_amount),
+                    'amount_paid': str(invoice.amount_paid),
+                    'balance_due': str(invoice.balance_due),
+                    'status': invoice.status,
+                    'due_date': invoice.due_date.isoformat(),
+                }
+        except Exception:
+            pass
+        
+        return None
 
 
 class AdminTransactionSerializer(serializers.ModelSerializer):
@@ -114,6 +146,7 @@ class AdminTransactionSerializer(serializers.ModelSerializer):
     masked_phone = serializers.SerializerMethodField()
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     provider_display = serializers.CharField(source='get_provider_display', read_only=True)
+    invoice_details = serializers.SerializerMethodField()
     
     class Meta:
         model = Payment
@@ -121,6 +154,7 @@ class AdminTransactionSerializer(serializers.ModelSerializer):
             'id',
             'transaction_reference',
             'provider_transaction_id',
+            'invoice_number',
             'user_email',
             'user_name',
             'application_id',
@@ -136,6 +170,7 @@ class AdminTransactionSerializer(serializers.ModelSerializer):
             'updated_at',
             'completed_at',
             'ip_address',
+            'invoice_details',
         ]
     
     def get_user_name(self, obj):
@@ -147,6 +182,28 @@ class AdminTransactionSerializer(serializers.ModelSerializer):
     def get_masked_phone(self, obj):
         """Get masked phone number."""
         return obj.get_masked_phone()
+    
+    def get_invoice_details(self, obj):
+        """Get invoice details if payment is linked to an invoice."""
+        if not obj.invoice_number:
+            return None
+        
+        try:
+            from admin_management.models import MembershipInvoice
+            invoice = MembershipInvoice.objects.filter(invoice_number=obj.invoice_number).first()
+            if invoice:
+                return {
+                    'invoice_number': invoice.invoice_number,
+                    'total_amount': str(invoice.total_amount),
+                    'amount_paid': str(invoice.amount_paid),
+                    'balance_due': str(invoice.balance_due),
+                    'status': invoice.status,
+                    'due_date': invoice.due_date.isoformat(),
+                }
+        except Exception:
+            pass
+        
+        return None
 
 
 class TransactionRevenueSerializer(serializers.Serializer):

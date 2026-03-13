@@ -72,3 +72,139 @@ def update_subscription_on_payment_completion(sender, instance, created, **kwarg
                     
         except Exception as e:
             logger.error(f"Error updating subscription for payment {instance.transaction_reference}: {e}")
+
+
+@receiver(post_save, sender=Payment)
+def reconcile_invoice_payment(sender, instance, created, **kwargs):
+    """
+    Signal handler to automatically reconcile payments with membership invoices
+    
+    When a payment with an invoice_number is marked as completed:
+    1. Find the invoice using the invoice_number
+    2. Verify the invoice belongs to the payment user
+    3. Create InvoicePaymentLink
+    4. Update invoice amount_paid
+    5. Invoice status is auto-updated by the model's save method
+    6. Notify admins of successful payment
+    
+    Args:
+        sender: The model class (Payment)
+        instance: The actual Payment instance being saved
+        created: Boolean indicating if this is a new instance
+        **kwargs: Additional keyword arguments
+    """
+    # Only proceed if payment is completed and has an invoice number
+    if instance.status == Payment.STATUS_COMPLETED and instance.invoice_number and instance.user:
+        try:
+            from admin_management.models import MembershipInvoice, InvoicePaymentLink
+            from decimal import Decimal
+            
+            # Find the invoice
+            invoice = MembershipInvoice.objects.filter(
+                invoice_number=instance.invoice_number
+            ).first()
+            
+            if not invoice:
+                logger.warning(
+                    f"Invoice not found for payment {instance.transaction_reference}: "
+                    f"invoice_number={instance.invoice_number}"
+                )
+                return
+            
+            # Verify invoice belongs to the payment user
+            if invoice.user != instance.user:
+                logger.error(
+                    f"Invoice {invoice.invoice_number} belongs to {invoice.user.email} "
+                    f"but payment {instance.transaction_reference} is from {instance.user.email}"
+                )
+                return
+            
+            # Check if link already exists (idempotency)
+            existing_link = InvoicePaymentLink.objects.filter(
+                invoice=invoice,
+                payment=instance
+            ).first()
+            
+            if existing_link:
+                logger.info(
+                    f"Invoice payment link already exists: "
+                    f"invoice={invoice.invoice_number}, payment={instance.transaction_reference}"
+                )
+                return
+            
+            # Create invoice payment link
+            link = InvoicePaymentLink.objects.create(
+                invoice=invoice,
+                payment=instance,
+                amount=Decimal(str(instance.amount))
+            )
+            
+            # Update invoice amount_paid (this will trigger invoice.save() which updates status)
+            invoice.record_payment(instance.amount)
+            
+            logger.info(
+                f"Successfully reconciled payment to invoice: "
+                f"invoice={invoice.invoice_number}, payment={instance.transaction_reference}, "
+                f"amount={instance.amount}, new_balance={invoice.balance_due}, status={invoice.status}"
+            )
+            
+            # Notify admins of successful payment
+            notify_admins_of_payment(instance, invoice)
+            
+        except Exception as e:
+            logger.error(
+                f"Error reconciling invoice payment for {instance.transaction_reference}: {e}",
+                exc_info=True
+            )
+
+
+def notify_admins_of_payment(payment, invoice):
+    """
+    Send notification to all admin users about successful payment
+    
+    Args:
+        payment: Payment instance
+        invoice: MembershipInvoice instance
+    """
+    try:
+        from notifications.models import UserNotification
+        from django.contrib.auth import get_user_model
+        
+        User = get_user_model()
+        
+        # Get all admin users
+        admin_users = User.objects.filter(is_staff=True, is_active=True)
+        
+        if not admin_users.exists():
+            logger.warning("No admin users found to notify about payment")
+            return
+        
+        # Prepare notification details
+        title = f"Payment Received: {payment.transaction_reference}"
+        message = (
+            f"Member {payment.user.full_name or payment.user.email} has successfully paid "
+            f"UGX {payment.amount:,.0f} for invoice {invoice.invoice_number}. "
+            f"Invoice status: {invoice.get_status_display()}. "
+            f"Balance due: UGX {invoice.balance_due:,.0f}."
+        )
+        
+        # Create notification for each admin
+        notifications_created = 0
+        for admin in admin_users:
+            UserNotification.objects.create(
+                user=admin,
+                title=title,
+                message=message,
+                notification_type='payment',
+                priority='medium',
+                is_read=False
+            )
+            notifications_created += 1
+        
+        logger.info(
+            f"Created {notifications_created} admin notifications for payment "
+            f"{payment.transaction_reference}"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error notifying admins of payment {payment.transaction_reference}: {e}")

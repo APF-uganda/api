@@ -40,7 +40,7 @@ Payment Reference: Use your invoice number {{ invoice_number }} as reference.
 Note: Membership year runs from 1st April to 31st March.
 
 For mobile money payments, use the payment option in your member portal at:
-http://localhost:3001/login
+{{ frontend_url }}/login
 
 If you have any questions or need assistance, please don't hesitate to contact us.
 
