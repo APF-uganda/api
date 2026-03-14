@@ -158,6 +158,136 @@ class Payment(models.Model):
             return self.phone_number
 
 
+class ManualPayment(models.Model):
+    """
+    Manual payment model for payments made outside the system.
+    Users upload proof of payment for admin verification.
+    """
+    
+    # Status choices for manual payments
+    STATUS_PENDING = 'pending'
+    STATUS_VERIFIED = 'verified'
+    STATUS_REJECTED = 'rejected'
+    
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending Verification'),
+        (STATUS_VERIFIED, 'Verified'),
+        (STATUS_REJECTED, 'Rejected'),
+    ]
+    
+    # Identification
+    id = models.AutoField(primary_key=True)
+    
+    # Link to application (required)
+    application = models.ForeignKey(
+        'applications.Application',
+        on_delete=models.CASCADE,
+        related_name='manual_payments'
+    )
+    
+    # User who made the payment
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='manual_payments',
+        null=True,
+        blank=True
+    )
+    
+    # Payment details
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=3, default='UGX')
+    reference = models.CharField(
+        max_length=100,
+        help_text='Payment reference (should match Application ID or Invoice Number)'
+    )
+    description = models.CharField(
+        max_length=200,
+        default='Application Fee',
+        help_text='Payment description (e.g., Application Fee, Renewal Fee, Event Fee)'
+    )
+    
+    # Payment identification fields
+    invoice_number = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text='Invoice number for non-application payments (renewals, events, etc.)'
+    )
+    application_reference = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        help_text='Application ID for application-related payments (e.g., APF-2026-000123)'
+    )
+    
+    # Proof of payment
+    proof_of_payment = models.FileField(
+        upload_to='payment_proofs/',
+        help_text='Upload screenshot or receipt of payment'
+    )
+    
+    # Status and verification
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING
+    )
+    
+    # Admin who verified/rejected (optional)
+    verified_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='verified_payments'
+    )
+    
+    # Verification details
+    verification_notes = models.TextField(blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['application', 'status']),
+        ]
+        verbose_name = 'Manual Payment'
+        verbose_name_plural = 'Manual Payments'
+    
+    def __str__(self):
+        return f"{self.application.application_id} - {self.reference} - {self.status}"
+    
+    def verify(self, admin_user, notes=''):
+        """Mark payment as verified by admin."""
+        self.status = self.STATUS_VERIFIED
+        self.verified_by = admin_user
+        self.verification_notes = notes
+        self.verified_at = timezone.now()
+        self.save()
+        
+        # Update application payment status
+        self.application.payment_status = 'success'
+        self.application.save()
+    
+    def reject(self, admin_user, notes=''):
+        """Mark payment as rejected by admin."""
+        self.status = self.STATUS_REJECTED
+        self.verified_by = admin_user
+        self.verification_notes = notes
+        self.verified_at = timezone.now()
+        self.save()
+        
+        # Update application payment status
+        self.application.payment_status = 'failed'
+        self.application.save()
+
+
 class PaymentConfig(models.Model):
     """
     Payment configuration model for storing configurable payment settings.
