@@ -56,18 +56,6 @@ class Application(models.Model):
         blank=True,
         help_text='ICPAU Certificate document'
     )
-    national_id_doc = models.FileField(
-        upload_to='documents/national_ids/', 
-        null=True, 
-        blank=True,
-        help_text='National ID document (legacy field)'
-    )
-    passport_photo = models.FileField(
-        upload_to='documents/passport_photos/', 
-        null=True, 
-        blank=True,
-        help_text='Passport photo (legacy field)'
-    )
     firm_license_doc = models.FileField(
         upload_to='documents/firm_licenses/', 
         null=True, 
@@ -80,9 +68,6 @@ class Application(models.Model):
         blank=True,
         help_text='Proof of Payment document'
     )
-    
-    # Legacy payment fields (from old structure)
-    payment_id = models.BigIntegerField(null=True, blank=True, help_text='Legacy payment ID')
     
     # Payment Information
     payment_method = models.CharField(max_length=20)
