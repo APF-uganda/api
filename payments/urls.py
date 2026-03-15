@@ -24,7 +24,7 @@ from .admin_views import (
     verify_payment,
     reject_payment,
     get_revenue_stats,
-    get_pending_count
+    get_payment_statistics
 )
 
 app_name = 'payments'
@@ -35,7 +35,7 @@ urlpatterns = [
     path('<int:payment_id>/verify/', verify_payment, name='manual-payment-verify'),
     path('<int:payment_id>/reject/', reject_payment, name='manual-payment-reject'),
     path('revenue/', get_revenue_stats, name='manual-payment-revenue'),
-    path('pending-count/', get_pending_count, name='manual-payment-pending-count'),
+    path('statistics/', get_payment_statistics, name='payment-statistics'),
     
     # Mobile money payment operations (EXISTING)
     path('mobile/initiate/', PaymentInitiationView.as_view(), name='payment-initiate'),

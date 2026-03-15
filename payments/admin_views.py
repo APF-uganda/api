@@ -167,22 +167,93 @@ def get_revenue_stats(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsAdminUser])
-def get_pending_count(request):
+def get_payment_statistics(request):
     """
-    Get count of pending manual payments.
+    Get comprehensive payment statistics with growth rates and trends.
     """
     try:
-        pending_count = ManualPayment.objects.filter(
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        now = timezone.now()
+        last_month = now - timedelta(days=30)
+        
+        # Current statistics
+        total_payments = ManualPayment.objects.count()
+        pending_payments = ManualPayment.objects.filter(status=ManualPayment.STATUS_PENDING).count()
+        verified_payments = ManualPayment.objects.filter(status=ManualPayment.STATUS_VERIFIED).count()
+        
+        # Current revenue
+        total_revenue = ManualPayment.objects.filter(
+            status=ManualPayment.STATUS_VERIFIED
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        
+        pending_revenue = ManualPayment.objects.filter(
             status=ManualPayment.STATUS_PENDING
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        
+        # Last month statistics for comparison
+        last_month_total = ManualPayment.objects.filter(
+            created_at__gte=last_month
         ).count()
         
-        return Response(
-            {'pending': pending_count},
-            status=status.HTTP_200_OK
-        )
+        last_month_verified = ManualPayment.objects.filter(
+            status=ManualPayment.STATUS_VERIFIED,
+            updated_at__gte=last_month
+        ).count()
+        
+        last_month_revenue = ManualPayment.objects.filter(
+            status=ManualPayment.STATUS_VERIFIED,
+            updated_at__gte=last_month
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        
+        # Calculate growth rates
+        def calculate_growth_rate(current, previous):
+            if previous == 0:
+                return 100 if current > 0 else 0
+            return round(((current - previous) / previous) * 100, 1)
+        
+        # For transactions, compare current total vs previous month's additions
+        transactions_growth = calculate_growth_rate(total_payments, total_payments - last_month_total)
+        
+        # For revenue, compare current total vs (current total - last month additions)
+        previous_revenue = total_revenue - last_month_revenue
+        revenue_growth = calculate_growth_rate(float(total_revenue), float(previous_revenue))
+        
+        # For pending, we'll use a simple month-over-month comparison
+        # Get pending count from 30 days ago (approximate)
+        previous_pending = ManualPayment.objects.filter(
+            status=ManualPayment.STATUS_PENDING,
+            created_at__lt=last_month
+        ).count()
+        pending_growth = calculate_growth_rate(pending_payments, previous_pending)
+        
+        # Debug logging
+        print(f"Payment Statistics Debug:")
+        print(f"  Total Revenue: {total_revenue}, Previous: {previous_revenue}, Growth: {revenue_growth}%")
+        print(f"  Total Transactions: {total_payments}, Last Month New: {last_month_total}, Growth: {transactions_growth}%")
+        print(f"  Pending: {pending_payments}, Previous: {previous_pending}, Growth: {pending_growth}%")
+        
+        return Response({
+            'total_transactions': total_payments,
+            'pending_revenue': float(pending_revenue),
+            'total_revenue': float(total_revenue),
+            'verified_payments': verified_payments,
+            'pending_payments': pending_payments,
+            'growth_rates': {
+                'transactions': transactions_growth,
+                'pending': pending_growth,
+                'revenue': revenue_growth,
+            },
+            'last_month_stats': {
+                'new_transactions': last_month_total,
+                'new_revenue': float(last_month_revenue),
+                'verified_payments': last_month_verified,
+            }
+        }, status=status.HTTP_200_OK)
         
     except Exception as e:
         return Response(
-            {'error': f'Failed to fetch pending count: {str(e)}'},
+            {'error': f'Failed to fetch payment statistics: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
