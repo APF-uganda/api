@@ -41,7 +41,17 @@ class EmailService:
 
     @staticmethod
     def _is_smtp_configured():
-        """Return True when real SMTP credentials are available"""
+        """Return True when current mail backend is ready for real sending."""
+        backend = getattr(settings, 'EMAIL_BACKEND', '')
+        if backend == 'utils.gmail_api_backend.EmailBackend':
+            from pathlib import Path
+
+            token_file = getattr(settings, 'GMAIL_TOKEN_FILE', 'token.json')
+            token_path = Path(token_file)
+            if not token_path.is_absolute():
+                token_path = Path(getattr(settings, 'BASE_DIR', '.')) / token_file
+            return token_path.exists()
+
         config = EmailService._get_email_config()
         return bool(config['username'] and config['password'])
 
@@ -66,19 +76,9 @@ class EmailService:
     @staticmethod
     def _get_smtp_connection():
         """
-        Return an explicit SMTP connection so the email is really sent
-        even when EMAIL_BACKEND is set to the console backend.
+        Return the configured Django email connection.
         """
-        config = EmailService._get_email_config()
-        return get_connection(
-            backend='django.core.mail.backends.smtp.EmailBackend',
-            host=config['host'],
-            port=config['port'],
-            username=config['username'],
-            password=config['password'],
-            use_tls=config['use_tls'],
-            timeout=config['timeout'],
-        )
+        return get_connection()
 
     @staticmethod
     def _create_html_email(subject, html_content, to_email):
@@ -98,7 +98,7 @@ class EmailService:
         # Create plain text version by stripping HTML tags
         text_content = strip_tags(html_content)
         
-        # Create email message with explicit SMTP connection
+        # Use project-configured email backend connection.
         email = EmailMultiAlternatives(
             subject=subject,
             body=text_content,

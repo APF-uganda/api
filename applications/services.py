@@ -10,7 +10,7 @@ import uuid
 import logging
 from django.utils import timezone
 from datetime import timedelta
-from django.core.mail import EmailMultiAlternatives, get_connection
+from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.conf import settings
@@ -159,22 +159,11 @@ def send_registration_otp(email, username):
         context = {'user_name': username, 'verification_code': otp_code}
         html_content = render_to_string('registration/email_otp.html', context)
 
-        smtp_connection = get_connection(
-            backend='django.core.mail.backends.smtp.EmailBackend',
-            host=getattr(settings, 'EMAIL_HOST', 'smtp.gmail.com'),
-            port=getattr(settings, 'EMAIL_PORT', 587),
-            username=getattr(settings, 'EMAIL_HOST_USER', ''),
-            password=getattr(settings, 'EMAIL_HOST_PASSWORD', ''),
-            use_tls=getattr(settings, 'EMAIL_USE_TLS', True),
-            timeout=getattr(settings, 'EMAIL_TIMEOUT', 10),
-        )
-        
         msg = EmailMultiAlternatives(
             subject=f"{otp_code} is your verification code",
             body=strip_tags(html_content),
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[email],
-            connection=smtp_connection,
         )
         msg.attach_alternative(html_content, "text/html")
         msg.send()

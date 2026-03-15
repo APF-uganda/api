@@ -11,7 +11,33 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunSQL(
-            "ALTER TABLE applications_application ALTER COLUMN icpau_cert_doc DROP NOT NULL;",
-            reverse_sql="ALTER TABLE applications_application ALTER COLUMN icpau_cert_doc SET NOT NULL;"
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'applications_application'
+                      AND column_name = 'icpau_cert_doc'
+                ) THEN
+                    ALTER TABLE applications_application
+                    ALTER COLUMN icpau_cert_doc DROP NOT NULL;
+                END IF;
+            END $$;
+            """,
+            reverse_sql="""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'applications_application'
+                      AND column_name = 'icpau_cert_doc'
+                ) THEN
+                    ALTER TABLE applications_application
+                    ALTER COLUMN icpau_cert_doc SET NOT NULL;
+                END IF;
+            END $$;
+            """,
         ),
     ]
