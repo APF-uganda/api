@@ -10,34 +10,36 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name="application",
-            name="firm_license_doc",
-            field=models.FileField(
-                blank=True,
-                help_text="Firm License document",
-                null=True,
-                upload_to="documents/firm_licenses/",
-            ),
-        ),
-        migrations.AddField(
-            model_name="application",
-            name="icpau_cert_doc",
-            field=models.FileField(
-                blank=True,
-                help_text="ICPAU Certificate document",
-                null=True,
-                upload_to="documents/icpau_certs/",
-            ),
-        ),
-        migrations.AddField(
-            model_name="application",
-            name="proof_of_payment_doc",
-            field=models.FileField(
-                blank=True,
-                help_text="Proof of Payment document",
-                null=True,
-                upload_to="documents/payment_proofs/",
-            ),
+        migrations.RunSQL(
+            """
+            DO $$ 
+            BEGIN
+                -- Add firm_license_doc if it doesn't exist
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name = 'applications_application' 
+                              AND column_name = 'firm_license_doc') THEN
+                    ALTER TABLE applications_application ADD COLUMN firm_license_doc VARCHAR(100);
+                END IF;
+                
+                -- Add icpau_cert_doc if it doesn't exist
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name = 'applications_application' 
+                              AND column_name = 'icpau_cert_doc') THEN
+                    ALTER TABLE applications_application ADD COLUMN icpau_cert_doc VARCHAR(100);
+                END IF;
+                
+                -- Add proof_of_payment_doc if it doesn't exist
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name = 'applications_application' 
+                              AND column_name = 'proof_of_payment_doc') THEN
+                    ALTER TABLE applications_application ADD COLUMN proof_of_payment_doc VARCHAR(100);
+                END IF;
+            END $$;
+            """,
+            reverse_sql="""
+            ALTER TABLE applications_application DROP COLUMN IF EXISTS firm_license_doc;
+            ALTER TABLE applications_application DROP COLUMN IF EXISTS icpau_cert_doc;
+            ALTER TABLE applications_application DROP COLUMN IF EXISTS proof_of_payment_doc;
+            """
         ),
     ]
