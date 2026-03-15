@@ -20,7 +20,11 @@ def get_total_members():
     return Application.objects.filter(status='approved').count()
 
 def get_application_statistics():
-    """Get comprehensive application statistics with trends."""
+    """Get comprehensive application statistics with trends.
+    
+    Updated to include manual payment revenue from verified ManualPayment records
+    in addition to application payment amounts.
+    """
     now = timezone.now()
     last_month = now - timedelta(days=30)
     
@@ -38,16 +42,38 @@ def get_application_statistics():
         total=Sum('payment_amount')
     )['total'] or Decimal('0.00')
     
-    total_revenue = application_revenue
+    # Add manual payment revenue (verified payments only)
+    from payments.models import ManualPayment
+    manual_payment_revenue = ManualPayment.objects.filter(
+        status=ManualPayment.STATUS_VERIFIED
+    ).aggregate(
+        total=Sum('amount')
+    )['total'] or Decimal('0.00')
+    
+    # Debug logging for revenue calculation
+    print(f"Revenue Debug - Application Revenue: {application_revenue}, Manual Payment Revenue: {manual_payment_revenue}")
+    
+    total_revenue = application_revenue + manual_payment_revenue
     
     # Calculate last month's revenue for trend (last 30 days)
-    last_month_revenue = Application.objects.filter(
+    last_month_application_revenue = Application.objects.filter(
         payment_status__in=['success', 'completed'],
         updated_at__gte=last_month,
         updated_at__lte=now
     ).aggregate(
         total=Sum('payment_amount')
     )['total'] or Decimal('0.00')
+    
+    # Add last month's manual payment revenue
+    last_month_manual_revenue = ManualPayment.objects.filter(
+        status=ManualPayment.STATUS_VERIFIED,
+        updated_at__gte=last_month,
+        updated_at__lte=now
+    ).aggregate(
+        total=Sum('amount')
+    )['total'] or Decimal('0.00')
+    
+    last_month_revenue = last_month_application_revenue + last_month_manual_revenue
     
     # Last month counts for trend calculation (last 30 days)
     last_month_total = Application.objects.filter(
