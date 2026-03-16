@@ -142,3 +142,7 @@ payments/TESTING_GUIDE.md
 payments/WEBHOOK_POLLING_SETUP.md
 payments/ARCHITECTURE_DIAGRAM.md
 payments/CODE_EXAMPLES.md
+
+#GMAIL API CREDENTIALS
+credentials.json
+token.json

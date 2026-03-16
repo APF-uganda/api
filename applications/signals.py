@@ -29,6 +29,37 @@ def get_annual_renewal_date(base_date=None):
 
 
 @receiver(post_save, sender=Application)
+def create_payment_record(sender, instance, created, **kwargs):
+    """
+    Signal handler to create a payment record when an Application is created.
+    This ensures all applications appear in the payments dashboard.
+    """
+    if created:
+        # Import here to avoid circular imports
+        from payments.models import ManualPayment
+        
+        try:
+            # Create a manual payment record for this application
+            payment = ManualPayment.objects.create(
+                application=instance,
+                user=instance.user,  # May be None for new applications
+                amount=instance.payment_amount,
+                currency='UGX',
+                reference=instance.application_id,
+                description='Application Fee',
+                application_reference=instance.application_id,
+                status=ManualPayment.STATUS_PENDING,
+                # Use the proof of payment from application if available
+                proof_of_payment=instance.proof_of_payment_doc
+            )
+            
+            logger.info(f"Created payment record {payment.id} for application {instance.application_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to create payment record for application {instance.application_id}: {e}")
+
+
+@receiver(post_save, sender=Application)
 def create_user_on_approval(sender, instance, created, **kwargs):
     """
     Signal handler to create User account when Application is approved
@@ -81,6 +112,50 @@ def create_user_on_approval(sender, instance, created, **kwargs):
                 logger.error(f"Failed to send welcome announcement to user {user.email}: {e}")
         else:
             logger.error(f"Failed to create user for approved application {instance.id}: {error}")
+
+
+@receiver(pre_save, sender=Application)
+def update_payment_status_on_approval(sender, instance, **kwargs):
+    """
+    Signal handler to update payment status when application status changes.
+    """
+    if not instance.pk:
+        # New instance, skip
+        return
+    
+    try:
+        old_instance = Application.objects.get(pk=instance.pk)
+        
+        # Check if status changed
+        if old_instance.status != instance.status:
+            # Import here to avoid circular imports
+            from payments.models import ManualPayment
+            
+            # Update related payment records
+            payments = ManualPayment.objects.filter(application=instance)
+            
+            if instance.status == 'approved':
+                # Mark payments as verified when application is approved
+                for payment in payments:
+                    if payment.status == ManualPayment.STATUS_PENDING:
+                        payment.status = ManualPayment.STATUS_VERIFIED
+                        payment.verified_at = timezone.now()
+                        payment.save()
+                        logger.info(f"Verified payment {payment.id} for approved application {instance.application_id}")
+                        
+            elif instance.status == 'rejected':
+                # Mark payments as rejected when application is rejected
+                for payment in payments:
+                    if payment.status == ManualPayment.STATUS_PENDING:
+                        payment.status = ManualPayment.STATUS_REJECTED
+                        payment.verified_at = timezone.now()
+                        payment.verification_notes = 'Application rejected'
+                        payment.save()
+                        logger.info(f"Rejected payment {payment.id} for rejected application {instance.application_id}")
+                        
+    except Application.DoesNotExist:
+        # This is a new application, skip
+        pass
 
 
 @receiver(pre_save, sender=Application)

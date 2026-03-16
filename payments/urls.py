@@ -19,18 +19,32 @@ from .views_webhook import (
     EnhancedAirtelWebhookView,
     PesaPalWebhookView
 )
+from .admin_views import (
+    list_manual_payments,
+    verify_payment,
+    reject_payment,
+    get_revenue_stats,
+    get_payment_statistics
+)
 
 app_name = 'payments'
 
 urlpatterns = [
-    # Payment operations
-    path('initiate/', PaymentInitiationView.as_view(), name='payment-initiate'),
-    path('status/<uuid:payment_id>/', PaymentStatusView.as_view(), name='payment-status'),
-    path('<uuid:payment_id>/retry/', PaymentRetryView.as_view(), name='payment-retry'),
-    path('<uuid:payment_id>/cancel/', PaymentCancellationView.as_view(), name='payment-cancel'),
+    # Manual payment admin endpoints (NEW - for admin dashboard)
+    path('', list_manual_payments, name='manual-payments-list'),
+    path('<int:payment_id>/verify/', verify_payment, name='manual-payment-verify'),
+    path('<int:payment_id>/reject/', reject_payment, name='manual-payment-reject'),
+    path('revenue/', get_revenue_stats, name='manual-payment-revenue'),
+    path('statistics/', get_payment_statistics, name='payment-statistics'),
+    
+    # Mobile money payment operations (EXISTING)
+    path('mobile/initiate/', PaymentInitiationView.as_view(), name='payment-initiate'),
+    path('mobile/status/<uuid:payment_id>/', PaymentStatusView.as_view(), name='payment-status'),
+    path('mobile/<uuid:payment_id>/retry/', PaymentRetryView.as_view(), name='payment-retry'),
+    path('mobile/<uuid:payment_id>/cancel/', PaymentCancellationView.as_view(), name='payment-cancel'),
     
     # History
-    path('history/', PaymentHistoryView.as_view(), name='payment-history'),
+    path('mobile/history/', PaymentHistoryView.as_view(), name='payment-history'),
     
     # Webhooks
     path('webhooks/mtn/', MTNWebhookView.as_view(), name='webhook-mtn'),
@@ -44,7 +58,7 @@ urlpatterns = [
     # Configuration
     path('membership-fee/', MembershipFeeView.as_view(), name='membership-fee'),
     
-    # Admin endpoints
+    # Legacy admin endpoints (for mobile money transactions)
     path('admin/transactions/', AdminTransactionHistoryView.as_view(), name='admin-transactions'),
     path('admin/revenue/', AdminRevenueStatsView.as_view(), name='admin-revenue'),
 ]
