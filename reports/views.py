@@ -93,6 +93,16 @@ class DashboardSummaryAPIView(APIView):
                 "system": {
                     "active_users_30d": metrics.get('active_users_30d', 0),
                     "daily_activity": safe_chart('daily_activity')
+                },
+                # Add the key_metrics section that contains revenue data
+                "key_metrics": {
+                    "total_members": metrics.get('total_members', 0),
+                    "total_applications": metrics.get('total_applications', 0),
+                    "pending_applications": metrics.get('pending_applications', 0),
+                    "active_users_30d": metrics.get('active_users_30d', 0),
+                    "total_revenue": metrics.get('total_revenue', 0),
+                    "revenue_growth_rate": metrics.get('revenue_growth_rate', 0),
+                    "pending_payments": metrics.get('pending_payments', 0)
                 }
             })
         except Exception:
@@ -100,7 +110,16 @@ class DashboardSummaryAPIView(APIView):
             return Response({
                 "membership": {"total_members": 0, "growth": empty},
                 "applications": {"total_applications": 0, "status_breakdown": empty},
-                "system": {"active_users_30d": 0, "daily_activity": empty}
+                "system": {"active_users_30d": 0, "daily_activity": empty},
+                "key_metrics": {
+                    "total_members": 0,
+                    "total_applications": 0,
+                    "pending_applications": 0,
+                    "active_users_30d": 0,
+                    "total_revenue": 0,
+                    "revenue_growth_rate": 0,
+                    "pending_payments": 0
+                }
             }, status=200)
 
 class ChartDataAPIView(APIView):
