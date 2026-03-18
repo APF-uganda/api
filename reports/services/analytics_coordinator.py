@@ -11,6 +11,7 @@ from .base import CacheManager
 from .membership_analytics import MembershipAnalyticsService
 from .application_analytics import ApplicationAnalyticsService
 from .system_analytics import SystemAnalyticsService
+from .revenue_analytics import RevenueAnalyticsService
 
 
 class AnalyticsCoordinator:
@@ -24,6 +25,7 @@ class AnalyticsCoordinator:
         self.membership_service = MembershipAnalyticsService()
         self.application_service = ApplicationAnalyticsService()
         self.system_service = SystemAnalyticsService()
+        self.revenue_service = RevenueAnalyticsService()
         
         # Initialize cache manager
         self.cache_manager = CacheManager(default_timeout=300)  # 5 minutes
@@ -48,6 +50,7 @@ class AnalyticsCoordinator:
             'membership': self.membership_service.get_metrics(period_start, period_end),
             'applications': self.application_service.get_metrics(period_start, period_end),
             'system': self.system_service.get_metrics(period_start, period_end),
+            'revenue': self.revenue_service.get_metrics(period_start, period_end),
             'period': {
                 'start': period_start.isoformat(),
                 'end': period_end.isoformat(),
@@ -81,12 +84,16 @@ class AnalyticsCoordinator:
                 chart_data = self.application_service.get_chart_data(chart_type, period)
             elif category == 'system' or chart_type in ['daily_activity', 'user_growth', 'login_frequency', 'system_health']:
                 chart_data = self.system_service.get_chart_data(chart_type, period)
+            elif category == 'revenue' or chart_type in ['revenue_trends', 'payment_status', 'revenue_sources']:
+                chart_data = self.revenue_service.get_chart_data(chart_type, period)
             else:
                 # Try to infer from chart type name
                 if 'member' in chart_type.lower():
                     chart_data = self.membership_service.get_chart_data(chart_type, period)
                 elif 'application' in chart_type.lower():
                     chart_data = self.application_service.get_chart_data(chart_type, period)
+                elif 'revenue' in chart_type.lower() or 'payment' in chart_type.lower():
+                    chart_data = self.revenue_service.get_chart_data(chart_type, period)
                 else:
                     chart_data = self.system_service.get_chart_data(chart_type, period)
             
@@ -117,6 +124,7 @@ class AnalyticsCoordinator:
         membership_metrics = self.membership_service.get_metrics(period_start, period_end)
         application_metrics = self.application_service.get_metrics(period_start, period_end)
         system_metrics = self.system_service.get_metrics(period_start, period_end)
+        revenue_metrics = self.revenue_service.get_metrics(period_start, period_end)
         approved_members = application_metrics.get('status_breakdown', {}).get('approved', 0)
         
         # Collect key metrics from each service
@@ -128,7 +136,15 @@ class AnalyticsCoordinator:
                 'pending_applications': application_metrics.get('status_breakdown', {}).get('pending', 0),
                 # "Active users" for reports cards means users with approved applications
                 'active_users_30d': approved_members,
-                'system_health_score': system_metrics.get('system_health_score', 0)
+                'system_health_score': system_metrics.get('system_health_score', 0),
+                # Add real revenue data
+                'total_revenue': revenue_metrics.get('total_revenue', 0),
+                'revenue_growth_rate': revenue_metrics.get('growth_rate', 0),
+                # Update pending payments to include processing (grouped as pending)
+                'pending_payments': (
+                    revenue_metrics.get('payment_statistics', {}).get('pending', 0) + 
+                    revenue_metrics.get('payment_statistics', {}).get('processing', 0)
+                )
             },
             'recent_activity': {
                 'new_members_30d': membership_metrics.get('new_members_period', 0),
@@ -138,7 +154,9 @@ class AnalyticsCoordinator:
             'trends': {
                 'membership_growth': self.membership_service.get_chart_data('membership_growth', period),
                 'application_status': self.application_service.get_chart_data('application_status', period),
-                'daily_activity': self.system_service.get_chart_data('daily_activity', '7d' if period == '7d' else period)
+                'daily_activity': self.system_service.get_chart_data('daily_activity', '7d' if period == '7d' else period),
+                'revenue_trends': self.revenue_service.get_chart_data('revenue_trends', period),
+                'payment_status': self.revenue_service.get_chart_data('payment_status', period)
             },
             'generated_at': period_end.isoformat()
         }
@@ -182,6 +200,11 @@ class AnalyticsCoordinator:
                 'user_growth',
                 'login_frequency',
                 'system_health'
+            ],
+            'revenue': [
+                'revenue_trends',
+                'payment_status',
+                'revenue_sources'
             ]
         }
     
