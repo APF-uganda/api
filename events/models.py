@@ -7,7 +7,7 @@ class Event(models.Model):
     description = models.TextField(blank=True)
     price_physical = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     price_virtual = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    # Added to track if payment is required globally for this event
+   
     is_paid_event = models.BooleanField(default=False)
 
     def __str__(self):
