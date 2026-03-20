@@ -136,6 +136,7 @@ api_v1_patterns = [
     path("forum/", include("community.urls")),
     path("notifications/", include("notifications.urls")),
     path("admin-management/", include("admin_management.urls")),
+    path('api/events/', include('events.urls'))
 ]
 
 # Swagger/OpenAPI Schema - configured to scan only v1 patterns
