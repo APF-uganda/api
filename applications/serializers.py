@@ -320,11 +320,32 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
     def get_documents(self, obj):
         """
-        Fail-safe for environments where documents table is temporarily missing
-        or mid-migration.
+        Collects the direct FileFields from the Application model 
+        and formats them for the frontend DocumentPreview component.
         """
-        try:
-            qs = obj.documents.all()
-            return DocumentSerializer(qs, many=True, context=self.context).data
-        except (ProgrammingError, DatabaseError):
-            return []
+        docs = []
+        # Mapping model fields to a format the frontend understands
+        file_fields = [
+            ('icpau_cert_doc', 'icpau_certificate'),
+            ('firm_license_doc', 'firm_license'),
+            ('proof_of_payment_doc', 'proof_of_payment'),
+        ]
+
+        request = self.context.get('request')
+
+        for field_name, doc_type in file_fields:
+            file_obj = getattr(obj, field_name)
+            if file_obj:
+                # Build the full URL so the frontend doesn't have to guess
+                file_url = file_obj.url
+                if request:
+                    file_url = request.build_absolute_uri(file_url)
+                
+                docs.append({
+                    'id': f"{obj.id}_{field_name}", # Unique ID for React keys
+                    'file_name': os.path.basename(file_obj.name),
+                    'file_url': file_url,
+                    'document_type': doc_type
+                })
+        
+       
