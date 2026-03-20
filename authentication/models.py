@@ -102,6 +102,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
         help_text="Areas of specialization, comma-separated"
     )
+    
+    # Profile Picture
+    profile_picture = models.ImageField(
+        upload_to='profile_pictures/',
+        null=True,
+        blank=True,
+        help_text='User profile picture'
+    )
 
     # Subscription management
     subscription_due_date = models.DateField(null=True, blank=True, help_text='Annual subscription renewal date')

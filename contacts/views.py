@@ -180,6 +180,90 @@ def list_contact_messages(request):
 
 
 @swagger_auto_schema(
+    method='patch',
+    operation_description="Toggle read/unread status of a contact message",
+    responses={
+        200: openapi.Response(
+            description="Status toggled successfully",
+            examples={
+                "application/json": {
+                    "message": "Status updated successfully",
+                    "data": {
+                        "id": 1,
+                        "is_read": True
+                    }
+                }
+            }
+        ),
+        404: "Contact message not found"
+    },
+    tags=['Contacts'],
+    security=[{'Bearer': []}]
+)
+@api_view(['PATCH'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAdmin])
+def toggle_read_status(request, message_id):
+    """
+    Toggle read/unread status of a contact message (admin only)
+    """
+    try:
+        contact_msg = ContactMessage.objects.get(id=message_id)
+    except ContactMessage.DoesNotExist:
+        return Response(
+            {'error': 'Contact message not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    contact_msg.is_read = not contact_msg.is_read
+    contact_msg.save()
+
+    return Response({
+        'message': 'Status updated successfully',
+        'data': ContactMessageSerializer(contact_msg).data
+    })
+
+
+@swagger_auto_schema(
+    method='delete',
+    operation_description="Delete a contact message",
+    responses={
+        200: openapi.Response(
+            description="Message deleted successfully",
+            examples={
+                "application/json": {
+                    "message": "Contact message deleted successfully"
+                }
+            }
+        ),
+        404: "Contact message not found"
+    },
+    tags=['Contacts'],
+    security=[{'Bearer': []}]
+)
+@api_view(['DELETE'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAdmin])
+def delete_contact_message(request, message_id):
+    """
+    Delete a contact message (admin only)
+    """
+    try:
+        contact_msg = ContactMessage.objects.get(id=message_id)
+    except ContactMessage.DoesNotExist:
+        return Response(
+            {'error': 'Contact message not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    contact_msg.delete()
+
+    return Response({
+        'message': 'Contact message deleted successfully'
+    })
+
+
+@swagger_auto_schema(
     method='post',
     operation_description="Reply to a contact message. The reply is sent via email to the inquirer.",
     request_body=openapi.Schema(
