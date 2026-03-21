@@ -401,18 +401,24 @@ class GeneratedReportViewSet(viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
+    # Capture filters from the request data
+        filters = self.request.data.get('filters', {})
+        
+        # Save the instance with filters included
         instance = serializer.save(
             generated_by=self.request.user,
             status='processing',
+            filters_applied=filters, 
             processing_started_at=timezone.now()
         )
+        
         try:
             generator = ReportGenerator(instance)
             generator.execute()
-        except Exception:
+        except Exception as e:
             instance.status = 'failed'
+            instance.error_message = str(e)
             instance.save()
-
 
 class DownloadReportAPIView(APIView):
     """Download a generated report file"""
@@ -476,3 +482,4 @@ class DownloadReportAPIView(APIView):
                 {'error': 'Report not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
+        
