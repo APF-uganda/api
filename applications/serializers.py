@@ -1,4 +1,5 @@
 import re
+import os
 from datetime import date, timedelta
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
@@ -319,33 +320,44 @@ class ApplicationSerializer(serializers.ModelSerializer):
         return obj.icpau_certificate_number or ""
 
     def get_documents(self, obj):
-        """
-        Collects the direct FileFields from the Application model 
-        and formats them for the frontend DocumentPreview component.
-        """
         docs = []
-        # Mapping model fields to a format the frontend understands
+        request = self.context.get('request')
+
+    # 1. Get related documents from the Document model (linked via ForeignKey)
+        if hasattr(obj, 'documents'):
+            for doc in obj.documents.all():
+                file_url = doc.file.url
+                if request:
+                    file_url = request.build_absolute_uri(file_url)
+                
+                docs.append({
+                    'id': doc.id,
+                    'file_name': doc.file_name,
+                    'file_url': file_url,
+                    'document_type': doc.document_type
+                })
+
+        # 2. Get direct file fields from Application model 
         file_fields = [
             ('icpau_cert_doc', 'icpau_certificate'),
             ('firm_license_doc', 'firm_license'),
             ('proof_of_payment_doc', 'proof_of_payment'),
         ]
 
-        request = self.context.get('request')
-
         for field_name, doc_type in file_fields:
-            file_obj = getattr(obj, field_name)
-            if file_obj:
-                # Build the full URL so the frontend doesn't have to guess
+            file_obj = getattr(obj, field_name, None)
+            if file_obj and hasattr(file_obj, 'url'):
                 file_url = file_obj.url
                 if request:
                     file_url = request.build_absolute_uri(file_url)
                 
                 docs.append({
-                    'id': f"{obj.id}_{field_name}", # Unique ID for React keys
+                    'id': f"{obj.id}_{field_name}",
                     'file_name': os.path.basename(file_obj.name),
                     'file_url': file_url,
                     'document_type': doc_type
                 })
         
+        return docs
+            
        

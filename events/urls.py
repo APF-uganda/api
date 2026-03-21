@@ -8,6 +8,7 @@ from .views import (
 urlpatterns = [
     # Public endpoint for React registration form
     path('register', register_for_event, name='event-register'),
+    path('register/', register_for_event, name='event-register'),
     
     # Admin endpoints for the frontend dashboard
     path('admin/registrations/', AdminRegistrationListView.as_view(), name='admin-registrations'),
