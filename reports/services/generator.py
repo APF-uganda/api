@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 from django.conf import settings
 from django.utils import timezone
-from .analytics_coordination import analytics_coordinator
+from .analytics_coordinator import analytics_coordinator
 
 # Import dependencies
 try:
