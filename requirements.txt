@@ -46,6 +46,7 @@ multidict==6.6.4
 mypy_extensions==1.1.0
 mysqlclient==2.2.7; sys_platform == "win32"
 oauthlib==3.3.1
+openpyxl==3.1.2
 packaging==26.0
 pandas==2.1.1
 pathspec==0.12.1
@@ -74,6 +75,7 @@ pytokens==0.3.0
 pytz==2025.2
 PyYAML==6.0.3
 redis==5.0.1
+reportlab==4.0.4
 requests==2.31.0
 requests-oauthlib==2.0.0
 responses==0.25.0
