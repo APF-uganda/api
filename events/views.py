@@ -5,17 +5,17 @@ from django.conf import settings
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import AllowAny
 
-from .models import Event, EventRegistration
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
+from .models import Event, EventRegistration
 from .serializers import EventRegistrationSerializer
 
 def send_styled_event_email(reg, event, status_type):
     """
     Helper function to send the HTML email.
-    status_type: 'RECEIVED' or 'VERIFIED'
     """
     try:
         if status_type == 'RECEIVED':
@@ -60,13 +60,13 @@ def send_styled_event_email(reg, event, status_type):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+# --- ADD THIS DECORATOR TO FIX THE 415 ERROR ---
+@parser_classes([MultiPartParser, FormParser, JSONParser])
 def register_for_event(request):
-   
-    data = request.data
-    files = request.FILES
+    # DRF combines FILES and POST into request.data when parsers are used
+    data = request.data 
     
     try:
-       
         event_id = data.get('eventId')
         if not event_id:
             return Response({"error": "eventId is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -74,18 +74,19 @@ def register_for_event(request):
         event = Event.objects.get(id=event_id)
         
         # Initial status logic
-        initial_status = 'Verified' if not getattr(event, 'is_paid_event', True) else 'Pending'
+        is_paid = getattr(event, 'is_paid_event', True)
+        initial_status = 'Pending' if is_paid else 'Verified'
         
-        # Creating registration based on your form fields
+        # Creating registration
         reg = EventRegistration.objects.create(
             event=event,
             full_name=data.get('fullName'),
             email=data.get('email'),
             phone_number=data.get('phoneNumber'),
             company_name=data.get('companyName', ''),
-            
             attendance_mode=data.get('attendanceMode', 'Physical'),
-            proof_of_payment=files.get('proof'), 
+           
+            proof_of_payment=request.FILES.get('proof'), 
             payment_status=initial_status
         )
 
@@ -102,6 +103,7 @@ def register_for_event(request):
     except Event.DoesNotExist:
         return Response({"error": "Event not found"}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        # Returning the actual error message helps debug the frontend
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
