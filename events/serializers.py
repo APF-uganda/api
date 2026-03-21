@@ -7,11 +7,11 @@ class EventSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class EventRegistrationSerializer(serializers.ModelSerializer):
-    
+   
     event_title = serializers.ReadOnlyField(source='event.title', allow_null=True)
     
-    proof_of_payment = serializers.ImageField(
-        use_url=True, 
+    
+    proof_of_payment = serializers.FileField(
         required=False, 
         allow_null=True
     )
@@ -31,5 +31,9 @@ class EventRegistrationSerializer(serializers.ModelSerializer):
             'payment_status', 
             'created_at'
         ]
-   
+        
         read_only_fields = ['id', 'created_at', 'payment_status']
+
+    def validate_email(self, value):
+        """Optional: Add custom validation if needed"""
+        return value.lower().strip()
