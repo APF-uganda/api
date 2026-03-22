@@ -360,6 +360,62 @@ class ForumPostViewSet(viewsets.ModelViewSet):
             traceback.print_exc()
             raise
 
+    def update(self, request, *args, **kwargs):
+        """
+        Update a forum post with 30-minute edit window enforcement
+        """
+        instance = self.get_object()
+        
+        # Check if user is the author
+        if instance.author != request.user and not request.user.is_staff:
+            return Response(
+                {'error': 'You can only edit your own posts'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check 30-minute edit window (only for non-admin users)
+        if not request.user.is_staff:
+            from django.utils import timezone
+            time_since_creation = timezone.now() - instance.created_at
+            if time_since_creation.total_seconds() > 1800:  # 1800 seconds = 30 minutes
+                return Response(
+                    {
+                        'error': 'Edit window expired',
+                        'message': 'Posts can only be edited within 30 minutes of creation'
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        """
+        Partially update a forum post with 30-minute edit window enforcement
+        """
+        instance = self.get_object()
+        
+        # Check if user is the author
+        if instance.author != request.user and not request.user.is_staff:
+            return Response(
+                {'error': 'You can only edit your own posts'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check 30-minute edit window (only for non-admin users)
+        if not request.user.is_staff:
+            from django.utils import timezone
+            time_since_creation = timezone.now() - instance.created_at
+            if time_since_creation.total_seconds() > 1800:  # 1800 seconds = 30 minutes
+                return Response(
+                    {
+                        'error': 'Edit window expired',
+                        'message': 'Posts can only be edited within 30 minutes of creation'
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        return super().partial_update(request, *args, **kwargs)
+
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def my_posts(self, request):
         """
@@ -615,8 +671,21 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         """
-        Mark comment as edited when updated
+        Mark comment as edited when updated, with 30-minute edit window enforcement
         """
+        comment = self.get_object()
+        
+        # Check 30-minute edit window (only for non-admin users)
+        if not self.request.user.is_staff:
+            from django.utils import timezone
+            time_since_creation = timezone.now() - comment.created_at
+            if time_since_creation.total_seconds() > 1800:  # 1800 seconds = 30 minutes
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied({
+                    'error': 'Edit window expired',
+                    'message': 'Comments can only be edited within 30 minutes of creation'
+                })
+        
         serializer.save(is_edited=True)
 
 

@@ -4,9 +4,19 @@ from django.utils import timezone
 from Documents.models import MemberDocument
 from notifications.models import UserNotification
 from .models import SuspendedMember, ProcessedDocument, MembershipStatus, DocumentStatus
+from payments.models import ManualPayment
 
 
 User = get_user_model()
+
+
+def _extract_manual_payment_id(document):
+    doc_type = (getattr(document, 'document_type', '') or '').upper()
+    prefix = 'PAYMENT_RECEIPT_'
+    if not doc_type.startswith(prefix):
+        return None
+    suffix = doc_type[len(prefix):]
+    return int(suffix) if suffix.isdigit() else None
 
 
 class MemberManagementService:
@@ -129,6 +139,13 @@ class DocumentManagementService:
             # Update document status
             document.status = DocumentStatus.APPROVED
             document.save(update_fields=['status'])
+
+            # If this is a renewal receipt document, verify linked manual payment.
+            payment_id = _extract_manual_payment_id(document)
+            if payment_id:
+                payment = ManualPayment.objects.filter(id=payment_id).first()
+                if payment and payment.status != ManualPayment.STATUS_VERIFIED:
+                    payment.verify(admin_user, notes='Receipt approved via admin document review')
             
             # Create/update processed record
             processed_doc, created = ProcessedDocument.objects.update_or_create(
@@ -177,6 +194,13 @@ class DocumentManagementService:
             document.status = DocumentStatus.REJECTED
             document.admin_feedback = reason
             document.save(update_fields=['status', 'admin_feedback'])
+
+            # If this is a renewal receipt document, reject linked manual payment.
+            payment_id = _extract_manual_payment_id(document)
+            if payment_id:
+                payment = ManualPayment.objects.filter(id=payment_id).first()
+                if payment and payment.status != ManualPayment.STATUS_REJECTED:
+                    payment.reject(admin_user, notes=reason or 'Receipt rejected via admin document review')
             
             # Create/update processed record
             processed_doc, created = ProcessedDocument.objects.update_or_create(

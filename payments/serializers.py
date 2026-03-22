@@ -46,13 +46,13 @@ class ManualPaymentSerializer(serializers.ModelSerializer):
     def get_user_name(self, obj):
         """Get user's full name."""
         if obj.user:
-            return f"{obj.user.first_name} {obj.user.last_name}".strip() or obj.user.username
+            return f"{obj.user.first_name} {obj.user.last_name}".strip() or obj.user.email
         return "Unknown"
     
     def get_verified_by_name(self, obj):
         """Get name of admin who verified the payment."""
         if obj.verified_by:
-            return f"{obj.verified_by.first_name} {obj.verified_by.last_name}".strip() or obj.verified_by.username
+            return f"{obj.verified_by.first_name} {obj.verified_by.last_name}".strip() or obj.verified_by.email
         return None
 
 

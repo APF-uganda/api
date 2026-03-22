@@ -1,22 +1,39 @@
 from django.contrib import admin
-from .models import Event, EventRegistration
-
-@admin.register(Event)
-class EventAdmin(admin.ModelAdmin):
-    list_display = ('title', 'date', 'location')
-    search_fields = ('title',)
+from django.utils.html import format_html
+from .models import EventRegistration
 
 @admin.register(EventRegistration)
 class EventRegistrationAdmin(admin.ModelAdmin):
-    # This shows the most important info in the table list
-    list_display = ('full_name', 'email', 'event', 'attendance_mode', 'created_at')
+    # Display the Title and Strapi ID so Admin knows exactly which event it is
+    list_display = (
+        'full_name', 
+        'event_title', 
+        'strapi_event_id', 
+        'payment_status', 
+        'display_proof', 
+        'created_at'
+    )
     
-    # This adds a sidebar filter so the admin can click an Event name 
-    # and instantly see only people for that specific event
-    list_filter = ('event', 'attendance_mode', 'created_at')
+    # Filter by the Event Title (Label) and Status
+    list_filter = ('event_title', 'payment_status', 'created_at')
     
-    # Allows the admin to search for a specific person by name or email
-    search_fields = ('full_name', 'email')
+    # Search by User Details or Event Name
+    search_fields = ('full_name', 'email', 'event_title', 'strapi_event_id')
     
-    # Organizes the view when you click into a specific registration
-    readonly_fields = ('created_at',)
+    # Keep the bulk verification action
+    actions = ['mark_as_verified']
+
+    def display_proof(self, obj):
+        if obj.proof_of_payment:
+            return format_html(
+                '<a href="{0}" target="_blank" style="color: #264b5d; font-weight: bold;">View Receipt</a>', 
+                obj.proof_of_payment.url
+            )
+        return "No Receipt"
+    display_proof.short_description = "Payment Proof"
+
+    @admin.action(description="Verify selected registrations")
+    def mark_as_verified(self, request, queryset):
+        count = queryset.update(payment_status='Verified')
+        self.message_user(request, f"{count} registrations were successfully verified.")
+

@@ -1,60 +1,93 @@
 from django.contrib.auth import get_user_model
-from django.db.models import Count
+from django.db.models import Count, Q
+from django.utils import timezone
+from datetime import timedelta
+import logging
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 class ReportDataFetcher:
-    """Logic to query the database based on template settings"""
-    
     @staticmethod
     def get_data(template, filters_applied=None):
-        report_type = template.report_type.lower()
+        report_type = str(template.report_type).lower()
+        filters = filters_applied or {}
         
-        # 1. Membership Report
-        if report_type == 'membership':
-            queryset = User.objects.all().values(
-                'email', 'first_name', 'last_name', 'phone_number', 
-                'membership_category', 'practising_status', 'is_active', 'created_at'
-            )
-            data = list(queryset)
-            return data if data else [{"Message": "No members found in system"}]
-        
-        # 2. Applications Report
-        elif report_type == 'applications':
-            from applications.models import Application
-            queryset = Application.objects.all().values(
-                'id', 'user__email', 'user__first_name', 'user__last_name',
-                'status', 'application_type', 'created_at', 'updated_at'
-            )
-            data = list(queryset)
-            return data if data else [{"Message": "No applications found"}]
-        
-        # 3. Financial Report
-        elif report_type == 'financial':
-            from payments.models import Payment
-            queryset = Payment.objects.all().values(
-                'id', 'user__email', 'amount', 'currency', 'status',
-                'payment_method', 'transaction_id', 'created_at'
-            )
-            data = list(queryset)
-            return data if data else [{"Message": "No payment records found"}]
+        def get_date_limit(period_label):
+            now = timezone.now()
+            p = str(period_label).lower()
+            if '7' in p: return now - timedelta(days=7)
+            if '30' in p: return now - timedelta(days=30)
+            if '90' in p: return now - timedelta(days=90)
+            if '12' in p: return now - timedelta(days=365)
+            return None
+
+        date_limit = get_date_limit(filters.get('period'))
+
+        try:
+            # 1. MEMBERSHIP REPORT
+            if report_type == 'membership':
+                queryset = User.objects.all()
+                
+                # FIX: Using 'created_at' as identified in your DB error log
+                if date_limit:
+                    queryset = queryset.filter(created_at__gte=date_limit)
+                
+                # Fetching fields that actually exist on your User model
+                data = list(queryset.values(
+                    'id', 'email', 'first_name', 'last_name', 'role', 
+                    'membership_category', 'is_active', 'created_at'
+                ))
+                
+                # Format for the Chart Generator
+                for item in data:
+                    item['status'] = 'Active' if item.get('is_active') else 'Inactive'
+                    # Convert datetime to string for CSV/JSON compatibility
+                    if item.get('created_at'):
+                        item['joined_date'] = item['created_at'].strftime('%Y-%m-%d')
+                return data
             
-        # 4. System Report 
-        elif report_type == 'system':
-            queryset = User.objects.values('is_staff', 'is_superuser', 'role').annotate(total_users=Count('id'))
-            data = list(queryset)
-            return data if data else [{"Message": "No system data available"}]
+            # 2. APPLICATIONS REPORT
+            elif report_type == 'applications':
+                # Use absolute import to avoid issues in background tasks
+                from applications.models import Application
+                queryset = Application.objects.all()
+                
+                if date_limit:
+                    queryset = queryset.filter(submitted_at__gte=date_limit)
+                
+                # Selecting fields available in your Application model choices
+                data = list(queryset.values(
+                    'application_id', 'first_name', 'last_name', 
+                    'organization', 'payment_status', 'status', 'submitted_at'
+                ))
+                
+                for item in data:
+                    # 'status' will be used by ReportGenerator for the bar chart
+                    if item.get('submitted_at'):
+                        item['date'] = item['submitted_at'].strftime('%Y-%m-%d')
+                return data
+            
+            # 3. FINANCIAL / REVENUE REPORT
+            elif report_type in ['financial', 'system', 'revenue', 'payments']:
+                from payments.models import Payment
+                queryset = Payment.objects.all()
+                
+                if date_limit:
+                    queryset = queryset.filter(created_at__gte=date_limit)
+                    
+                data = list(queryset.values(
+                    'id', 'amount', 'payment_method', 'status', 'created_at'
+                ))
+                
+                for item in data:
+                    if item.get('created_at'):
+                        item['transaction_date'] = item['created_at'].strftime('%Y-%m-%d')
+                return data
 
-        # 5. Growth Analysis Report
-        elif report_type == 'growth':
-            from django.db.models.functions import TruncDate
-            queryset = User.objects.annotate(
-                date=TruncDate('created_at')
-            ).values('date').annotate(
-                new_members=Count('id')
-            ).order_by('date')
-            data = list(queryset)
-            return data if data else [{"Message": "No growth data available"}]
+        except Exception as e:
+            logger.error(f"Fetcher Error: {str(e)}")
+           
+            return [{"Error": f"Database Fetch Error: {str(e)}"}]
 
-        # 6. Fallback
         return [{"Message": f"No data found for category: {report_type}"}]

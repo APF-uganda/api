@@ -136,6 +136,7 @@ api_v1_patterns = [
     path("forum/", include("community.urls")),
     path("notifications/", include("notifications.urls")),
     path("admin-management/", include("admin_management.urls")),
+    path('events/', include('events.urls'))
 ]
 
 # Swagger/OpenAPI Schema - configured to scan only v1 patterns
@@ -176,6 +177,7 @@ urlpatterns = [
     
     # API v1 endpoints - organized by app
     path("api/v1/auth/", include("authentication.urls")),
+    path("api/v1/profiles/", include("profiles.urls")),
     path("api/v1/contacts/", include("contacts.urls")),
     path("api/v1/applications/", include("applications.urls")),
     path("api/v1/payments/", include("payments.urls")),
@@ -184,7 +186,9 @@ urlpatterns = [
     path("api/v1/forum/", include("community.urls")),
     path("api/v1/notifications/", include("notifications.urls")),  # User notifications endpoints
     path("api/v1/admin-management/", include("admin_management.urls")),
-    
+    path("api/v1/events/", include("events.urls")),
+
+
     # Secure media files serving
     path("media/<path:path>", secure_media_serve, name="secure-media"),
 ]
