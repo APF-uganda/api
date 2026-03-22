@@ -14,18 +14,19 @@ from .serializers import EventRegistrationSerializer
 
 def send_styled_event_email(reg, status_type):
     """
-    Helper function using the new model fields (event_title).
+    Helper function using the decoupled model fields.
     """
     try:
-        # Use the title stored directly on the registration object
+        # Use titles and dates stored directly on the registration object
         event_title = reg.event_title
+        event_date = reg.event_date or "Date specified in event details"
         
         if status_type == 'RECEIVED':
             subject = f"Registration Received: {event_title}"
             status_text = "Pending Verification"
             message_body = (
                 f"We have received your registration for '{event_title}'. "
-                "Our team is currently verifying the details. You will receive a final "
+                "Our team is currently verifying your payment/details. You will receive a final "
                 "confirmation email once verified."
             )
         else:
@@ -41,8 +42,8 @@ def send_styled_event_email(reg, status_type):
             'message_body': message_body,
             'status_text': status_text,
             'event_title': event_title,
-            'location': 'As specified in event details',
-            'event_date': 'TBA', 
+            'event_date': event_date,
+            'location': 'As specified in event details', 
         }
 
         html_content = render_to_string('emails/event_confirmation.html', context)
@@ -64,23 +65,32 @@ def send_styled_event_email(reg, status_type):
 @permission_classes([AllowAny])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
 def register_for_event(request):
+    # For MultiPartParser, data is usually in request.data or request.POST
     data = request.data 
     
     try:
         strapi_id = data.get('eventId')
         event_title = data.get('eventTitle')
+        event_date = data.get('eventDate') # Captured from React finalDateDisplay
         
         if not strapi_id or not event_title:
-            return Response({"error": "Both eventId and eventTitle are required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Both eventId and eventTitle are required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        # Logic for Paid vs Free based on presence of a proof file
+        # Handle file upload
         proof_file = request.FILES.get('proof')
+        
+        # Determine status: If there's a file, it needs admin review. 
+        # If no file was provided (Free event), we mark it verified immediately.
         initial_status = 'Pending' if proof_file else 'Verified'
         
-        # Creating registration using the decoupled model
+        # Create registration record
         reg = EventRegistration.objects.create(
             strapi_event_id=strapi_id,
             event_title=event_title,
+            event_date=event_date,
             full_name=data.get('fullName'),
             email=data.get('email'),
             phone_number=data.get('phoneNumber'),
@@ -89,7 +99,8 @@ def register_for_event(request):
             payment_status=initial_status
         )
 
-        # Trigger Email
+        # Trigger Email logic based on initial status
+        # If 'Verified' (Free), send 'Confirmed' email. If 'Pending' (Paid), send 'Received'.
         email_type = 'VERIFIED' if initial_status == 'Verified' else 'RECEIVED'
         send_styled_event_email(reg, email_type)
 
@@ -110,6 +121,9 @@ class AdminRegistrationListView(generics.ListAPIView):
 
 
 class VerifyRegistrationView(APIView):
+    """
+    Endpoint for Admins to manually verify a payment and trigger a confirmation email.
+    """
     permission_classes = [permissions.IsAdminUser]
 
     def patch(self, request, pk):
@@ -118,6 +132,7 @@ class VerifyRegistrationView(APIView):
             registration.payment_status = 'Verified'
             registration.save() 
             
+            # Send the official "Confirmed & Verified" email
             send_styled_event_email(registration, 'VERIFIED')
             
             return Response({

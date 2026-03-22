@@ -18,6 +18,7 @@ class EventRegistrationSerializer(serializers.ModelSerializer):
             'id', 
             'strapi_event_id', 
             'event_title', 
+            'event_date',
             'full_name', 
             'email', 
             'phone_number', 

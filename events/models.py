@@ -16,6 +16,7 @@ class EventRegistration(models.Model):
     email = models.EmailField()
     phone_number = models.CharField(max_length=20)
     company_name = models.CharField(max_length=255, blank=True, null=True)
+    event_date = models.CharField(max_length=100, blank=True, null=True)
     
     # Proof of Payment (For paid events)
     # Using ImageField or FileField is fine; ImageField is stricter for receipts.
