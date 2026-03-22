@@ -4,23 +4,22 @@ from .models import EventRegistration
 
 @admin.register(EventRegistration)
 class EventRegistrationAdmin(admin.ModelAdmin):
-    # Display the Title and Strapi ID so Admin knows exactly which event it is
     list_display = (
         'full_name', 
         'event_title', 
-        'strapi_event_id', 
+        'location',      
+        'event_date',    
         'payment_status', 
         'display_proof', 
         'created_at'
     )
     
-    # Filter by the Event Title (Label) and Status
-    list_filter = ('event_title', 'payment_status', 'created_at')
+    # Filter by location and title to help sort attendees
+    list_filter = ('event_title', 'location', 'payment_status', 'created_at')
     
-    # Search by User Details or Event Name
-    search_fields = ('full_name', 'email', 'event_title', 'strapi_event_id')
+    # Search by location as well
+    search_fields = ('full_name', 'email', 'event_title', 'location', 'strapi_event_id')
     
-    # Keep the bulk verification action
     actions = ['mark_as_verified']
 
     def display_proof(self, obj):
@@ -34,6 +33,6 @@ class EventRegistrationAdmin(admin.ModelAdmin):
 
     @admin.action(description="Verify selected registrations")
     def mark_as_verified(self, request, queryset):
+        
         count = queryset.update(payment_status='Verified')
         self.message_user(request, f"{count} registrations were successfully verified.")
-

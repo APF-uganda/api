@@ -10,6 +10,7 @@ class EventRegistration(models.Model):
     # NEW: Identifiers from Strapi (No ForeignKey needed)
     strapi_event_id = models.CharField(max_length=100, help_text="The unique ID from Strapi")
     event_title = models.CharField(max_length=255, help_text="The Title of the event from Strapi")
+    location = models.CharField(max_length=255, blank=True, null=True)
     
     # User Details (from your React form)
     full_name = models.CharField(max_length=255)

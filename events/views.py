@@ -1,25 +1,28 @@
+from django.http import HttpResponse
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.conf import settings
+from django.db.models import Q
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes, parser_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+
+# PDF Generation imports
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
 
 from .models import EventRegistration
 from .serializers import EventRegistrationSerializer
 
 def send_styled_event_email(reg, status_type):
-    """
-    Helper function using the decoupled model fields.
-    """
     try:
-        # Use titles and dates stored directly on the registration object
         event_title = reg.event_title
         event_date = reg.event_date or "Date specified in event details"
+        event_location = reg.location or "As specified in event details"
         
         if status_type == 'RECEIVED':
             subject = f"Registration Received: {event_title}"
@@ -42,8 +45,8 @@ def send_styled_event_email(reg, status_type):
             'message_body': message_body,
             'status_text': status_text,
             'event_title': event_title,
-            'event_date': event_date,
-            'location': 'As specified in event details', 
+            'event_date': event_date, 
+            'location': event_location,
         }
 
         html_content = render_to_string('emails/event_confirmation.html', context)
@@ -65,13 +68,17 @@ def send_styled_event_email(reg, status_type):
 @permission_classes([AllowAny])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
 def register_for_event(request):
-    # For MultiPartParser, data is usually in request.data or request.POST
     data = request.data 
     
     try:
-        strapi_id = data.get('eventId')
-        event_title = data.get('eventTitle')
-        event_date = data.get('eventDate') # Captured from React finalDateDisplay
+        # 1. Capture IDs and Titles
+        strapi_id = data.get('strapi_event_id') or data.get('eventId')
+        event_title = data.get('event_title') or data.get('eventTitle')
+        event_date = data.get('event_date') or data.get('eventDate')
+        
+        # 2. Capture Location accurately
+      
+        event_location = data.get('location') or data.get('event_location') or data.get('eventlocation')
         
         if not strapi_id or not event_title:
             return Response(
@@ -79,28 +86,24 @@ def register_for_event(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Handle file upload
-        proof_file = request.FILES.get('proof')
-        
-        # Determine status: If there's a file, it needs admin review. 
-        # If no file was provided (Free event), we mark it verified immediately.
+        # 3. Handle file upload
+        proof_file = request.FILES.get('proof_of_payment') or request.FILES.get('proof')
         initial_status = 'Pending' if proof_file else 'Verified'
         
-        # Create registration record
+        # 4. Create record using the variables defined above
         reg = EventRegistration.objects.create(
             strapi_event_id=strapi_id,
             event_title=event_title,
             event_date=event_date,
-            full_name=data.get('fullName'),
+            location=event_location,  
+            full_name=data.get('full_name') or data.get('fullName'),
             email=data.get('email'),
-            phone_number=data.get('phoneNumber'),
-            company_name=data.get('companyName', ''),
+            phone_number=data.get('phone_number') or data.get('phoneNumber'),
+            company_name=data.get('company_name') or data.get('companyName', ''),
             proof_of_payment=proof_file, 
             payment_status=initial_status
         )
 
-        # Trigger Email logic based on initial status
-        # If 'Verified' (Free), send 'Confirmed' email. If 'Pending' (Paid), send 'Received'.
         email_type = 'VERIFIED' if initial_status == 'Verified' else 'RECEIVED'
         send_styled_event_email(reg, email_type)
 
@@ -115,15 +118,79 @@ def register_for_event(request):
 
 
 class AdminRegistrationListView(generics.ListAPIView):
-    queryset = EventRegistration.objects.all().order_by('-created_at')
     serializer_class = EventRegistrationSerializer
     permission_classes = [permissions.IsAdminUser]
 
+    def get_queryset(self):
+        queryset = EventRegistration.objects.all().order_by('-created_at')
+        # Updated to handle filtering by Event Title/Search
+        search_query = self.request.query_params.get('event_title', None)
+        if search_query:
+            queryset = queryset.filter(
+                Q(event_title__icontains=search_query) | 
+                Q(full_name__icontains=search_query) |
+                Q(event_date__icontains=search_query)
+            )
+        return queryset
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def export_registrations_pdf(request):
+    """
+    New View: Generates a PDF of the filtered registrations.
+    """
+    search_query = request.query_params.get('event_title', '')
+    
+    regs = EventRegistration.objects.all().order_by('-created_at')
+    if search_query:
+        regs = regs.filter(
+            Q(event_title__icontains=search_query) | 
+            Q(event_date__icontains=search_query)
+        )
+
+    response = HttpResponse(content_type='application/pdf')
+    filename = f"Registrations_{search_query or 'All'}.pdf".replace(" ", "_")
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    p = canvas.Canvas(response, pagesize=letter)
+    p.setTitle("Event Registrations")
+    
+    # Header logic
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50, 750, "APF Uganda Event Registration List")
+    p.setFont("Helvetica", 10)
+    p.drawString(50, 735, f"Filter: {search_query if search_query else 'All'}")
+    p.drawString(50, 720, f"Total Count: {regs.count()}")
+    p.line(50, 710, 550, 710)
+
+    # Table Headers
+    p.setFont("Helvetica-Bold", 10)
+    y = 690
+    p.drawString(50, y, "Attendee Name")
+    p.drawString(200, y, "Event")
+    p.drawString(400, y, "Status")
+    p.drawString(480, y, "Date")
+
+    # Rows
+    p.setFont("Helvetica", 8)
+    y -= 20
+    for reg in regs:
+        if y < 50:
+            p.showPage()
+            y = 750
+        p.drawString(50, y, str(reg.full_name)[:30])
+        p.drawString(200, y, str(reg.event_title)[:45])
+        p.drawString(400, y, str(reg.payment_status))
+        p.drawString(480, y, str(reg.event_date)[:15])
+        y -= 15
+
+    p.showPage()
+    p.save()
+    return response
+
 
 class VerifyRegistrationView(APIView):
-    """
-    Endpoint for Admins to manually verify a payment and trigger a confirmation email.
-    """
     permission_classes = [permissions.IsAdminUser]
 
     def patch(self, request, pk):
@@ -131,8 +198,6 @@ class VerifyRegistrationView(APIView):
             registration = EventRegistration.objects.get(pk=pk)
             registration.payment_status = 'Verified'
             registration.save() 
-            
-            # Send the official "Confirmed & Verified" email
             send_styled_event_email(registration, 'VERIFIED')
             
             return Response({
