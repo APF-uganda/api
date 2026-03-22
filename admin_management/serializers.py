@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from authentication.models import User, UserRole
 from Documents.models import MemberDocument
-from .models import MembershipStatus, DocumentStatus, SuspendedMember, ProcessedDocument, MembershipInvoice, InvoicePaymentLink
+from .models import MembershipStatus, DocumentStatus, SuspendedMember, ProcessedDocument, MembershipInvoice, InvoicePaymentLink, AdminNote
 
 
 class AdminMemberSerializer(serializers.ModelSerializer):
@@ -160,3 +160,49 @@ class InvoicePaymentLinkSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         read_only_fields = ['created_at']
+
+
+class AdminNoteSerializer(serializers.ModelSerializer):
+    """Serializer for admin notes on member records"""
+    admin_name = serializers.SerializerMethodField()
+    admin_email = serializers.SerializerMethodField()
+    member_name = serializers.SerializerMethodField()
+    member_email = serializers.EmailField(source='member.email', read_only=True)
+    
+    class Meta:
+        model = AdminNote
+        fields = [
+            'id',
+            'member',
+            'member_name',
+            'member_email',
+            'admin',
+            'admin_name',
+            'admin_email',
+            'note_text',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'admin', 'created_at', 'updated_at']
+    
+    def get_admin_name(self, obj):
+        return obj.admin.full_name if obj.admin else 'Unknown'
+    
+    def get_admin_email(self, obj):
+        return obj.admin.email if obj.admin else 'Unknown'
+    
+    def get_member_name(self, obj):
+        return obj.member.full_name
+
+
+class CreateAdminNoteSerializer(serializers.ModelSerializer):
+    """Serializer for creating admin notes"""
+    
+    class Meta:
+        model = AdminNote
+        fields = ['note_text']
+    
+    def validate_note_text(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Note text cannot be empty")
+        return value.strip()

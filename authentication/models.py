@@ -126,6 +126,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         help_text='Frequency of forum activity digest emails'
     )
     
+    # Account lockout fields
+    failed_login_attempts = models.PositiveIntegerField(default=0, help_text='Number of consecutive failed login attempts')
+    account_locked_until = models.DateTimeField(null=True, blank=True, help_text='Account locked until this time')
+    last_failed_login = models.DateTimeField(null=True, blank=True, help_text='Timestamp of last failed login attempt')
+    
     objects = UserManager()
     
     USERNAME_FIELD = 'email'
@@ -156,6 +161,38 @@ class User(AbstractBaseUser, PermissionsMixin):
         if len(email_name) >= 2:
             return f"{email_name[0]}{email_name[1]}".upper()
         return email_name[0].upper() if email_name else "U"
+    
+    def is_account_locked(self):
+        """Check if account is currently locked"""
+        if self.account_locked_until and timezone.now() < self.account_locked_until:
+            return True
+        return False
+    
+    def get_lockout_time_remaining(self):
+        """Get remaining lockout time in minutes"""
+        if self.is_account_locked():
+            remaining = (self.account_locked_until - timezone.now()).total_seconds() / 60
+            return max(0, int(remaining))
+        return 0
+    
+    def record_failed_login(self):
+        """Record a failed login attempt and lock account if threshold reached"""
+        self.failed_login_attempts += 1
+        self.last_failed_login = timezone.now()
+        
+        # Lock account after 5 failed attempts
+        if self.failed_login_attempts >= 5:
+            # Lock for 30 minutes
+            self.account_locked_until = timezone.now() + timezone.timedelta(minutes=30)
+        
+        self.save(update_fields=['failed_login_attempts', 'last_failed_login', 'account_locked_until'])
+    
+    def reset_failed_login_attempts(self):
+        """Reset failed login attempts after successful login"""
+        self.failed_login_attempts = 0
+        self.last_failed_login = None
+        self.account_locked_until = None
+        self.save(update_fields=['failed_login_attempts', 'last_failed_login', 'account_locked_until'])
     
     def save(self, *args, **kwargs):
         """Override save to handle profile picture processing and completion tracking."""

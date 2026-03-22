@@ -231,3 +231,36 @@ class InvoicePaymentLink(models.Model):
     
     def __str__(self):
         return f"{self.invoice.invoice_number} - {self.payment.transaction_reference} - UGX {self.amount}"
+
+
+class AdminNote(models.Model):
+    """
+    Admin notes on member records for tracking interactions and important information
+    """
+    member = models.ForeignKey(
+        AuthUser,
+        on_delete=models.CASCADE,
+        related_name='admin_notes',
+        help_text="Member this note is about"
+    )
+    admin = models.ForeignKey(
+        AuthUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_notes',
+        help_text="Admin who created this note"
+    )
+    note_text = models.TextField(
+        help_text="Content of the note"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'admin_management_admin_notes'
+        ordering = ['-created_at']
+        verbose_name = 'Admin Note'
+        verbose_name_plural = 'Admin Notes'
+    
+    def __str__(self):
+        return f"Note by {self.admin.email if self.admin else 'Unknown'} on {self.member.email} - {self.created_at.strftime('%Y-%m-%d')}"

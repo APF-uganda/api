@@ -177,6 +177,7 @@ urlpatterns = [
     
     # API v1 endpoints - organized by app
     path("api/v1/auth/", include("authentication.urls")),
+    path("api/v1/profiles/", include("profiles.urls")),
     path("api/v1/contacts/", include("contacts.urls")),
     path("api/v1/applications/", include("applications.urls")),
     path("api/v1/payments/", include("payments.urls")),

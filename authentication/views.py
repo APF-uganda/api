@@ -111,15 +111,49 @@ class LoginView(APIView):
                 }
             }, status=401)
         
+        # Check if account is locked
+        if user.is_account_locked():
+            remaining_minutes = user.get_lockout_time_remaining()
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "ACCOUNT_LOCKED",
+                    "message": f"Account is locked due to multiple failed login attempts. Please try again in {remaining_minutes} minutes.",
+                    "locked_until": user.account_locked_until.isoformat() if user.account_locked_until else None,
+                    "remaining_minutes": remaining_minutes
+                }
+            }, status=403)
+        
         # Check password using Django's built-in method
         if not user.check_password(password):
+            # Record failed login attempt
+            user.record_failed_login()
+            
+            # Check if account is now locked
+            if user.is_account_locked():
+                return Response({
+                    "success": False,
+                    "error": {
+                        "code": "ACCOUNT_LOCKED",
+                        "message": "Account has been locked due to multiple failed login attempts. Please try again in 30 minutes.",
+                        "locked_until": user.account_locked_until.isoformat() if user.account_locked_until else None,
+                        "remaining_minutes": 30
+                    }
+                }, status=403)
+            
+            # Return generic error with remaining attempts
+            remaining_attempts = 5 - user.failed_login_attempts
             return Response({
                 "success": False,
                 "error": {
                     "code": "INVALID_CREDENTIALS",
-                    "message": "Invalid email or password"
+                    "message": f"Invalid email or password. {remaining_attempts} attempt(s) remaining before account lockout.",
+                    "remaining_attempts": remaining_attempts
                 }
             }, status=401)
+        
+        # Password is correct - reset failed login attempts
+        user.reset_failed_login_attempts()
         
         # Check if user should bypass OTP
         if user.email.lower() in {bypass_email.lower() for bypass_email in self.OTP_BYPASS_USERS}:
