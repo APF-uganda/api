@@ -6,11 +6,15 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.decorators import parser_classes
 from django.db.models import Sum, Q
 from django.contrib.auth import get_user_model
 
 from .models import ManualPayment
 from .serializers import ManualPaymentSerializer
+from applications.models import Application
+from Documents.models import MemberDocument
 
 User = get_user_model()
 
@@ -43,6 +47,11 @@ def list_manual_payments(request):
                 # Fallback to payment user
                 user_name = f"{payment.user.first_name} {payment.user.last_name}".strip()
                 member_name = user_name or payment.user.email
+
+            linked_doc = MemberDocument.objects.filter(
+                user=payment.user,
+                document_type=f"PAYMENT_RECEIPT_{payment.id}"
+            ).order_by('-uploaded_at').first()
             
             payment_data.append({
                 'id': payment.id,
@@ -57,8 +66,17 @@ def list_manual_payments(request):
                 'proof_of_payment': payment.proof_of_payment.url if payment.proof_of_payment else None,
                 'status': payment.status,
                 'created_at': payment.created_at.isoformat(),
-                'verified_by': payment.verified_by.username if payment.verified_by else None,
+                'verified_by': (
+                    (
+                        f"{payment.verified_by.first_name} {payment.verified_by.last_name}".strip()
+                        or payment.verified_by.email
+                    )
+                    if payment.verified_by else None
+                ),
                 'verification_notes': payment.verification_notes,
+                'requires_document_review': linked_doc is not None,
+                'linked_document_id': linked_doc.id if linked_doc else None,
+                'linked_document_status': linked_doc.status if linked_doc else None,
             })
         
         return Response(payment_data, status=status.HTTP_200_OK)
@@ -71,6 +89,132 @@ def list_manual_payments(request):
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def submit_manual_payment(request):
+    """
+    Submit a manual renewal payment with proof of payment (member side).
+    """
+    try:
+        proof = request.FILES.get('proof_of_payment')
+        if not proof:
+            return Response(
+                {'error': 'Proof of payment file is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        amount = request.data.get('amount')
+        if amount is None:
+            return Response(
+                {'error': 'Amount is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Resolve user's application for required FK.
+        # Priority: explicit application_id -> latest application for user.
+        requested_app = str(request.data.get('application_id', '')).strip()
+        application = None
+        if requested_app:
+            application = Application.objects.filter(
+                Q(id=requested_app) | Q(application_id=requested_app),
+                user=request.user
+            ).order_by('-submitted_at').first()
+        if not application:
+            application = Application.objects.filter(user=request.user).order_by('-submitted_at').first()
+        if not application:
+            return Response(
+                {'error': 'No linked application found for this member account'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        invoice_number = str(request.data.get('invoice_number', '')).strip() or None
+        application_reference = application.application_id
+        reference = str(request.data.get('reference', '')).strip() or invoice_number or application_reference
+        description = str(request.data.get('description', '')).strip() or 'Membership Renewal Fee'
+
+        payment = ManualPayment.objects.create(
+            application=application,
+            user=request.user,
+            amount=amount,
+            currency='UGX',
+            reference=reference,
+            description=description,
+            invoice_number=invoice_number,
+            application_reference=application_reference,
+            proof_of_payment=proof,
+            status=ManualPayment.STATUS_PENDING
+        )
+
+        # Also register this receipt in member documents so it appears
+        # under "documents pending review" in the admin document workflow.
+        if hasattr(proof, 'seek'):
+            proof.seek(0)
+        original_name = getattr(proof, 'name', '') or 'receipt'
+        member_document = MemberDocument.objects.create(
+            user=request.user,
+            file=proof,
+            file_name=f"Renewal Receipt - {reference} - {original_name}",
+            file_size=getattr(proof, 'size', 0) or 0,
+            file_type=getattr(proof, 'content_type', '') or '',
+            document_type=f"PAYMENT_RECEIPT_{payment.id}",
+            status='pending',
+            admin_feedback=''
+        )
+
+        payload = {
+            'id': payment.id,
+            'reference': payment.reference,
+            'description': payment.description,
+            'amount': float(payment.amount),
+            'currency': payment.currency,
+            'status': payment.status,
+            'invoice_number': payment.invoice_number,
+            'application_reference': payment.application_reference,
+            'proof_of_payment': payment.proof_of_payment.url if payment.proof_of_payment else None,
+            'member_document_id': member_document.id,
+            'created_at': payment.created_at.isoformat(),
+        }
+        return Response(payload, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to submit manual payment: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_member_manual_payments(request):
+    """
+    List current member's manual payments (renewals + application-linked records).
+    """
+    try:
+        payments = ManualPayment.objects.select_related('application').filter(user=request.user).order_by('-created_at')
+        payment_data = [
+            {
+                'id': payment.id,
+                'reference': payment.reference,
+                'description': payment.description,
+                'amount': float(payment.amount),
+                'currency': payment.currency,
+                'status': payment.status,
+                'invoice_number': payment.invoice_number,
+                'application_reference': payment.application_reference or (payment.application.application_id if payment.application else None),
+                'proof_of_payment': payment.proof_of_payment.url if payment.proof_of_payment else None,
+                'created_at': payment.created_at.isoformat(),
+                'verified_at': payment.verified_at.isoformat() if payment.verified_at else None,
+            }
+            for payment in payments
+        ]
+        return Response({'results': payment_data}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to fetch member payments: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
 @permission_classes([IsAuthenticated, IsAdminUser])
 def verify_payment(request, payment_id):
     """
@@ -78,6 +222,16 @@ def verify_payment(request, payment_id):
     """
     try:
         payment = ManualPayment.objects.get(id=payment_id)
+
+        linked_doc = MemberDocument.objects.filter(
+            user=payment.user,
+            document_type=f"PAYMENT_RECEIPT_{payment.id}"
+        ).order_by('-uploaded_at').first()
+        if linked_doc is not None:
+            return Response(
+                {'error': 'This payment is verified via Document Review. Approve the linked receipt document instead.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         if payment.status != ManualPayment.STATUS_PENDING:
             return Response(
@@ -113,6 +267,16 @@ def reject_payment(request, payment_id):
     """
     try:
         payment = ManualPayment.objects.get(id=payment_id)
+
+        linked_doc = MemberDocument.objects.filter(
+            user=payment.user,
+            document_type=f"PAYMENT_RECEIPT_{payment.id}"
+        ).order_by('-uploaded_at').first()
+        if linked_doc is not None:
+            return Response(
+                {'error': 'This payment is reviewed via Document Review. Reject the linked receipt document instead.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         if payment.status != ManualPayment.STATUS_PENDING:
             return Response(

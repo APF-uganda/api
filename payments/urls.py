@@ -21,6 +21,8 @@ from .views_webhook import (
 )
 from .admin_views import (
     list_manual_payments,
+    submit_manual_payment,
+    list_member_manual_payments,
     verify_payment,
     reject_payment,
     get_revenue_stats,
@@ -30,6 +32,10 @@ from .admin_views import (
 app_name = 'payments'
 
 urlpatterns = [
+    # Member manual payment endpoints (receipt upload flow)
+    path('manual/submit/', submit_manual_payment, name='member-manual-payment-submit'),
+    path('manual/history/', list_member_manual_payments, name='member-manual-payment-history'),
+
     # Manual payment admin endpoints (NEW - for admin dashboard)
     path('', list_manual_payments, name='manual-payments-list'),
     path('<int:payment_id>/verify/', verify_payment, name='manual-payment-verify'),
