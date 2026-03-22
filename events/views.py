@@ -7,30 +7,32 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import AllowAny
-
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from .models import Event, EventRegistration
+from .models import EventRegistration
 from .serializers import EventRegistrationSerializer
 
-def send_styled_event_email(reg, event, status_type):
+def send_styled_event_email(reg, status_type):
     """
-    Helper function to send the HTML email.
+    Helper function using the new model fields (event_title).
     """
     try:
+        # Use the title stored directly on the registration object
+        event_title = reg.event_title
+        
         if status_type == 'RECEIVED':
-            subject = f"Registration Received: {event.title}"
+            subject = f"Registration Received: {event_title}"
             status_text = "Pending Verification"
             message_body = (
-                f"We have received your registration and proof of payment for '{event.title}'. "
-                "Our finance team is currently verifying the transaction. You will receive a final "
+                f"We have received your registration for '{event_title}'. "
+                "Our team is currently verifying the details. You will receive a final "
                 "confirmation email once verified."
             )
         else:
-            subject = f"Registration Confirmed: {event.title}"
+            subject = f"Registration Confirmed: {event_title}"
             status_text = "Confirmed & Verified"
             message_body = (
-                f"Great news! Your registration for '{event.title}' has been officially verified. "
+                f"Great news! Your registration for '{event_title}' has been officially verified. "
                 "We look forward to having you join us!"
             )
 
@@ -38,9 +40,9 @@ def send_styled_event_email(reg, event, status_type):
             'user_name': reg.full_name,
             'message_body': message_body,
             'status_text': status_text,
-            'event_title': event.title,
-            'location': getattr(event, 'location', 'N/A'),
-            'event_date': getattr(event, 'date', 'TBA'), 
+            'event_title': event_title,
+            'location': 'As specified in event details',
+            'event_date': 'TBA', 
         }
 
         html_content = render_to_string('emails/event_confirmation.html', context)
@@ -60,39 +62,36 @@ def send_styled_event_email(reg, event, status_type):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
-# --- ADD THIS DECORATOR TO FIX THE 415 ERROR ---
 @parser_classes([MultiPartParser, FormParser, JSONParser])
 def register_for_event(request):
-    # DRF combines FILES and POST into request.data when parsers are used
     data = request.data 
     
     try:
-        event_id = data.get('eventId')
-        if not event_id:
-            return Response({"error": "eventId is required"}, status=status.HTTP_400_BAD_REQUEST)
+        strapi_id = data.get('eventId')
+        event_title = data.get('eventTitle')
+        
+        if not strapi_id or not event_title:
+            return Response({"error": "Both eventId and eventTitle are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        event = Event.objects.get(id=event_id)
+        # Logic for Paid vs Free based on presence of a proof file
+        proof_file = request.FILES.get('proof')
+        initial_status = 'Pending' if proof_file else 'Verified'
         
-        # Initial status logic
-        is_paid = getattr(event, 'is_paid_event', True)
-        initial_status = 'Pending' if is_paid else 'Verified'
-        
-        # Creating registration
+        # Creating registration using the decoupled model
         reg = EventRegistration.objects.create(
-            event=event,
+            strapi_event_id=strapi_id,
+            event_title=event_title,
             full_name=data.get('fullName'),
             email=data.get('email'),
             phone_number=data.get('phoneNumber'),
             company_name=data.get('companyName', ''),
-            attendance_mode=data.get('attendanceMode', 'Physical'),
-           
-            proof_of_payment=request.FILES.get('proof'), 
+            proof_of_payment=proof_file, 
             payment_status=initial_status
         )
 
         # Trigger Email
         email_type = 'VERIFIED' if initial_status == 'Verified' else 'RECEIVED'
-        send_styled_event_email(reg, event, email_type)
+        send_styled_event_email(reg, email_type)
 
         return Response({
             "status": "success", 
@@ -100,10 +99,7 @@ def register_for_event(request):
             "registration_id": reg.id
         }, status=status.HTTP_201_CREATED)
         
-    except Event.DoesNotExist:
-        return Response({"error": "Event not found"}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        # Returning the actual error message helps debug the frontend
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -122,7 +118,7 @@ class VerifyRegistrationView(APIView):
             registration.payment_status = 'Verified'
             registration.save() 
             
-            send_styled_event_email(registration, registration.event, 'VERIFIED')
+            send_styled_event_email(registration, 'VERIFIED')
             
             return Response({
                 "status": "success", 
