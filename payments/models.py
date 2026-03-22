@@ -316,5 +316,55 @@ class PaymentConfig(models.Model):
             return Decimal('50000.00')  # Default fallback
 
 
+class RenewalProofOfPayment(models.Model):
+    """
+    Proof of payment uploaded by a member for a renewal invoice.
+    Admin reviews and approves/rejects. On approval a Payment record is created
+    and the linked MembershipInvoice is marked paid.
+    """
+
+    STATUS_PENDING = 'pending_verification'
+    STATUS_APPROVED = 'approved'
+    STATUS_REJECTED = 'rejected'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending Verification'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_REJECTED, 'Rejected'),
+    ]
+
+    PROVIDER_CHOICES = [
+        ('mtn', 'MTN Mobile Money'),
+        ('airtel', 'Airtel Money'),
+        ('bank', 'Bank Transfer'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='renewal_proofs')
+    invoice_number = models.CharField(max_length=50, db_index=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('150000.00'))
+    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default='mtn')
+    phone_number = models.CharField(max_length=30, blank=True, help_text='Phone used for mobile money')
+    proof_file = models.FileField(upload_to='renewal_proofs/')
+    reference_note = models.CharField(max_length=200, blank=True)
+
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    reviewed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_renewal_proofs'
+    )
+    review_notes = models.TextField(blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Renewal Proof of Payment'
+        verbose_name_plural = 'Renewal Proofs of Payment'
+
+    def __str__(self):
+        return f"{self.user.email} – {self.invoice_number} – {self.status}"
+
+
 # Import webhook models so Django migration framework discovers them
 from payments.models_webhook import WebhookNotification, PaymentStatusCheck  
