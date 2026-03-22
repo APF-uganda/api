@@ -1,36 +1,37 @@
 from django.db import models
 
-class Event(models.Model):
-    title = models.CharField(max_length=255)
-    date = models.DateTimeField()
-    location = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
-    price_physical = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    price_virtual = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-   
-    is_paid_event = models.BooleanField(default=False)
-
-    def __str__(self):
-        return self.title
-
 class EventRegistration(models.Model):
-    ATTENDANCE_CHOICES = [('Physical', 'Physical'), ('Virtual', 'Virtual')]
-    STATUS_CHOICES = [('Pending', 'Pending'), ('Verified', 'Verified'), ('Rejected', 'Rejected')]
+    STATUS_CHOICES = [
+        ('Pending', 'Pending'), 
+        ('Verified', 'Verified'), 
+        ('Rejected', 'Rejected')
+    ]
     
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='registrations')
+    # NEW: Identifiers from Strapi (No ForeignKey needed)
+    strapi_event_id = models.CharField(max_length=100, help_text="The unique ID from Strapi")
+    event_title = models.CharField(max_length=255, help_text="The Title of the event from Strapi")
+    
+    # User Details (from your React form)
     full_name = models.CharField(max_length=255)
     email = models.EmailField()
     phone_number = models.CharField(max_length=20)
-    company_name = models.CharField(max_length=255, blank=True)
-    attendance_mode = models.CharField(max_length=20, choices=ATTENDANCE_CHOICES)
+    company_name = models.CharField(max_length=255, blank=True, null=True)
+    event_date = models.CharField(max_length=100, blank=True, null=True)
     
-    # Proof of Payment
+    # Proof of Payment (For paid events)
+    # Using ImageField or FileField is fine; ImageField is stricter for receipts.
     proof_of_payment = models.ImageField(upload_to='event_proofs/%Y/%m/', null=True, blank=True)
-    payment_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
     
-    # Internal Admin Notes
+    # Admin Management
+    payment_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
     admin_notes = models.TextField(blank=True, help_text="Reason for rejection or verification notes")
+    
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.full_name} - {self.event.title}"
+        return f"{self.full_name} - {self.event_title}"
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Event Registration"
+        verbose_name = "Event Registrations"

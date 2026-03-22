@@ -2,94 +2,116 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.conf import settings
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from .models import Event, EventRegistration
+from .models import EventRegistration
 from .serializers import EventRegistrationSerializer
 
-def send_styled_event_email(reg, event, status_type):
+def send_styled_event_email(reg, status_type):
     """
-    Helper function to send the HTML email.
-    status_type: 'RECEIVED' or 'VERIFIED'
+    Helper function using the decoupled model fields.
     """
-    if status_type == 'RECEIVED':
-        subject = f"Registration Received: {event.title}"
-        status_text = "Pending Verification"
-        message_body = (
-            f"We have received your registration and proof of payment for '{event.title}'. "
-            "Our finance team is currently verifying the transaction. You will receive a final "
-            "confirmation email once verified."
-        )
-    else:
-        subject = f"Registration Confirmed: {event.title}"
-        status_text = "Confirmed & Verified"
-        message_body = (
-            f"Great news! Your registration for '{event.title}' has been officially verified. "
-            "We look forward to having you join us!"
-        )
-
-    context = {
-        'user_name': reg.full_name,
-        'message_body': message_body,
-        'status_text': status_text,
-        'event_title': event.title,
-        'location': event.location,
-        'event_date': event.date, # Ensure your model has a 'date' field
-    }
-
-    # Load the HTML template you created
-    html_content = render_to_string('emails/event_confirmation.html', context)
-    text_content = strip_tags(html_content) 
-
-    email = EmailMultiAlternatives(
-        subject,
-        text_content,
-        f"APF Uganda <{settings.EMAIL_HOST_USER}>",
-        [reg.email]
-    )
-    email.attach_alternative(html_content, "text/html")
-    email.send(fail_silently=False)
-
-@csrf_exempt
-def register_for_event(request):
-    if request.method == 'POST':
-        data = request.POST
-        files = request.FILES
+    try:
+        # Use titles and dates stored directly on the registration object
+        event_title = reg.event_title
+        event_date = reg.event_date or "Date specified in event details"
         
-        try:
-            event = Event.objects.get(id=data.get('eventId'))
-            initial_status = 'Verified' if not event.is_paid_event else 'Pending'
-            
-            reg = EventRegistration.objects.create(
-                event=event,
-                full_name=data.get('fullName'),
-                email=data.get('email'),
-                phone_number=data.get('phoneNumber'),
-                company_name=data.get('companyName', ''),
-                attendance_mode=data.get('attendanceMode', 'Physical'),
-                proof_of_payment=files.get('proof'),
-                payment_status=initial_status
+        if status_type == 'RECEIVED':
+            subject = f"Registration Received: {event_title}"
+            status_text = "Pending Verification"
+            message_body = (
+                f"We have received your registration for '{event_title}'. "
+                "Our team is currently verifying your payment/details. You will receive a final "
+                "confirmation email once verified."
+            )
+        else:
+            subject = f"Registration Confirmed: {event_title}"
+            status_text = "Confirmed & Verified"
+            message_body = (
+                f"Great news! Your registration for '{event_title}' has been officially verified. "
+                "We look forward to having you join us!"
             )
 
-            email_type = 'VERIFIED' if not event.is_paid_event else 'RECEIVED'
-            send_styled_event_email(reg, event, email_type)
+        context = {
+            'user_name': reg.full_name,
+            'message_body': message_body,
+            'status_text': status_text,
+            'event_title': event_title,
+            'event_date': event_date,
+            'location': 'As specified in event details', 
+        }
 
-            return JsonResponse({
-                "status": "success", 
-                "message": "Registration processed successfully.",
-                "registration_id": reg.id
-            })
-            
-        except Event.DoesNotExist:
-            return JsonResponse({"status": "error", "message": "Event not found"}, status=404)
-        except Exception as e:
-            return JsonResponse({"status": "error", "message": str(e)}, status=400)
+        html_content = render_to_string('emails/event_confirmation.html', context)
+        text_content = strip_tags(html_content) 
 
-    return JsonResponse({"status": "error", "message": "Method not allowed"}, status=405)
+        email = EmailMultiAlternatives(
+            subject,
+            text_content,
+            f"APF Uganda <{settings.EMAIL_HOST_USER}>",
+            [reg.email]
+        )
+        email.attach_alternative(html_content, "text/html")
+        email.send(fail_silently=False)
+    except Exception as e:
+        print(f"Email sending failed: {e}")
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def register_for_event(request):
+    # For MultiPartParser, data is usually in request.data or request.POST
+    data = request.data 
+    
+    try:
+        strapi_id = data.get('eventId')
+        event_title = data.get('eventTitle')
+        event_date = data.get('eventDate') # Captured from React finalDateDisplay
+        
+        if not strapi_id or not event_title:
+            return Response(
+                {"error": "Both eventId and eventTitle are required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Handle file upload
+        proof_file = request.FILES.get('proof')
+        
+        # Determine status: If there's a file, it needs admin review. 
+        # If no file was provided (Free event), we mark it verified immediately.
+        initial_status = 'Pending' if proof_file else 'Verified'
+        
+        # Create registration record
+        reg = EventRegistration.objects.create(
+            strapi_event_id=strapi_id,
+            event_title=event_title,
+            event_date=event_date,
+            full_name=data.get('fullName'),
+            email=data.get('email'),
+            phone_number=data.get('phoneNumber'),
+            company_name=data.get('companyName', ''),
+            proof_of_payment=proof_file, 
+            payment_status=initial_status
+        )
+
+        # Trigger Email logic based on initial status
+        # If 'Verified' (Free), send 'Confirmed' email. If 'Pending' (Paid), send 'Received'.
+        email_type = 'VERIFIED' if initial_status == 'Verified' else 'RECEIVED'
+        send_styled_event_email(reg, email_type)
+
+        return Response({
+            "status": "success", 
+            "message": "Registration processed successfully.",
+            "registration_id": reg.id
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class AdminRegistrationListView(generics.ListAPIView):
@@ -99,6 +121,9 @@ class AdminRegistrationListView(generics.ListAPIView):
 
 
 class VerifyRegistrationView(APIView):
+    """
+    Endpoint for Admins to manually verify a payment and trigger a confirmation email.
+    """
     permission_classes = [permissions.IsAdminUser]
 
     def patch(self, request, pk):
@@ -107,14 +132,14 @@ class VerifyRegistrationView(APIView):
             registration.payment_status = 'Verified'
             registration.save() 
             
-            # --- TRIGGER: Verification Success Email ---
-            send_styled_event_email(registration, registration.event, 'VERIFIED')
+            # Send the official "Confirmed & Verified" email
+            send_styled_event_email(registration, 'VERIFIED')
             
             return Response({
                 "status": "success", 
-                "message": f"Registration for {registration.full_name} verified and email sent."
+                "message": f"Registration for {registration.full_name} verified."
             })
         except EventRegistration.DoesNotExist:
-            return Response({"status": "error", "message": "Registration not found"}, status=404)
+            return Response({"error": "Registration not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response({"status": "error", "message": str(e)}, status=400)
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
