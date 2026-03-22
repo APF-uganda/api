@@ -918,7 +918,7 @@ class PaymentHistoryView(APIView):
         2. Apply optional filters
         3. Serialize and return
         """
-        # Step 1: Get payments for authenticated user
+        # Step 1: Get payments for authenticated user (includes renewal payments created on approval)
         payments = Payment.objects.filter(user=request.user).order_by('-created_at')
         
         # Step 2: Apply optional filters
@@ -937,8 +937,29 @@ class PaymentHistoryView(APIView):
         
         # Step 3: Serialize and return
         serializer = PaymentHistorySerializer(payments, many=True)
+
+        # Step 4: Also include membership invoices for ledger completeness
+        from admin_management.models import MembershipInvoice
+        invoices = MembershipInvoice.objects.filter(user=request.user).order_by('-invoice_date')
+        invoice_data = []
+        for inv in invoices:
+            invoice_data.append({
+                'id': str(inv.id),
+                'invoice_number': inv.invoice_number,
+                'amount': str(inv.total_amount),
+                'amount_paid': str(inv.amount_paid),
+                'balance_due': str(inv.balance_due),
+                'status': inv.status,
+                'invoice_date': inv.invoice_date.isoformat(),
+                'due_date': inv.due_date.isoformat(),
+                'period_start': inv.period_start.isoformat(),
+                'period_end': inv.period_end.isoformat(),
+                'type': 'invoice',
+            })
+
         return Response({
             'success': True,
             'count': len(serializer.data),
-            'results': serializer.data
+            'results': serializer.data,
+            'invoices': invoice_data,
         }, status=status.HTTP_200_OK)

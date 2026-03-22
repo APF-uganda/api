@@ -25,7 +25,7 @@ class ForumPostPagination(PageNumberPagination):
     """
     page_size = 10
     page_size_query_param = 'page_size'
-    max_page_size = 100
+    max_page_size = 50
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -502,27 +502,27 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         now = timezone.now()
         current_user_id = request.user.id if request.user.is_authenticated else None
 
-        post_activity = (
-            ForumPost.objects.values('author')
-            .annotate(last_active=Max('created_at'))
+        # Build last_seen map with a single pass
+        post_map = dict(
+            ForumPost.objects.values('author').annotate(last_active=Max('created_at')).values_list('author', 'last_active')
         )
-        comment_activity = (
-            Comment.objects.values('author')
-            .annotate(last_active=Max('created_at'))
+        comment_map = dict(
+            Comment.objects.values('author').annotate(last_active=Max('created_at')).values_list('author', 'last_active')
         )
 
-        last_seen_map = {}
-        for item in post_activity:
-            last_seen_map[item['author']] = item['last_active']
-        for item in comment_activity:
-            existing = last_seen_map.get(item['author'])
-            if not existing or (item['last_active'] and item['last_active'] > existing):
-                last_seen_map[item['author']] = item['last_active']
-
-        user_ids = [uid for uid, ts in last_seen_map.items() if ts]
+        all_ids = set(post_map) | set(comment_map)
         if current_user_id is not None:
-            user_ids = [uid for uid in user_ids if uid != current_user_id]
-        users = User.objects.filter(id__in=user_ids)
+            all_ids.discard(current_user_id)
+
+        last_seen_map = {
+            uid: max(filter(None, [post_map.get(uid), comment_map.get(uid)]))
+            for uid in all_ids
+            if any([post_map.get(uid), comment_map.get(uid)])
+        }
+
+        users = User.objects.filter(id__in=list(last_seen_map.keys())).only(
+            'id', 'first_name', 'last_name', 'email', 'profile_picture'
+        )
 
         results = []
         for user in users:

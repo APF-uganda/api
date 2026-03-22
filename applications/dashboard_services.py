@@ -21,92 +21,88 @@ def get_total_members():
 
 def get_application_statistics():
     """Get comprehensive application statistics with trends.
-    
-    Updated to include manual payment revenue from verified ManualPayment records
-    in addition to application payment amounts.
+
+    Revenue sources (no double-counting):
+      1. Payment (completed)  — mobile money app fees + approved renewal proofs
+      2. ManualPayment (verified) — bank/manual application fee uploads
+    Application.payment_amount is intentionally excluded because every paid
+    application already has a linked Payment record.
     """
     now = timezone.now()
     last_month = now - timedelta(days=30)
-    
+    prev_month_start = now - timedelta(days=60)
+
     # Current counts
     total_applications = Application.objects.count()
     pending_applications = Application.objects.filter(status='pending').count()
     approved_applications = Application.objects.filter(status='approved').count()
     rejected_applications = Application.objects.filter(status='rejected').count()
     paid_applications = Application.objects.filter(payment_status__in=['success', 'completed']).count()
-    
-    # Calculate total revenue from all sources
-    application_revenue = Application.objects.filter(
-        payment_status__in=['success', 'completed']
-    ).aggregate(
-        total=Sum('payment_amount')
-    )['total'] or Decimal('0.00')
-    
-    # Add manual payment revenue (verified payments only)
-    from payments.models import ManualPayment
-    manual_payment_revenue = ManualPayment.objects.filter(
+
+    # ── Revenue: all completed Payment records ──────────────────────────────
+    from payments.models import Payment, ManualPayment
+
+    payment_revenue = Payment.objects.filter(
+        status=Payment.STATUS_COMPLETED
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    manual_revenue = ManualPayment.objects.filter(
         status=ManualPayment.STATUS_VERIFIED
-    ).aggregate(
-        total=Sum('amount')
-    )['total'] or Decimal('0.00')
-    
-    # Debug logging for revenue calculation
-    print(f"Revenue Debug - Application Revenue: {application_revenue}, Manual Payment Revenue: {manual_payment_revenue}")
-    
-    total_revenue = application_revenue + manual_payment_revenue
-    
-    # Calculate last month's revenue for trend (last 30 days)
-    last_month_application_revenue = Application.objects.filter(
-        payment_status__in=['success', 'completed'],
-        updated_at__gte=last_month,
-        updated_at__lte=now
-    ).aggregate(
-        total=Sum('payment_amount')
-    )['total'] or Decimal('0.00')
-    
-    # Add last month's manual payment revenue
-    last_month_manual_revenue = ManualPayment.objects.filter(
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    total_revenue = payment_revenue + manual_revenue
+
+    # ── This month's revenue (last 30 days) ─────────────────────────────────
+    this_month_payment_revenue = Payment.objects.filter(
+        status=Payment.STATUS_COMPLETED,
+        completed_at__gte=last_month,
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    this_month_manual_revenue = ManualPayment.objects.filter(
         status=ManualPayment.STATUS_VERIFIED,
-        updated_at__gte=last_month,
-        updated_at__lte=now
-    ).aggregate(
-        total=Sum('amount')
-    )['total'] or Decimal('0.00')
-    
-    last_month_revenue = last_month_application_revenue + last_month_manual_revenue
-    
-    # Last month counts for trend calculation (last 30 days)
+        verified_at__gte=last_month,
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    this_month_revenue = this_month_payment_revenue + this_month_manual_revenue
+
+    # ── Previous month's revenue (30–60 days ago) ───────────────────────────
+    prev_month_payment_revenue = Payment.objects.filter(
+        status=Payment.STATUS_COMPLETED,
+        completed_at__gte=prev_month_start,
+        completed_at__lt=last_month,
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    prev_month_manual_revenue = ManualPayment.objects.filter(
+        status=ManualPayment.STATUS_VERIFIED,
+        verified_at__gte=prev_month_start,
+        verified_at__lt=last_month,
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    prev_month_revenue = prev_month_payment_revenue + prev_month_manual_revenue
+
+    # ── Application trend counts ─────────────────────────────────────────────
     last_month_total = Application.objects.filter(
-        submitted_at__gte=last_month,
-        submitted_at__lte=now
+        submitted_at__gte=last_month, submitted_at__lte=now
     ).count()
     last_month_pending = Application.objects.filter(
-        status='pending',
-        submitted_at__gte=last_month,
-        submitted_at__lte=now
+        status='pending', submitted_at__gte=last_month, submitted_at__lte=now
     ).count()
     last_month_approved = Application.objects.filter(
-        status='approved',
-        updated_at__gte=last_month,
-        updated_at__lte=now
+        status='approved', updated_at__gte=last_month, updated_at__lte=now
     ).count()
     last_month_rejected = Application.objects.filter(
-        status='rejected',
-        updated_at__gte=last_month,
-        updated_at__lte=now
+        status='rejected', updated_at__gte=last_month, updated_at__lte=now
     ).count()
     last_month_paid = Application.objects.filter(
         payment_status__in=['success', 'completed'],
-        updated_at__gte=last_month,
-        updated_at__lte=now
+        updated_at__gte=last_month, updated_at__lte=now
     ).count()
-    
-    # Calculate percentage changes
+
     def calculate_change(current, previous):
         if previous == 0:
             return 100 if current > 0 else 0
         return round(((current - previous) / previous) * 100, 1)
-    
+
     return {
         'total_applications': total_applications,
         'pending_applications': pending_applications,
@@ -120,7 +116,7 @@ def get_application_statistics():
             'approved_change': calculate_change(approved_applications, last_month_approved),
             'rejected_change': calculate_change(rejected_applications, last_month_rejected),
             'paid_change': calculate_change(paid_applications, last_month_paid),
-            'revenue_change': calculate_change(float(total_revenue), float(last_month_revenue)),
+            'revenue_change': calculate_change(float(this_month_revenue), float(prev_month_revenue)),
         }
     }
 
@@ -133,26 +129,66 @@ def get_recent_applications(limit=5):
 
 
 def get_recent_payments(limit=5):
-    """Get recent successful payments for dashboard display."""
-    from payments.models import Payment
-    
-    payments = Payment.objects.filter(
-        status=Payment.STATUS_COMPLETED
-    ).select_related('user', 'application').order_by('-created_at')[:limit]
-    
-    return [{
-        'id': str(payment.id),
-        'payment_id': payment.transaction_reference,
-        'member_name': (
-            payment.user.full_name if payment.user 
-            else f"{payment.application.first_name} {payment.application.last_name}" if payment.application
-            else 'Unknown Member'
-        ),
-        'amount': float(payment.amount),
-        'payment_method': payment.provider,
-        'status': payment.status,
-        'created_at': payment.created_at,
-    } for payment in payments]
+    """Get recent successful payments for dashboard display.
+    Merges completed Payment records and verified ManualPayment records,
+    sorted by most recent, returning the top `limit` entries.
+    """
+    from payments.models import Payment, ManualPayment
+    import itertools
+
+    completed_payments = list(
+        Payment.objects.filter(
+            status=Payment.STATUS_COMPLETED
+        ).select_related('user', 'application').order_by('-created_at')[:limit]
+    )
+
+    verified_manual = list(
+        ManualPayment.objects.filter(
+            status=ManualPayment.STATUS_VERIFIED
+        ).select_related('user', 'application').order_by('-verified_at')[:limit]
+    )
+
+    results = []
+
+    for p in completed_payments:
+        results.append({
+            'id': str(p.id),
+            'payment_id': p.transaction_reference,
+            'member_name': (
+                getattr(p.user, 'full_name', None) or p.user.email
+                if p.user
+                else f"{p.application.first_name} {p.application.last_name}".strip()
+                if p.application
+                else 'Unknown Member'
+            ),
+            'amount': float(p.amount),
+            'payment_method': p.provider,
+            'status': p.status,
+            'created_at': p.created_at,
+        })
+
+    for m in verified_manual:
+        app_name = ''
+        if m.application:
+            app_name = f"{m.application.first_name} {m.application.last_name}".strip()
+        member_name = (
+            getattr(m.user, 'full_name', None) or m.user.email
+            if m.user
+            else app_name or 'Unknown Member'
+        )
+        results.append({
+            'id': str(m.id),
+            'payment_id': m.reference,
+            'member_name': member_name,
+            'amount': float(m.amount),
+            'payment_method': 'bank',
+            'status': 'completed',
+            'created_at': m.verified_at or m.created_at,
+        })
+
+    # Sort merged list by date descending and return top `limit`
+    results.sort(key=lambda x: x['created_at'], reverse=True)
+    return results[:limit]
 
 
 def _safe_add_year(input_date):
