@@ -15,7 +15,9 @@ class CategorySerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def get_post_count(self, obj):
-        """Get the number of published posts in this category"""
+        """Use pre-annotated count if available, otherwise query"""
+        if hasattr(obj, 'post_count'):
+            return obj.post_count
         return obj.posts.filter(status='published').count()
 
 

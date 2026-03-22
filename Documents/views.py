@@ -11,6 +11,41 @@ from .models import Document, MemberDocument
 from .serializers import DocumentSerializer, MemberDocumentSerializer
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from payments.models import ManualPayment
+
+
+def _extract_manual_payment_id_from_document(document):
+    doc_type = (getattr(document, 'document_type', '') or '').upper()
+    prefix = 'PAYMENT_RECEIPT_'
+    if not doc_type.startswith(prefix):
+        return None
+    suffix = doc_type[len(prefix):]
+    return int(suffix) if suffix.isdigit() else None
+
+
+def _sync_manual_payment_status(document, action, admin_user, reason=''):
+    """
+    Keep manual payment status aligned with document review outcome.
+    """
+    if not isinstance(document, MemberDocument):
+        return
+
+    payment_id = _extract_manual_payment_id_from_document(document)
+    if not payment_id:
+        return
+
+    payment = ManualPayment.objects.filter(id=payment_id).first()
+    if not payment:
+        return
+
+    # Basic ownership safety guard.
+    if payment.user_id and payment.user_id != document.user_id:
+        return
+
+    if action == 'approve' and payment.status != ManualPayment.STATUS_VERIFIED:
+        payment.verify(admin_user, notes='Receipt approved via document review')
+    elif action == 'reject' and payment.status != ManualPayment.STATUS_REJECTED:
+        payment.reject(admin_user, notes=reason or 'Receipt rejected via document review')
 
 
 @swagger_auto_schema(method='get', tags=["documents"])
@@ -395,6 +430,11 @@ class DocumentViewSet(viewsets.ViewSet):
             document.admin_feedback = feedback_value
         document.save()
 
+        if status_value == 'approved':
+            _sync_manual_payment_status(document, 'approve', request.user, feedback_value or '')
+        elif status_value == 'rejected':
+            _sync_manual_payment_status(document, 'reject', request.user, feedback_value or '')
+
         # Send notification if status changed
         if old_status != status_value:
             try:
@@ -486,6 +526,8 @@ class DocumentViewSet(viewsets.ViewSet):
             document.admin_feedback = feedback_value
         document.save()
 
+        _sync_manual_payment_status(document, 'approve', request.user, feedback_value or '')
+
         # Send notification
         try:
             from notifications.models import UserNotification
@@ -563,6 +605,8 @@ class DocumentViewSet(viewsets.ViewSet):
         if hasattr(document, 'admin_feedback') and feedback_value is not None:
             document.admin_feedback = feedback_value
         document.save()
+
+        _sync_manual_payment_status(document, 'reject', request.user, feedback_value or '')
 
         # Send notification
         try:

@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from django.http import HttpResponse
 from Documents.models import MemberDocument
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -12,10 +13,13 @@ from .permissions import IsAdminUser
 from .serializers import (
     AdminMemberSerializer, SuspendMemberSerializer, 
     ReactivateMemberSerializer, AdminDocumentSerializer, 
-    ApproveDocumentSerializer, RejectDocumentSerializer
+    ApproveDocumentSerializer, RejectDocumentSerializer,
+    AdminNoteSerializer, CreateAdminNoteSerializer
 )
 from .services import MemberManagementService, DocumentManagementService
-from .models import MembershipStatus, DocumentStatus
+from .models import MembershipStatus, DocumentStatus, AdminNote
+import csv
+from datetime import datetime
 
 
 User = get_user_model()
@@ -88,6 +92,136 @@ class AdminMemberListView(APIView):
             'count': len(serializer.data),
             'results': serializer.data
         }, status=status.HTTP_200_OK)
+
+
+class AdminMemberExportCSVView(APIView):
+    """
+    View to export all members to CSV
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    
+    def get_queryset(self):
+        """Get queryset of members with optional filtering"""
+        queryset = User.objects.filter(role='2')  # Only members, not admins
+        
+        # Apply status filter
+        status_param = self.request.query_params.get('status', None)
+        if status_param:
+            if status_param.upper() == 'SUSPENDED':
+                queryset = queryset.filter(
+                    Q(is_active=False) | 
+                    Q(suspension_record__isnull=False, suspension_record__reactivated_at__isnull=True)
+                )
+            elif status_param.upper() == 'ACTIVE':
+                queryset = queryset.filter(
+                    is_active=True
+                ).exclude(
+                    suspension_record__isnull=False,
+                    suspension_record__reactivated_at__isnull=True
+                )
+        
+        # Apply search filter
+        search_param = self.request.query_params.get('search', None)
+        if search_param:
+            queryset = queryset.filter(
+                email__icontains=search_param
+            ) | queryset.filter(
+                first_name__icontains=search_param
+            ) | queryset.filter(
+                last_name__icontains=search_param
+            )
+        
+        return queryset.order_by('-created_at')
+    
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Export all members to CSV file with optional filtering",
+        manual_parameters=[
+            openapi.Parameter('status', openapi.IN_QUERY, description="Filter by status (ACTIVE, SUSPENDED)", type=openapi.TYPE_STRING),
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search by name or email", type=openapi.TYPE_STRING),
+        ],
+        responses={
+            200: openapi.Response('CSV file download'),
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required'
+        }
+    )
+    def get(self, request):
+        """
+        Export all members to CSV
+        Query params:
+        - status: Filter by membership status (ACTIVE, SUSPENDED)
+        - search: Search by name or email
+        """
+        members = self.get_queryset()
+        
+        # Create the HttpResponse object with CSV header
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'apf_members_export_{timestamp}.csv'
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        # Create CSV writer
+        writer = csv.writer(response)
+        
+        # Write header row
+        writer.writerow([
+            'Member ID',
+            'Email',
+            'First Name',
+            'Last Name',
+            'Phone Number',
+            'National ID',
+            'Job Title',
+            'Organization',
+            'ICPAU Registration Number',
+            'Membership Category',
+            'Practising Status',
+            'Years of Experience',
+            'City',
+            'Country',
+            'Subscription Due Date',
+            'Account Status',
+            'Date Joined',
+            'Last Updated'
+        ])
+        
+        # Write data rows
+        for member in members:
+            # Determine account status
+            if not member.is_active:
+                account_status = 'Suspended'
+            elif member.subscription_due_date:
+                from django.utils import timezone
+                if member.subscription_due_date < timezone.now().date():
+                    account_status = 'Expired'
+                else:
+                    account_status = 'Active'
+            else:
+                account_status = 'Active'
+            
+            writer.writerow([
+                member.id,
+                member.email,
+                member.first_name or '',
+                member.last_name or '',
+                member.phone_number or '',
+                member.national_id_number or '',
+                member.job_title or '',
+                member.organization or '',
+                member.icpau_registration_number or '',
+                member.membership_category or '',
+                member.practising_status or '',
+                member.years_of_experience or '',
+                member.city or '',
+                member.country or '',
+                member.subscription_due_date.strftime('%Y-%m-%d') if member.subscription_due_date else '',
+                account_status,
+                member.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                member.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            ])
+        
+        return response
 
 
 class AdminMemberSuspendView(APIView):
@@ -383,3 +517,191 @@ class MembershipInvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         }
         
         return Response(stats)
+
+
+
+class AdminNoteListCreateView(APIView):
+    """
+    View to list and create admin notes for a specific member
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Get all admin notes for a specific member",
+        responses={
+            200: openapi.Response('Success', AdminNoteSerializer(many=True)),
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required',
+            404: 'Member not found'
+        }
+    )
+    def get(self, request, member_id):
+        """
+        Get all admin notes for a specific member
+        """
+        try:
+            member = User.objects.get(id=member_id, role='2')
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'Member not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        notes = AdminNote.objects.filter(member=member).select_related('admin', 'member')
+        serializer = AdminNoteSerializer(notes, many=True)
+        return Response({
+            'count': len(serializer.data),
+            'results': serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Create a new admin note for a specific member",
+        request_body=CreateAdminNoteSerializer,
+        responses={
+            201: openapi.Response('Note created successfully', AdminNoteSerializer),
+            400: 'Bad request',
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required',
+            404: 'Member not found'
+        }
+    )
+    def post(self, request, member_id):
+        """
+        Create a new admin note for a specific member
+        Expected payload: {"note_text": "note content"}
+        """
+        try:
+            member = User.objects.get(id=member_id, role='2')
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'Member not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = CreateAdminNoteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {'error': serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create the note
+        note = AdminNote.objects.create(
+            member=member,
+            admin=request.user,
+            note_text=serializer.validated_data['note_text']
+        )
+        
+        response_serializer = AdminNoteSerializer(note)
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class AdminNoteDetailView(APIView):
+    """
+    View to retrieve, update, or delete a specific admin note
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    
+    def get_object(self, note_id):
+        """Helper method to get note object"""
+        try:
+            return AdminNote.objects.select_related('admin', 'member').get(id=note_id)
+        except AdminNote.DoesNotExist:
+            return None
+    
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Get a specific admin note by ID",
+        responses={
+            200: openapi.Response('Success', AdminNoteSerializer),
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required',
+            404: 'Note not found'
+        }
+    )
+    def get(self, request, note_id):
+        """
+        Get a specific admin note by ID
+        """
+        note = self.get_object(note_id)
+        if not note:
+            return Response(
+                {'error': 'Note not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = AdminNoteSerializer(note)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Update a specific admin note by ID",
+        request_body=CreateAdminNoteSerializer,
+        responses={
+            200: openapi.Response('Note updated successfully', AdminNoteSerializer),
+            400: 'Bad request',
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required',
+            404: 'Note not found'
+        }
+    )
+    def patch(self, request, note_id):
+        """
+        Update a specific admin note by ID
+        Expected payload: {"note_text": "updated note content"}
+        """
+        note = self.get_object(note_id)
+        if not note:
+            return Response(
+                {'error': 'Note not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = CreateAdminNoteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {'error': serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update the note
+        note.note_text = serializer.validated_data['note_text']
+        note.save()
+        
+        response_serializer = AdminNoteSerializer(note)
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_200_OK
+        )
+    
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Delete a specific admin note by ID",
+        responses={
+            204: 'Note deleted successfully',
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required',
+            404: 'Note not found'
+        }
+    )
+    def delete(self, request, note_id):
+        """
+        Delete a specific admin note by ID
+        """
+        note = self.get_object(note_id)
+        if not note:
+            return Response(
+                {'error': 'Note not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        note.delete()
+        return Response(
+            {'message': 'Note deleted successfully'},
+            status=status.HTTP_204_NO_CONTENT
+        )
