@@ -339,6 +339,7 @@ class RenewalProofOfPayment(models.Model):
         ('bank', 'Bank Transfer'),
     ]
 
+    id = models.AutoField(primary_key=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='renewal_proofs')
     invoice_number = models.CharField(max_length=50, db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('150000.00'))
