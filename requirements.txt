@@ -48,7 +48,6 @@ matplotlib==3.10.8
 mccabe==0.7.0
 multidict==6.6.4
 mypy_extensions==1.1.0
-mysqlclient==2.2.7
 numpy==2.4.3
 oauthlib==3.3.1
 packaging==26.0
