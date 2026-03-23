@@ -15,7 +15,7 @@ class ReportDataFetcher:
         
         def get_date_limit(period_label):
             now = timezone.now()
-            p = str(period_label).lower()
+            p = str(period_label or '').lower()
             if '7' in p: return now - timedelta(days=7)
             if '30' in p: return now - timedelta(days=30)
             if '90' in p: return now - timedelta(days=90)
@@ -29,46 +29,51 @@ class ReportDataFetcher:
             if report_type == 'membership':
                 queryset = User.objects.all()
                 
-                # FIX: Using 'created_at' as identified in your DB error log
                 if date_limit:
                     queryset = queryset.filter(created_at__gte=date_limit)
                 
-                # Fetching fields that actually exist on your User model
+              
                 data = list(queryset.values(
-                    'id', 'email', 'first_name', 'last_name', 'role', 
+                    'email', 'first_name', 'last_name', 'role', 
                     'membership_category', 'is_active', 'created_at'
                 ))
                 
-                # Format for the Chart Generator
                 for item in data:
+                    # Formatting for the PDF Table and Charts
                     item['status'] = 'Active' if item.get('is_active') else 'Inactive'
-                    # Convert datetime to string for CSV/JSON compatibility
+                    
+                    # Map role IDs to strings if they are numeric
+                    role_map = {"1": "Associate", "2": "Full Member", "3": "Fellow"}
+                    curr_role = str(item.get('role', ''))
+                    item['role'] = role_map.get(curr_role, curr_role)
+
                     if item.get('created_at'):
                         item['joined_date'] = item['created_at'].strftime('%Y-%m-%d')
                 return data
             
             # 2. APPLICATIONS REPORT
             elif report_type == 'applications':
-                # Use absolute import to avoid issues in background tasks
                 from applications.models import Application
                 queryset = Application.objects.all()
                 
                 if date_limit:
                     queryset = queryset.filter(submitted_at__gte=date_limit)
                 
-                # Selecting fields available in your Application model choices
                 data = list(queryset.values(
                     'application_id', 'first_name', 'last_name', 
                     'organization', 'payment_status', 'status', 'submitted_at'
                 ))
                 
                 for item in data:
-                    # 'status' will be used by ReportGenerator for the bar chart
+                    # Clean up strings for PDF readability
+                    item['status'] = str(item.get('status', 'Pending')).title()
+                    item['payment'] = str(item.get('payment_status', 'Unpaid')).title()
+                    
                     if item.get('submitted_at'):
                         item['date'] = item['submitted_at'].strftime('%Y-%m-%d')
                 return data
             
-            # 3. FINANCIAL / REVENUE REPORT
+            # 3. FINANCIAL  REPORT
             elif report_type in ['financial', 'system', 'revenue', 'payments']:
                 from payments.models import Payment
                 queryset = Payment.objects.all()
@@ -81,13 +86,17 @@ class ReportDataFetcher:
                 ))
                 
                 for item in data:
+                    # Format Currency and Dates
+                    amount = item.get('amount', 0)
+                    item['amount_ugx'] = f"{amount:,}"
+                    item['txn_status'] = str(item.get('status', '')).upper()
+                    
                     if item.get('created_at'):
                         item['transaction_date'] = item['created_at'].strftime('%Y-%m-%d')
                 return data
 
         except Exception as e:
             logger.error(f"Fetcher Error: {str(e)}")
-           
             return [{"Error": f"Database Fetch Error: {str(e)}"}]
 
         return [{"Message": f"No data found for category: {report_type}"}]

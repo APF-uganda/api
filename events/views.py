@@ -7,6 +7,7 @@ from django.db.models import Q
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -18,35 +19,46 @@ from reportlab.lib.pagesizes import letter
 from .models import EventRegistration
 from .serializers import EventRegistrationSerializer
 
+from datetime import datetime 
+
 def send_styled_event_email(reg, status_type):
     try:
         event_title = reg.event_title
-        event_date = reg.event_date or "Date specified in event details"
-        event_location = reg.location or "As specified in event details"
+        
+        # --- FIX 1: DATE FORMATTING ---
+        raw_date = reg.event_date
+        display_date = "Date specified in event details"
+        
+        if raw_date:
+            try:
+              
+                date_obj = datetime.fromisoformat(raw_date.replace('Z', '+00:00'))
+                display_date = date_obj.strftime('%B %d, %Y') 
+            except:
+                display_date = str(raw_date) # Fallback
+
+        
+        event_location = reg.location if reg.location and reg.location != "undefined" else "Main Event Hall (Kampala)"
         
         if status_type == 'RECEIVED':
             subject = f"Registration Received: {event_title}"
             status_text = "Pending Verification"
             message_body = (
                 f"We have received your registration for '{event_title}'. "
-                "Our team is currently verifying your payment/details. You will receive a final "
-                "confirmation email once verified."
+                "Our team is currently verifying your payment/details."
             )
         else:
             subject = f"Registration Confirmed: {event_title}"
             status_text = "Confirmed & Verified"
-            message_body = (
-                f"Great news! Your registration for '{event_title}' has been officially verified. "
-                "We look forward to having you join us!"
-            )
+            message_body = f"Great news! Your registration for '{event_title}' has been verified."
 
         context = {
             'user_name': reg.full_name,
             'message_body': message_body,
             'status_text': status_text,
             'event_title': event_title,
-            'event_date': event_date, 
-            'location': event_location,
+            'event_date': display_date, 
+            'location': event_location,  
         }
 
         html_content = render_to_string('emails/event_confirmation.html', context)
@@ -134,12 +146,26 @@ class AdminRegistrationListView(generics.ListAPIView):
         return queryset
 
 
+
+
 @api_view(['GET'])
-@permission_classes([IsAdminUser])
+@permission_classes([AllowAny]) 
 def export_registrations_pdf(request):
-    """
-    New View: Generates a PDF of the filtered registrations.
-    """
+   
+    token_str = request.query_params.get('token') or request.headers.get('Authorization', '').replace('Bearer ', '')
+    
+   
+    try:
+        validated_token = AccessToken(token_str)
+       
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user = User.objects.get(id=validated_token['user_id'])
+        if not user.is_staff:
+            return HttpResponse("Unauthorized", status=401)
+    except Exception:
+        return HttpResponse("Unauthorized or Expired Session", status=401)
+
     search_query = request.query_params.get('event_title', '')
     
     regs = EventRegistration.objects.all().order_by('-created_at')
