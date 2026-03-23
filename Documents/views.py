@@ -220,7 +220,7 @@ class DocumentViewSet(viewsets.ViewSet):
             document_type=doc_type,
         )
 
-        # Create activity notification
+        # Create activity notification for the member
         try:
             from notifications.models import UserNotification
             UserNotification.objects.create(
@@ -231,7 +231,40 @@ class DocumentViewSet(viewsets.ViewSet):
                 priority="low"
             )
         except Exception as e:
-            print(f"Failed to create notification: {e}")
+            print(f"Failed to create member notification: {e}")
+
+        # Create notification for all admin users
+        try:
+            from notifications.models import UserNotification
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            
+            # Get all admin users (role='1')
+            admin_users = User.objects.filter(role='1', is_active=True)
+            
+            # Get member name
+            member_name = request.user.full_name or request.user.email
+            
+            # Create notification for each admin with link to manage users page
+            for admin in admin_users:
+                notification = UserNotification.objects.create(
+                    user=admin,
+                    title="New Document Uploaded",
+                    message=f'{member_name} uploaded "{uploaded_file.name}" for review. Click to view in Manage Users.',
+                    notification_type="info",
+                    priority="medium",
+                )
+                # Add metadata with action URL
+                notification.metadata = {
+                    'actionUrl': '/admin/manage-users',
+                    'userId': str(request.user.id),
+                    'documentType': doc_type
+                }
+                notification.save()
+            
+            print(f"[Documents] Created admin notifications for {admin_users.count()} admins")
+        except Exception as e:
+            print(f"Failed to create admin notifications: {e}")
 
         serializer = MemberDocumentSerializer(document, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -299,7 +332,7 @@ class DocumentViewSet(viewsets.ViewSet):
         
         document.save(update_fields=['file', 'file_name', 'file_size', 'file_type', 'status'])
 
-        # Create activity notification
+        # Create activity notification for the member
         try:
             from notifications.models import UserNotification
             UserNotification.objects.create(
@@ -310,7 +343,40 @@ class DocumentViewSet(viewsets.ViewSet):
                 priority="low"
             )
         except Exception as e:
-            print(f"Failed to create notification: {e}")
+            print(f"Failed to create member notification: {e}")
+
+        # Create notification for all admin users
+        try:
+            from notifications.models import UserNotification
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            
+            # Get all admin users (role='1')
+            admin_users = User.objects.filter(role='1', is_active=True)
+            
+            # Get member name
+            member_name = request.user.full_name or request.user.email
+            
+            # Create notification for each admin with link to manage users page
+            for admin in admin_users:
+                notification = UserNotification.objects.create(
+                    user=admin,
+                    title="Document Replaced",
+                    message=f'{member_name} replaced "{old_name}" with "{uploaded_file.name}" for review. Click to view in Manage Users.',
+                    notification_type="info",
+                    priority="medium",
+                )
+                # Add metadata with action URL
+                notification.metadata = {
+                    'actionUrl': '/admin/manage-users',
+                    'userId': str(request.user.id),
+                    'documentType': document.document_type
+                }
+                notification.save()
+            
+            print(f"[Documents] Created admin notifications for {admin_users.count()} admins")
+        except Exception as e:
+            print(f"Failed to create admin notifications: {e}")
 
         serializer = DocumentSerializer(document, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
