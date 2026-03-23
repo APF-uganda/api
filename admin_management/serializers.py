@@ -11,12 +11,16 @@ class AdminMemberSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     membership_status = serializers.SerializerMethodField()
     subscription_due_date = serializers.DateField(required=False, allow_null=True)
+    has_documents = serializers.SerializerMethodField()
+    document_count = serializers.SerializerMethodField()
+    last_document_upload = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = [
             'id', 'full_name', 'email', 'phone_number', 
-            'membership_status', 'subscription_due_date', 'created_at'
+            'membership_status', 'subscription_due_date', 'created_at',
+            'has_documents', 'document_count', 'last_document_upload'
         ]
         read_only_fields = ['id', 'created_at']
     
@@ -34,6 +38,45 @@ class AdminMemberSerializer(serializers.ModelSerializer):
             return MembershipStatus.ACTIVE
         except:
             return MembershipStatus.ACTIVE if obj.is_active else MembershipStatus.SUSPENDED
+    
+    def get_has_documents(self, obj):
+        """Check if user has any documents (member documents or proof of payments)"""
+        from payments.models import RenewalProofOfPayment
+        
+        member_docs_count = obj.member_documents.count()
+        proof_of_payments_count = obj.renewal_proofs.count()
+        
+        return (member_docs_count + proof_of_payments_count) > 0
+    
+    def get_document_count(self, obj):
+        """Count total documents including member documents and proof of payments"""
+        from payments.models import RenewalProofOfPayment
+        
+        member_docs_count = obj.member_documents.count()
+        proof_of_payments_count = obj.renewal_proofs.count()
+        
+        return member_docs_count + proof_of_payments_count
+    
+    def get_last_document_upload(self, obj):
+        """Get the most recent document upload date from either member documents or proof of payments"""
+        from payments.models import RenewalProofOfPayment
+        from django.db.models import Max
+        
+        # Get latest member document upload
+        latest_member_doc = obj.member_documents.aggregate(Max('uploaded_at'))['uploaded_at__max']
+        
+        # Get latest proof of payment upload
+        latest_proof = obj.renewal_proofs.aggregate(Max('created_at'))['created_at__max']
+        
+        # Return the most recent of the two
+        if latest_member_doc and latest_proof:
+            return max(latest_member_doc, latest_proof)
+        elif latest_member_doc:
+            return latest_member_doc
+        elif latest_proof:
+            return latest_proof
+        else:
+            return None
 
 
 class SuspendMemberSerializer(serializers.Serializer):

@@ -68,6 +68,7 @@ class UserNotification(models.Model):
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     read_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(null=True, blank=True, default=dict)
 
     class Meta:
         ordering = ["-created_at"]
