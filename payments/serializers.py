@@ -23,6 +23,7 @@ class ManualPaymentSerializer(serializers.ModelSerializer):
             'application_reference',
             'reference',
             'description',
+            'payment_type',
             'amount',
             'currency',
             'proof_of_payment',
