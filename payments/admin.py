@@ -287,3 +287,121 @@ class PaymentConfigAdmin(admin.ModelAdmin):
             'fields': ('updated_at',)
         }),
     )
+
+
+from .models import ManualPayment
+
+
+@admin.register(ManualPayment)
+class ManualPaymentAdmin(admin.ModelAdmin):
+    """Admin interface for ManualPayment model."""
+    
+    list_display = [
+        'reference',
+        'user',
+        'payment_type',
+        'amount',
+        'currency',
+        'colored_status',
+        'created_at',
+    ]
+    
+    list_filter = [
+        'status',
+        'payment_type',
+        DateRangeFilter,
+        'currency',
+    ]
+    
+    search_fields = [
+        'reference',
+        'invoice_number',
+        'application_reference',
+        'description',
+        'user__email',
+        'user__first_name',
+        'user__last_name',
+    ]
+    
+    date_hierarchy = 'created_at'
+    
+    readonly_fields = [
+        'id',
+        'application',
+        'user',
+        'amount',
+        'currency',
+        'reference',
+        'description',
+        'payment_type',
+        'invoice_number',
+        'application_reference',
+        'proof_of_payment',
+        'created_at',
+        'updated_at',
+    ]
+    
+    fieldsets = (
+        ('Payment Information', {
+            'fields': (
+                'id',
+                'reference',
+                'description',
+                'payment_type',
+            )
+        }),
+        ('User & Application', {
+            'fields': (
+                'user',
+                'application',
+                'application_reference',
+                'invoice_number',
+            )
+        }),
+        ('Payment Details', {
+            'fields': (
+                'amount',
+                'currency',
+                'proof_of_payment',
+            )
+        }),
+        ('Verification', {
+            'fields': (
+                'status',
+                'verified_by',
+                'verification_notes',
+                'verified_at',
+            )
+        }),
+        ('Timestamps', {
+            'fields': (
+                'created_at',
+                'updated_at',
+            )
+        }),
+    )
+    
+    def colored_status(self, obj):
+        """Display status with color coding."""
+        colors = {
+            'pending': '#ffc107',    # yellow
+            'verified': '#28a745',   # green
+            'rejected': '#dc3545',   # red
+        }
+        color = colors.get(obj.status, '#000000')
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}</span>',
+            color,
+            obj.get_status_display()
+        )
+    colored_status.short_description = 'Status'
+    colored_status.admin_order_field = 'status'
+    
+    def has_add_permission(self, request):
+        """Disable adding manual payments through admin."""
+        return False
+    
+    def has_delete_permission(self, request, obj=None):
+        """Disable deleting manual payments through admin."""
+        return False
+

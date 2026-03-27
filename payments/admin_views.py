@@ -220,6 +220,12 @@ def submit_manual_payment(request):
         application_reference = application.application_id
         reference = str(request.data.get('reference', '')).strip() or invoice_number or application_reference
         description = str(request.data.get('description', '')).strip() or 'Membership Renewal Fee'
+        payment_type = str(request.data.get('payment_type', 'membership_renewal')).strip()
+        
+        # Validate payment_type
+        valid_types = ['membership_renewal', 'donation', 'event', 'other']
+        if payment_type not in valid_types:
+            payment_type = 'membership_renewal'
 
         payment = ManualPayment.objects.create(
             application=application,
@@ -228,6 +234,7 @@ def submit_manual_payment(request):
             currency='UGX',
             reference=reference,
             description=description,
+            payment_type=payment_type,
             invoice_number=invoice_number,
             application_reference=application_reference,
             proof_of_payment=proof,

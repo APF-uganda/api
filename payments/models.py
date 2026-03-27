@@ -175,6 +175,19 @@ class ManualPayment(models.Model):
         (STATUS_REJECTED, 'Rejected'),
     ]
     
+    # Payment type choices
+    PAYMENT_TYPE_MEMBERSHIP = 'membership_renewal'
+    PAYMENT_TYPE_DONATION = 'donation'
+    PAYMENT_TYPE_EVENT = 'event'
+    PAYMENT_TYPE_OTHER = 'other'
+    
+    PAYMENT_TYPE_CHOICES = [
+        (PAYMENT_TYPE_MEMBERSHIP, 'Membership Renewal'),
+        (PAYMENT_TYPE_DONATION, 'Donation'),
+        (PAYMENT_TYPE_EVENT, 'Event Payment'),
+        (PAYMENT_TYPE_OTHER, 'Other Services'),
+    ]
+    
     # Identification
     id = models.AutoField(primary_key=True)
     
@@ -205,6 +218,14 @@ class ManualPayment(models.Model):
         max_length=200,
         default='Application Fee',
         help_text='Payment description (e.g., Application Fee, Renewal Fee, Event Fee)'
+    )
+    
+    # Payment type
+    payment_type = models.CharField(
+        max_length=30,
+        choices=PAYMENT_TYPE_CHOICES,
+        default=PAYMENT_TYPE_MEMBERSHIP,
+        help_text='Type of payment (membership renewal, donation, event, other)'
     )
     
     # Payment identification fields
