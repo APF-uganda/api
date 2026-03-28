@@ -16,7 +16,7 @@ from .services.generator import ReportGenerator
 from .models import ReportTemplate, GeneratedReport
 from .serializers import ReportTemplateSerializer, GeneratedReportSerializer
 
-#   DASHBOARD VIEWS ---
+#   DASHBOARD VIEWS 
 
 class DashboardSummaryAPIView(APIView):
     """Unified dashboard summary supporting time periods"""
@@ -400,6 +400,22 @@ class GeneratedReportViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
     
+
+    @action(detail=True, methods=['delete'])
+    def delete(self, request, pk=None):
+        report = self.get_object()
+        try:
+            # Delete the physical file from storage
+            if report.file_path:
+                full_path = os.path.join(settings.MEDIA_ROOT, report.file_path)
+                if os.path.exists(full_path):
+                    os.remove(full_path)
+            
+            #  Delete the database record
+            report.delete()
+            return Response({"message": "Report deleted"}, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     @swagger_auto_schema(tags=["reports"], operation_description="Generate a new report")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
