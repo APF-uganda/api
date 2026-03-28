@@ -90,7 +90,7 @@ EMAIL_DELAY = 2
 
 def send_notification(user):
     """Send account created notification email to a single user."""
-    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://apfug.org')
     login_url = f'{frontend_url}/login'
 
     user_name = user.first_name or user.email.split('@')[0]
