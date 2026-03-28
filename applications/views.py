@@ -389,6 +389,14 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             if uploaded_files:
                 services.create_application_documents(application, uploaded_files, document_types)
 
+            # Notify admins about the new application
+            try:
+                from notifications.admin_notification_service import notify_admin_new_application
+                notify_admin_new_application(application)
+                logger.info(f"[Application] Notified admins about new application from {application.email}")
+            except Exception as e:
+                logger.warning(f"[Application] Failed to notify admins: {e}")
+
             try:
                 response_serializer = self.get_serializer(application)
                 response_data = response_serializer.data

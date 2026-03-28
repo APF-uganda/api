@@ -257,6 +257,19 @@ def submit_manual_payment(request):
             admin_feedback=''
         )
 
+        # Notify admins about the new proof of payment
+        try:
+            from notifications.admin_notification_service import notify_admin_payment_proof
+            notify_admin_payment_proof(
+                user=request.user,
+                payment_type=payment_type,
+                amount=float(amount),
+                reference=reference
+            )
+            _log.info(f"[ManualPayment] Notified admins about payment proof from {request.user.email}")
+        except Exception as e:
+            _log.warning(f"[ManualPayment] Failed to notify admins: {e}")
+
         payload = {
             'id': payment.id,
             'reference': payment.reference,
