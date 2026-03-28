@@ -41,8 +41,7 @@ class ReportDataFetcher:
             # APPLICATIONS REPORT
             elif report_type == 'applications':
                 from applications.models import Application
-                from payments.models import Payment
-                
+                from payments.models import Payment 
                 queryset = Application.objects.all().order_by('-submitted_at')
                 if date_limit:
                     queryset = queryset.filter(submitted_at__gte=date_limit)
@@ -54,23 +53,20 @@ class ReportDataFetcher:
                 ))
                 
                 for item in data:
-                    #  Formatting existing fields
+                    # the display values
                     item['payment'] = str(item.get('payment_status', 'Unpaid')).title()
                     if item.get('submitted_at'):
                         item['date'] = item['submitted_at'].strftime('%Y-%m-%d')
 
-                    
-                    # find payment linked to this application_id
+                   
                     app_id = item.get('application_id')
-                    related_payment = Payment.objects.filter(
-                        Q(description__icontains=app_id) | Q(user__email=item.get('email'))
-                    ).first()
+                    related_pay = Payment.objects.filter(description__icontains=app_id).first()
 
-                    if related_payment:
-                        item['amount_ugx'] = f"{related_payment.amount:,}"
-                        item['description'] = related_payment.description or "Application Fee"
+                    if related_pay:
+                        item['amount_ugx'] = f"{related_pay.amount:,}"
+                        item['description'] = related_pay.description
                     else:
-                    
+                       
                         item['amount_ugx'] = "0"
                         item['description'] = "Application Fee"
                 
