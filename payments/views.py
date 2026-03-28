@@ -917,6 +917,8 @@ class PaymentHistoryView(APIView):
         1. Get payments for authenticated user
         2. Apply optional filters
         3. Serialize and return
+        4. Include membership invoices
+        5. Include application fees
         """
         # Step 1: Get payments for authenticated user (includes renewal payments created on approval)
         payments = Payment.objects.filter(user=request.user).order_by('-created_at')
@@ -957,9 +959,25 @@ class PaymentHistoryView(APIView):
                 'type': 'invoice',
             })
 
+        # Step 5: Include application fees
+        from applications.models import Application
+        applications = Application.objects.filter(user=request.user, status='approved').order_by('-submitted_at')
+        application_data = []
+        for app in applications:
+            application_data.append({
+                'id': str(app.id),
+                'application_id': app.application_id,
+                'amount': str(app.payment_amount),
+                'status': app.payment_status,
+                'submitted_at': app.submitted_at.isoformat(),
+                'type': 'application',
+                'description': 'Application Fee',
+            })
+
         return Response({
             'success': True,
             'count': len(serializer.data),
             'results': serializer.data,
             'invoices': invoice_data,
+            'applications': application_data,
         }, status=status.HTTP_200_OK)
