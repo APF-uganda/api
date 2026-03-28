@@ -1,6 +1,7 @@
 """
 Admin views for manual payment management.
 """
+import logging
 
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -17,6 +18,7 @@ from applications.models import Application
 from Documents.models import MemberDocument
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 class IsAdminRole(BasePermission):
@@ -266,9 +268,9 @@ def submit_manual_payment(request):
                 amount=float(amount),
                 reference=reference
             )
-            _log.info(f"[ManualPayment] Notified admins about payment proof from {request.user.email}")
+            logger.info(f"[ManualPayment] Notified admins about payment proof from {request.user.email}")
         except Exception as e:
-            _log.warning(f"[ManualPayment] Failed to notify admins: {e}")
+            logger.warning(f"[ManualPayment] Failed to notify admins: {e}")
 
         payload = {
             'id': payment.id,
