@@ -6,7 +6,11 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from authentication.permissions import IsAuthenticated, IsAdmin
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-
+import os
+from django.conf import settings
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from .models import GeneratedReport
 from .services.analytics_coordinator import analytics_coordinator
 from .services.generator import ReportGenerator
 from .models import ReportTemplate, GeneratedReport
@@ -482,4 +486,17 @@ class DownloadReportAPIView(APIView):
                 {'error': 'Report not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+ 
+
+@api_view(['DELETE'])
+def delete_generated_report(request, report_id):
+    try:
+        report = GeneratedReport.objects.get(id=report_id)
+        if report.file_path:
+            full_path = os.path.join(settings.MEDIA_ROOT, report.file_path)
+            if os.path.exists(full_path):
+                os.remove(full_path)
+        report.delete()
+        return Response({"message": "Report deleted successfully"}, status=200)
+    except GeneratedReport.DoesNotExist:
+        return Response({"error": "Report not found"}, status=404)    

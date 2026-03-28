@@ -5,7 +5,7 @@ import uuid
 import io
 import logging
 
-# Configure Logging 
+
 logger = logging.getLogger(__name__)
 
 import matplotlib
@@ -115,34 +115,41 @@ class ReportGenerator:
             return None
 
         try:
-            headers = list(data[0].keys())
-            group_col = next((h for h in headers if any(x in h.lower() for x in ['status', 'active', 'role', 'type'])), headers[0])
-            
-           
-            LABEL_MAPPER = {
-                "1": "Associate", "2": "Full Member", "3": "Fellow",
-                "True": "Active", "False": "Inactive",
-                "success": "Paid", "pending": "Pending", "approved": "Approved", "rejected": "Rejected"
-            }
-
-            raw_values = [str(row.get(group_col, 'Unknown')) for row in data]
-            # Clean labels for the X-axis
-            mapped_values = [LABEL_MAPPER.get(val, val).title() for val in raw_values]
-            
-            unique_vals = sorted(list(set(mapped_values)))
-            counts = [mapped_values.count(v) for v in unique_vals]
-
+            report_type = str(self.template.report_type).lower()
             plt.figure(figsize=(7, 3.8))
-            # Purple theme bars
-            plt.bar(unique_vals, counts, color='#6D28D9', edgecolor='#4C1D95', linewidth=0.5, width=0.5)
             
-            # Clarity: Label axes
-            plt.title(f"Summary by {group_col.replace('_', ' ').title()}", fontsize=11, fontweight='bold', pad=15)
-            plt.xlabel(group_col.replace('_', ' ').title(), fontsize=9, fontweight='bold')
-            plt.ylabel("Number of Records", fontsize=9, fontweight='bold')
+            # LINE GRAPH 
+            if report_type == 'membership':
+                dates = [row.get('joined_date') for row in data if row.get('joined_date')]
+                dates.sort()
+                
+                # Cumulative logic
+                unique_dates = sorted(list(set(dates)))
+                counts = [dates.count(d) for d in unique_dates]
+                cumulative_counts = [sum(counts[:i+1]) for i in range(len(counts))]
+
+                plt.plot(unique_dates, cumulative_counts, color='#6D28D9', marker='o', linewidth=2, markersize=4)
+                plt.fill_between(unique_dates, cumulative_counts, color='#6D28D9', alpha=0.1)
+                plt.title("Membership Growth Over Time", fontsize=11, fontweight='bold', pad=15)
+                plt.ylabel("Total Members", fontsize=9, fontweight='bold')
+                plt.xlabel("Registration Date", fontsize=9, fontweight='bold')
             
-            plt.xticks(fontsize=9)
-            plt.yticks(fontsize=9)
+            #  BAR CHART FOR APPLICATIONS
+            else:
+                headers = list(data[0].keys())
+             
+                group_col = next((h for h in headers if any(x in h.lower() for x in ['status', 'payment', 'type'])), headers[0])
+                
+                raw_values = [str(row.get(group_col, 'Unknown')).title() for row in data]
+                unique_vals = sorted(list(set(raw_values)))
+                counts = [raw_values.count(v) for v in unique_vals]
+
+                plt.bar(unique_vals, counts, color='#6D28D9', edgecolor='#4C1D95', linewidth=0.5, width=0.5)
+                plt.title(f"Analysis by {group_col.replace('_', ' ').title()}", fontsize=11, fontweight='bold', pad=15)
+                plt.ylabel("Count", fontsize=9, fontweight='bold')
+
+            plt.xticks(fontsize=8, rotation=25 if report_type == 'membership' else 0)
+            plt.yticks(fontsize=8)
             plt.grid(axis='y', linestyle='--', alpha=0.2)
             
             ax = plt.gca()
@@ -167,7 +174,6 @@ class ReportGenerator:
         elements = []
         styles = getSampleStyleSheet()
         
-        # Purple Branding Styles
         title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=22, textColor=self.brand_purple, spaceAfter=12)
         meta_style = ParagraphStyle('Meta', parent=styles['Normal'], fontSize=8, textColor=colors.grey)
 
@@ -176,7 +182,6 @@ class ReportGenerator:
         elements.append(Spacer(1, 0.3*inch))
 
         if not is_empty and len(data) > 0:
-            # Stats Summary
             try:
                 p_code = self._get_period_code()
                 summary = analytics_coordinator.get_dashboard_summary(p_code)
@@ -195,8 +200,7 @@ class ReportGenerator:
                 ]))
                 elements.append(stats_table)
                 elements.append(Spacer(1, 0.4*inch))
-            except:
-                pass
+            except: pass
 
             if self.report.filters_applied.get('include_visuals', True):
                 chart = self._create_visual(data)
@@ -204,26 +208,28 @@ class ReportGenerator:
                     elements.append(chart)
                     elements.append(Spacer(1, 0.4*inch))
 
-           
             headers = list(data[0].keys())
-           
-            display_headers = [h for h in headers if h not in ['id', 'is_active', 'created_at']]
-            table_data = [[h.replace('_', ' ').upper() for h in display_headers]]
             
+            exclude = ['id', 'is_active', 'created_at', 'role', 'membership_category', 'description', 'amount', 'payment_method']
+            display_headers = [h for h in headers if h not in exclude]
+            
+            table_data = [[h.replace('_', ' ').upper() for h in display_headers]]
             for row in data[:500]:
                 table_data.append([str(row.get(h, '')) for h in display_headers])
 
-          
+           
             col_widths = []
             for h in display_headers:
                 h_low = h.lower()
                 if 'email' in h_low: col_widths.append(2.0*inch)
-                elif 'date' in h_low or 'at' in h_low: col_widths.append(1.2*inch)
+                elif 'reason' in h_low: col_widths.append(1.8*inch)
+                elif 'first' in h_low or 'last' in h_low: col_widths.append(1.0*inch)
                 elif 'org' in h_low: col_widths.append(1.4*inch)
+                elif 'date' in h_low: col_widths.append(0.9*inch)
+                elif 'status' in h_low or 'payment' in h_low: col_widths.append(0.85*inch)
                 else: col_widths.append(1.0*inch)
 
             t = Table(table_data, repeatRows=1, colWidths=col_widths)
-            
             t.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), self.brand_purple),
                 ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
@@ -259,14 +265,12 @@ class ReportGenerator:
         wb = Workbook()
         ws = wb.active
         ws.title = "Report"
-        
         headers = list(data[0].keys())
         ws.append(headers)
         
         from openpyxl.styles import Font, PatternFill
         for cell in ws[1]:
             cell.font = Font(bold=True, color="FFFFFF")
-            
             cell.fill = PatternFill(start_color="6D28D9", end_color="6D28D9", fill_type="solid")
             
         for row in data:
