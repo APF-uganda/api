@@ -12,17 +12,30 @@ logger = logging.getLogger(__name__)
 
 def get_annual_renewal_date(base_date=None):
     """
-    Calculate annual renewal date (+1 year from base date).
+    Calculate annual renewal date - always March 31st.
+    If joining after March 31st, renewal is March 31st of next year.
+    If joining before or on March 31st, renewal is March 31st of current year.
     """
     if base_date is None:
         base_date = timezone.now().date()
     elif hasattr(base_date, 'date'):
         base_date = base_date.date()
 
-    try:
-        return base_date.replace(year=base_date.year + 1)
-    except ValueError:
-        return base_date.replace(month=2, day=28, year=base_date.year + 1)
+    # Renewal date is always March 31st
+    renewal_month = 3
+    renewal_day = 31
+    
+    # Determine the year for renewal
+    current_year = base_date.year
+    renewal_date_this_year = base_date.replace(month=renewal_month, day=renewal_day, year=current_year)
+    
+    # If the base date is after March 31st of the current year, 
+    # set renewal to March 31st of next year
+    if base_date > renewal_date_this_year:
+        return base_date.replace(month=renewal_month, day=renewal_day, year=current_year + 1)
+    else:
+        # Otherwise, renewal is March 31st of the current year
+        return renewal_date_this_year
 
 
 @receiver(post_save, sender=Payment)

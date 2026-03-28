@@ -15,17 +15,30 @@ logger = logging.getLogger(__name__)
 
 def get_annual_renewal_date(base_date=None):
     """
-    Calculate annual renewal date (+1 year from base date).
+    Calculate annual renewal date - always March 31st.
+    If joining after March 31st, renewal is March 31st of next year.
+    If joining before or on March 31st, renewal is March 31st of current year.
     """
     if base_date is None:
         base_date = timezone.now().date()
     elif hasattr(base_date, 'date'):
         base_date = base_date.date()
 
-    try:
-        return base_date.replace(year=base_date.year + 1)
-    except ValueError:
-        return base_date.replace(month=2, day=28, year=base_date.year + 1)
+    # Renewal date is always March 31st
+    renewal_month = 3
+    renewal_day = 31
+    
+    # Determine the year for renewal
+    current_year = base_date.year
+    renewal_date_this_year = base_date.replace(month=renewal_month, day=renewal_day, year=current_year)
+    
+    # If the base date is after March 31st of the current year, 
+    # set renewal to March 31st of next year
+    if base_date > renewal_date_this_year:
+        return base_date.replace(month=renewal_month, day=renewal_day, year=current_year + 1)
+    else:
+        # Otherwise, renewal is March 31st of the current year
+        return renewal_date_this_year
 
 
 @receiver(post_save, sender=Application)
@@ -92,13 +105,17 @@ def create_user_on_approval(sender, instance, created, **kwargs):
             
             # Send approval email to the newly approved member
             try:
-                user_name = f"{user.first_name} {user.last_name}".strip() if user.first_name or user.last_name else user.email.split('@')[0]
+                # Use the username from the application
+                user_name = instance.username if instance.username else f"{user.first_name} {user.last_name}".strip()
+                if not user_name:
+                    user_name = user.email.split('@')[0]
+                
                 email_sent = EmailService.send_approval_email(
                     email=user.email,
                     user_name=user_name
                 )
                 if email_sent:
-                    logger.info(f"Approval email sent successfully to {user.email}")
+                    logger.info(f"Approval email sent successfully to {user.email} with username: {user_name}")
                 else:
                     logger.warning(f"Failed to send approval email to {user.email}")
             except Exception as e:
@@ -190,13 +207,17 @@ def send_welcome_notification_on_status_change(sender, instance, **kwargs):
                 
                 # Send approval email
                 try:
-                    user_name = f"{instance.user.first_name} {instance.user.last_name}".strip() if instance.user.first_name or instance.user.last_name else instance.user.email.split('@')[0]
+                    # Use the username from the application
+                    user_name = instance.username if instance.username else f"{instance.user.first_name} {instance.user.last_name}".strip()
+                    if not user_name:
+                        user_name = instance.user.email.split('@')[0]
+                    
                     email_sent = EmailService.send_approval_email(
                         email=instance.user.email,
                         user_name=user_name
                     )
                     if email_sent:
-                        logger.info(f"Approval email sent successfully to {instance.user.email}")
+                        logger.info(f"Approval email sent successfully to {instance.user.email} with username: {user_name}")
                     else:
                         logger.warning(f"Failed to send approval email to {instance.user.email}")
                 except Exception as e:
