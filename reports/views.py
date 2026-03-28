@@ -1,22 +1,24 @@
+import os
 from django.utils import timezone
+from django.conf import settings
+from django.http import FileResponse
+
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.decorators import action, api_view
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from authentication.permissions import IsAuthenticated, IsAdmin
+
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-import os
-from django.conf import settings
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from .models import GeneratedReport
+
+from authentication.permissions import IsAuthenticated, IsAdmin
+from .models import ReportTemplate, GeneratedReport
 from .services.analytics_coordinator import analytics_coordinator
 from .services.generator import ReportGenerator
-from .models import ReportTemplate, GeneratedReport
 from .serializers import ReportTemplateSerializer, GeneratedReportSerializer
 
-#   DASHBOARD VIEWS 
+# DASHBOARD VIEWS
 
 class DashboardSummaryAPIView(APIView):
     """Unified dashboard summary supporting time periods"""
@@ -36,36 +38,7 @@ class DashboardSummaryAPIView(APIView):
                 default='30d'
             ),
         ],
-        responses={
-            200: openapi.Response(
-                description="Dashboard summary with trends and metrics",
-                examples={
-                    "application/json": {
-                        "membership": {
-                            "total_members": 32,
-                            "growth": {
-                                "labels": ["Mar 01", "Mar 02"],
-                                "data": [30, 32]
-                            }
-                        },
-                        "applications": {
-                            "total_applications": 45,
-                            "status_breakdown": {
-                                "labels": ["Pending", "Approved", "Rejected"],
-                                "data": [12, 28, 5]
-                            }
-                        },
-                        "system": {
-                            "active_users_30d": 25,
-                            "daily_activity": {
-                                "labels": ["Mar 01", "Mar 02"],
-                                "data": [15, 18]
-                            }
-                        }
-                    }
-                }
-            )
-        }
+        responses={200: "Dashboard summary with trends and metrics"}
     )
     def get(self, request):
         period = request.query_params.get('period', '30d')
@@ -98,7 +71,6 @@ class DashboardSummaryAPIView(APIView):
                     "active_users_30d": metrics.get('active_users_30d', 0),
                     "daily_activity": safe_chart('daily_activity')
                 },
-                # Add the key_metrics section that contains revenue data
                 "key_metrics": {
                     "total_members": metrics.get('total_members', 0),
                     "total_applications": metrics.get('total_applications', 0),
@@ -116,53 +88,15 @@ class DashboardSummaryAPIView(APIView):
                 "applications": {"total_applications": 0, "status_breakdown": empty},
                 "system": {"active_users_30d": 0, "daily_activity": empty},
                 "key_metrics": {
-                    "total_members": 0,
-                    "total_applications": 0,
-                    "pending_applications": 0,
-                    "active_users_30d": 0,
-                    "total_revenue": 0,
-                    "revenue_growth_rate": 0,
-                    "pending_payments": 0
+                    "total_members": 0, "total_applications": 0, "pending_applications": 0,
+                    "active_users_30d": 0, "total_revenue": 0, "revenue_growth_rate": 0, "pending_payments": 0
                 }
             }, status=200)
 
 class ChartDataAPIView(APIView):
-    """General endpoint for individual chart components"""
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated, IsAdmin]
 
-    @swagger_auto_schema(
-        tags=["reports"],
-        operation_description="Get data for individual chart components",
-        manual_parameters=[
-            openapi.Parameter(
-                'type',
-                openapi.IN_QUERY,
-                description="Type of chart data to retrieve",
-                type=openapi.TYPE_STRING,
-                required=True
-            ),
-            openapi.Parameter(
-                'period',
-                openapi.IN_QUERY,
-                description="Time period for chart data (default: 30d)",
-                type=openapi.TYPE_STRING,
-                enum=['7d', '30d', '90d', '1y'],
-                default='30d'
-            ),
-        ],
-        responses={
-            200: openapi.Response(
-                description="Chart data with labels and values",
-                examples={
-                    "application/json": {
-                        "labels": ["Mar 01", "Mar 02"],
-                        "data": [15, 18]
-                    }
-                }
-            )
-        }
-    )
     def get(self, request):
         chart_type = request.query_params.get('type')
         period = request.query_params.get('period', '30d')
@@ -174,179 +108,30 @@ class ChartDataAPIView(APIView):
         except Exception:
             return Response({"labels": [timezone.now().strftime('%b %d')], "data": [0]})
 
-
-
 class AnalyticsAPIView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated, IsAdmin]
-    
-    @swagger_auto_schema(
-        tags=["reports"],
-        operation_description="Get comprehensive analytics across all services",
-        manual_parameters=[
-            openapi.Parameter(
-                'period',
-                openapi.IN_QUERY,
-                description="Time period for analytics (default: 30d)",
-                type=openapi.TYPE_STRING,
-                enum=['7d', '30d', '90d', '1y'],
-                default='30d'
-            ),
-        ],
-        responses={
-            200: "Comprehensive analytics data"
-        }
-    )
     def get(self, request):
         period = request.query_params.get('period', '30d')
         return Response(analytics_coordinator.get_comprehensive_analytics(period))
 
-class MembershipAnalyticsAPIView(APIView):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated, IsAdmin]
-    
-    @swagger_auto_schema(
-        tags=["reports"],
-        operation_description="Get membership-specific analytics and metrics",
-        manual_parameters=[
-            openapi.Parameter(
-                'period',
-                openapi.IN_QUERY,
-                description="Time period for analytics (default: 30d)",
-                type=openapi.TYPE_STRING,
-                enum=['7d', '30d', '90d', '1y'],
-                default='30d'
-            ),
-        ],
-        responses={
-            200: "Membership analytics data"
-        }
-    )
-    def get(self, request):
-        period = request.query_params.get('period', '30d')
-        return Response(analytics_coordinator.get_service_metrics('membership', period))
-
-class ApplicationAnalyticsAPIView(APIView):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated, IsAdmin]
-    
-    @swagger_auto_schema(
-        tags=["reports"],
-        operation_description="Get application-specific analytics and metrics",
-        manual_parameters=[
-            openapi.Parameter(
-                'period',
-                openapi.IN_QUERY,
-                description="Time period for analytics (default: 30d)",
-                type=openapi.TYPE_STRING,
-                enum=['7d', '30d', '90d', '1y'],
-                default='30d'
-            ),
-        ],
-        responses={
-            200: "Application analytics data"
-        }
-    )
-    def get(self, request):
-        period = request.query_params.get('period', '30d')
-        return Response(analytics_coordinator.get_service_metrics('applications', period))
-
-class SystemAnalyticsAPIView(APIView):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated, IsAdmin]
-    
-    @swagger_auto_schema(
-        tags=["reports"],
-        operation_description="Get system-wide analytics and metrics",
-        manual_parameters=[
-            openapi.Parameter(
-                'period',
-                openapi.IN_QUERY,
-                description="Time period for analytics (default: 30d)",
-                type=openapi.TYPE_STRING,
-                enum=['7d', '30d', '90d', '1y'],
-                default='30d'
-            ),
-        ],
-        responses={
-            200: "System analytics data"
-        }
-    )
-    def get(self, request):
-        period = request.query_params.get('period', '30d')
-        return Response(analytics_coordinator.get_service_metrics('system', period))
-
-
+# 
 
 class AvailableChartsAPIView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated, IsAdmin]
-    
-    @swagger_auto_schema(
-        tags=["reports"],
-        operation_description="Get list of all available chart types",
-        responses={
-            200: openapi.Response(
-                description="List of available charts",
-                examples={
-                    "application/json": {
-                        "charts": [
-                            "membership_growth",
-                            "application_status",
-                            "daily_activity",
-                            "revenue_trends"
-                        ]
-                    }
-                }
-            )
-        }
-    )
     def get(self, request):
         return Response(analytics_coordinator.get_available_charts())
 
 class AnalyticsHealthCheckAPIView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated, IsAdmin]
-    
-    @swagger_auto_schema(
-        tags=["reports"],
-        operation_description="Check health status of analytics services",
-        responses={
-            200: openapi.Response(
-                description="Health check status",
-                examples={
-                    "application/json": {
-                        "status": "healthy",
-                        "services": {
-                            "analytics_coordinator": "ok",
-                            "cache": "ok"
-                        }
-                    }
-                }
-            )
-        }
-    )
     def get(self, request):
         return Response(analytics_coordinator.health_check())
 
 class CacheManagementsAPIView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated, IsAdmin]
-    
-    @swagger_auto_schema(
-        tags=["reports"],
-        operation_description="Clear analytics cache",
-        responses={
-            200: openapi.Response(
-                description="Cache cleared successfully",
-                examples={
-                    "application/json": {
-                        "message": "Cache cleared successfully"
-                    }
-                }
-            )
-        }
-    )
     def post(self, request):
         analytics_coordinator.clear_cache()
         return Response({"message": "Cache cleared successfully"})
@@ -359,30 +144,6 @@ class ReportTemplateViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdmin]
     queryset = ReportTemplate.objects.filter(is_active=True).order_by('-created_at')
 
-    @swagger_auto_schema(tags=["reports"], operation_description="List all report templates")
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-    
-    @swagger_auto_schema(tags=["reports"], operation_description="Retrieve a report template by ID")
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-    
-    @swagger_auto_schema(tags=["reports"], operation_description="Create a new report template")
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
-    
-    @swagger_auto_schema(tags=["reports"], operation_description="Update a report template")
-    def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
-    
-    @swagger_auto_schema(tags=["reports"], operation_description="Partially update a report template")
-    def partial_update(self, request, *args, **kwargs):
-        return super().partial_update(request, *args, **kwargs)
-    
-    @swagger_auto_schema(tags=["reports"], operation_description="Delete a report template")
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
-
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
@@ -392,46 +153,28 @@ class GeneratedReportViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdmin]
     queryset = GeneratedReport.objects.all().order_by('-created_at')
 
-    @swagger_auto_schema(tags=["reports"], operation_description="List all generated reports")
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-    
-    @swagger_auto_schema(tags=["reports"], operation_description="Retrieve a generated report by ID")
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-    
-
     @action(detail=True, methods=['delete'])
     def delete(self, request, pk=None):
+        """Action for DELETE /api/v1/reports/generated-reports/{id}/delete/"""
         report = self.get_object()
         try:
-            # Delete the physical file from storage
             if report.file_path:
                 full_path = os.path.join(settings.MEDIA_ROOT, report.file_path)
                 if os.path.exists(full_path):
                     os.remove(full_path)
-            
-            #  Delete the database record
             report.delete()
-            return Response({"message": "Report deleted"}, status=status.HTTP_204_NO_CONTENT)
+            return Response({"message": "Report deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    @swagger_auto_schema(tags=["reports"], operation_description="Generate a new report")
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-    # Capture filters from the request data
         filters = self.request.data.get('filters', {})
-        
-        # Save the instance with filters included
         instance = serializer.save(
             generated_by=self.request.user,
             status='processing',
             filters_applied=filters, 
             processing_started_at=timezone.now()
         )
-        
         try:
             generator = ReportGenerator(instance)
             generator.execute()
@@ -440,72 +183,35 @@ class GeneratedReportViewSet(viewsets.ModelViewSet):
             instance.error_message = str(e)
             instance.save()
 
+#  DOWNLOAD ACTIONS 
+
 class DownloadReportAPIView(APIView):
-    """Download a generated report file"""
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated, IsAdmin]
 
-    @swagger_auto_schema(
-        tags=["reports"],
-        operation_description="Download a generated report file",
-        responses={
-            200: openapi.Response(
-                description="Report file download",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_FILE
-                )
-            ),
-            400: "Report is not ready for download",
-            404: "Report not found"
-        }
-    )
     def get(self, request, report_id):
-        from django.http import FileResponse, Http404
-        import os
-        from django.conf import settings
-        
         try:
             report = GeneratedReport.objects.get(id=report_id)
-            
-            if report.status != 'completed':
-                return Response(
-                    {'error': 'Report is not ready for download', 'status': report.status},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            if not report.file_path:
-                return Response(
-                    {'error': 'Report file not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+            if report.status != 'completed' or not report.file_path:
+                return Response({'error': 'Report not ready'}, status=status.HTTP_400_BAD_REQUEST)
             
             file_path = os.path.join(settings.MEDIA_ROOT, report.file_path)
-            
             if not os.path.exists(file_path):
-                return Response(
-                    {'error': 'Report file does not exist on server'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
             
-            # Update download tracking
             report.download_count += 1
             report.last_downloaded_at = timezone.now()
             report.save(update_fields=['download_count', 'last_downloaded_at'])
             
-            # Serve the file
             response = FileResponse(open(file_path, 'rb'))
             response['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_path)}"'
             return response
-            
         except GeneratedReport.DoesNotExist:
-            return Response(
-                {'error': 'Report not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
- 
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['DELETE'])
 def delete_generated_report(request, report_id):
+    """Standalone fallback delete endpoint"""
     try:
         report = GeneratedReport.objects.get(id=report_id)
         if report.file_path:
@@ -513,6 +219,6 @@ def delete_generated_report(request, report_id):
             if os.path.exists(full_path):
                 os.remove(full_path)
         report.delete()
-        return Response({"message": "Report deleted successfully"}, status=200)
+        return Response({"message": "Report deleted successfully"}, status=status.HTTP_200_OK)
     except GeneratedReport.DoesNotExist:
-        return Response({"error": "Report not found"}, status=404)    
+        return Response({"error": "Report not found"}, status=status.HTTP_404_NOT_FOUND)
