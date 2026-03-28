@@ -37,32 +37,43 @@ class ReportDataFetcher:
                         item['joined_date'] = item['created_at'].strftime('%Y-%m-%d')
                 return data
             
+         
             # APPLICATIONS REPORT
             elif report_type == 'applications':
                 from applications.models import Application
+                from payments.models import Payment
+                
                 queryset = Application.objects.all().order_by('-submitted_at')
                 if date_limit:
                     queryset = queryset.filter(submitted_at__gte=date_limit)
                 
-                
+               
                 data = list(queryset.values(
                     'application_id', 'first_name', 'last_name', 
-                    'organization', 'payment_status', 'submitted_at',
-                    'amount', 'description'
+                    'organization', 'payment_status', 'submitted_at'
                 ))
+                
                 for item in data:
+                    #  Formatting existing fields
                     item['payment'] = str(item.get('payment_status', 'Unpaid')).title()
-                    
-                   
-                    amount = item.get('amount', 0)
-                    item['amount_ugx'] = f"{amount:,}"
-                    
-                  
-                    if not item.get('description'):
-                        item['description'] = 'Application Processing'
-                        
                     if item.get('submitted_at'):
                         item['date'] = item['submitted_at'].strftime('%Y-%m-%d')
+
+                    
+                    # find payment linked to this application_id
+                    app_id = item.get('application_id')
+                    related_payment = Payment.objects.filter(
+                        Q(description__icontains=app_id) | Q(user__email=item.get('email'))
+                    ).first()
+
+                    if related_payment:
+                        item['amount_ugx'] = f"{related_payment.amount:,}"
+                        item['description'] = related_payment.description or "Application Fee"
+                    else:
+                    
+                        item['amount_ugx'] = "0"
+                        item['description'] = "Application Fee"
+                
                 return data
             
             # PAYMENTS REPORT
