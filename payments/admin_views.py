@@ -158,6 +158,7 @@ def list_manual_payments(request):
                 'application_id': getattr(payment, 'application_reference', None) or (payment.application.application_id if payment.application else None),
                 'reference': payment.reference,
                 'description': getattr(payment, 'description', 'Application Fee'),
+                'payment_type': getattr(payment, 'payment_type', 'membership_renewal'),  # Added payment_type
                 'amount': float(payment.amount),
                 'currency': payment.currency,
                 'proof_of_payment': payment.proof_of_payment.url if payment.proof_of_payment else None,
@@ -220,14 +221,40 @@ def submit_manual_payment(request):
 
         invoice_number = str(request.data.get('invoice_number', '')).strip() or None
         application_reference = application.application_id
-        reference = str(request.data.get('reference', '')).strip() or invoice_number or application_reference
-        description = str(request.data.get('description', '')).strip() or 'Membership Renewal Fee'
+        
+        # Generate appropriate reference based on payment type
         payment_type = str(request.data.get('payment_type', 'membership_renewal')).strip()
         
         # Validate payment_type
         valid_types = ['membership_renewal', 'donation', 'event', 'other']
         if payment_type not in valid_types:
             payment_type = 'membership_renewal'
+        
+        # Get or generate reference
+        provided_reference = str(request.data.get('reference', '')).strip()
+        if provided_reference:
+            reference = provided_reference
+        elif payment_type == 'donation':
+            # Generate unique donation reference
+            from django.utils import timezone
+            timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+            reference = f"DON-{timestamp}"
+        elif payment_type == 'event':
+            # Generate unique event reference
+            from django.utils import timezone
+            timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+            reference = f"EVT-{timestamp}"
+        elif payment_type == 'other':
+            # Generate unique other payment reference
+            from django.utils import timezone
+            timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+            reference = f"OTH-{timestamp}"
+        elif invoice_number:
+            reference = invoice_number
+        else:
+            reference = application_reference
+        
+        description = str(request.data.get('description', '')).strip() or 'Membership Renewal Fee'
 
         payment = ManualPayment.objects.create(
             application=application,
