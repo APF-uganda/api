@@ -240,10 +240,11 @@ class EmailService:
                 EmailService._dev_log("Approval Email", email, f"login_url={login_url}", user_name)
                 return True
             
-            # Render HTML template
+            # Render HTML template with correct variable names
             context = {
-                'user_name': user_name,
-                'login_url': login_url,
+                'username': user_name,  # Changed from 'user_name' to 'username'
+                'member_email': email,  # Added member_email
+                'loginUrl': login_url,  # Changed from 'login_url' to 'loginUrl'
             }
             html_content = render_to_string('email/approval_email.html', context)
             
