@@ -235,34 +235,15 @@ class DocumentViewSet(viewsets.ViewSet):
 
         # Create notification for all admin users
         try:
-            from notifications.models import UserNotification
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
+            from notifications.admin_notification_service import notify_admin_document_upload
             
-            # Get all admin users (role='1')
-            admin_users = User.objects.filter(role='1', is_active=True)
+            notify_admin_document_upload(
+                user=request.user,
+                document_name=uploaded_file.name,
+                document_type=doc_type
+            )
             
-            # Get member name
-            member_name = request.user.full_name or request.user.email
-            
-            # Create notification for each admin with link to manage users page
-            for admin in admin_users:
-                notification = UserNotification.objects.create(
-                    user=admin,
-                    title="New Document Uploaded",
-                    message=f'{member_name} uploaded "{uploaded_file.name}" for review. Click to view in Manage Users.',
-                    notification_type="info",
-                    priority="medium",
-                )
-                # Add metadata with action URL
-                notification.metadata = {
-                    'actionUrl': '/admin/manage-users',
-                    'userId': str(request.user.id),
-                    'documentType': doc_type
-                }
-                notification.save()
-            
-            print(f"[Documents] Created admin notifications for {admin_users.count()} admins")
+            print(f"[Documents] Created admin notifications for document upload")
         except Exception as e:
             print(f"Failed to create admin notifications: {e}")
 
@@ -368,7 +349,7 @@ class DocumentViewSet(viewsets.ViewSet):
                 )
                 # Add metadata with action URL
                 notification.metadata = {
-                    'actionUrl': '/admin/manage-users',
+                    'actionUrl': '/admin/manageusers',
                     'userId': str(request.user.id),
                     'documentType': document.document_type
                 }

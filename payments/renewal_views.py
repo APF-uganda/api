@@ -129,34 +129,16 @@ class UploadRenewalProofView(APIView):
 
         # Notify all admin users about the new proof of payment
         try:
-            from notifications.models import UserNotification
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
+            from notifications.admin_notification_service import notify_admin_payment_proof
             
-            # Get all admin users (role='1')
-            admin_users = User.objects.filter(role='1', is_active=True)
+            notify_admin_payment_proof(
+                user=request.user,
+                payment_type='membership_renewal',
+                amount=float(proof.amount),
+                reference=invoice_number
+            )
             
-            # Get member name
-            member_name = request.user.full_name or request.user.email
-            
-            # Create notification for each admin with link to manage users page
-            for admin in admin_users:
-                notification = UserNotification.objects.create(
-                    user=admin,
-                    title="New Proof of Payment",
-                    message=f'{member_name} uploaded proof of payment for invoice {invoice_number}. Click to view in Manage Users.',
-                    notification_type="info",
-                    priority="medium",
-                )
-                # Add metadata with action URL
-                notification.metadata = {
-                    'actionUrl': '/admin/manage-users',
-                    'userId': str(request.user.id),
-                    'invoiceNumber': invoice_number
-                }
-                notification.save()
-            
-            logger.info(f"[RenewalProof] Created admin notifications for {admin_users.count()} admins")
+            logger.info(f"[RenewalProof] Created admin notifications for payment proof")
         except Exception as e:
             logger.warning(f"Failed to create admin notifications: {e}")
 

@@ -73,7 +73,7 @@ def notify_admin_new_application(application):
         notification_type="info",
         priority="high",
         metadata={
-            'actionUrl': '/admin/applications',
+            'actionUrl': '/admin/approval',
             'applicationId': str(application.id)
         }
     )
@@ -97,7 +97,7 @@ def notify_admin_payment_proof(user, payment_type, amount, reference):
         notification_type="info",
         priority="high",
         metadata={
-            'actionUrl': '/admin/manage-users',
+            'actionUrl': '/admin/manageusers',
             'userId': str(user.id),
             'paymentType': payment_type,
             'reference': reference
@@ -115,7 +115,7 @@ def notify_admin_document_upload(user, document_name, document_type):
         notification_type="info",
         priority="medium",
         metadata={
-            'actionUrl': '/admin/manage-users',
+            'actionUrl': '/admin/manageusers',
             'userId': str(user.id),
             'documentType': document_type
         }

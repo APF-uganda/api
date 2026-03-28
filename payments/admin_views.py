@@ -154,11 +154,11 @@ def list_manual_payments(request):
                 'id': payment.id,
                 'member_name': member_name,
                 'member_email': payment.user.email if payment.user else '',
-                'invoice_number': getattr(payment, 'invoice_number', None),
-                'application_id': getattr(payment, 'application_reference', None) or (payment.application.application_id if payment.application else None),
+                'invoice_number': payment.invoice_number,
+                'application_id': payment.application_reference or (payment.application.application_id if payment.application else None),
                 'reference': payment.reference,
-                'description': getattr(payment, 'description', 'Application Fee'),
-                'payment_type': getattr(payment, 'payment_type', 'membership_renewal'),  # Added payment_type
+                'description': payment.description,
+                'payment_type': payment.payment_type,
                 'amount': float(payment.amount),
                 'currency': payment.currency,
                 'proof_of_payment': payment.proof_of_payment.url if payment.proof_of_payment else None,
@@ -254,7 +254,22 @@ def submit_manual_payment(request):
         else:
             reference = application_reference
         
-        description = str(request.data.get('description', '')).strip() or 'Membership Renewal Fee'
+        # Set description based on payment_type (standardized descriptions)
+        # Only use user-provided description for 'other' payment type
+        user_description = str(request.data.get('description', '')).strip()
+        
+        if payment_type == 'donation':
+            description = 'Donation'
+        elif payment_type == 'event':
+            # For events, use user description if provided, otherwise generic
+            description = user_description or 'Event Payment'
+        elif payment_type == 'membership_renewal':
+            description = 'Membership Renewal'
+        elif payment_type == 'other':
+            # For 'other', use user description or generic fallback
+            description = user_description or 'Other Payment'
+        else:
+            description = user_description or 'Payment'
 
         payment = ManualPayment.objects.create(
             application=application,

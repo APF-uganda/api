@@ -12,7 +12,7 @@ class UserNotificationSerializer(serializers.ModelSerializer):
         model = UserNotification
         fields = [
             'id', 'title', 'message', 'notification_type', 'priority',
-            'is_read', 'created_at', 'read_at'
+            'is_read', 'created_at', 'read_at', 'metadata'
         ]
         read_only_fields = ['id', 'created_at', 'read_at']
 
