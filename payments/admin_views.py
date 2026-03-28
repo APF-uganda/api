@@ -348,6 +348,7 @@ def list_member_manual_payments(request):
                 'id': payment.id,
                 'reference': payment.reference,
                 'description': payment.description,
+                'payment_type': payment.payment_type,
                 'amount': float(payment.amount),
                 'currency': payment.currency,
                 'status': payment.status,
