@@ -8,9 +8,6 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AnalyticsAPIView,
-    MembershipAnalyticsAPIView,
-    ApplicationAnalyticsAPIView,
-    SystemAnalyticsAPIView,
     ChartDataAPIView,
     DashboardSummaryAPIView,
     AvailableChartsAPIView,
@@ -28,11 +25,11 @@ router.register(r'generated-reports', GeneratedReportViewSet, basename='generate
 
 # URL patterns
 urlpatterns = [
-    # Analytics endpoints
+    # Analytics endpoints 
     path('analytics/', AnalyticsAPIView.as_view(), name='analytics-comprehensive'),
-    path('analytics/membership/', MembershipAnalyticsAPIView.as_view(), name='analytics-membership'),
-    path('analytics/applications/', ApplicationAnalyticsAPIView.as_view(), name='analytics-applications'),
-    path('analytics/system/', SystemAnalyticsAPIView.as_view(), name='analytics-system'),
+    path('analytics/membership/', AnalyticsAPIView.as_view(), name='analytics-membership'),
+    path('analytics/applications/', AnalyticsAPIView.as_view(), name='analytics-applications'),
+    path('analytics/system/', AnalyticsAPIView.as_view(), name='analytics-system'),
     
     # Chart data endpoints
     path('analytics/charts/', ChartDataAPIView.as_view(), name='analytics-charts'),
@@ -48,6 +45,6 @@ urlpatterns = [
     # Report download endpoint
     path('download/<uuid:report_id>/', DownloadReportAPIView.as_view(), name='download-report'),
     
-    # Report management endpoints (ViewSets)
+    # Report management endpoints
     path('', include(router.urls)),
 ]
