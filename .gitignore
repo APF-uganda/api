@@ -142,6 +142,9 @@ payments/TESTING_GUIDE.md
 payments/WEBHOOK_POLLING_SETUP.md
 payments/ARCHITECTURE_DIAGRAM.md
 payments/CODE_EXAMPLES.md
+simulate_document_upload.py
+simulate_multiple_uploads.py
+view_test_notifications.py
 
 #GMAIL API CREDENTIALS
 credentials.json
