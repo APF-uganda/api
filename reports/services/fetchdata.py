@@ -25,22 +25,15 @@ class ReportDataFetcher:
         date_limit = get_date_limit(filters.get('period'))
 
         try:
-            #  MEMBERSHIP REPORT
+            # MEMBERSHIP REPORT
             if report_type == 'membership':
-               
                 queryset = User.objects.all().order_by('created_at')
-                
                 if date_limit:
                     queryset = queryset.filter(created_at__gte=date_limit)
                 
-               
-                data = list(queryset.values(
-                    'email', 'first_name', 'last_name', 'created_at'
-                ))
-                
+                data = list(queryset.values('email', 'first_name', 'last_name', 'created_at'))
                 for item in data:
                     if item.get('created_at'):
-                     
                         item['joined_date'] = item['created_at'].strftime('%Y-%m-%d')
                 return data
             
@@ -48,7 +41,6 @@ class ReportDataFetcher:
             elif report_type == 'applications':
                 from applications.models import Application
                 queryset = Application.objects.all().order_by('-submitted_at')
-                
                 if date_limit:
                     queryset = queryset.filter(submitted_at__gte=date_limit)
                 
@@ -56,40 +48,46 @@ class ReportDataFetcher:
                     'application_id', 'first_name', 'last_name', 
                     'organization', 'payment_status', 'status', 'submitted_at'
                 ))
-                
                 for item in data:
                     item['status'] = str(item.get('status', 'Pending')).title()
                     item['payment'] = str(item.get('payment_status', 'Unpaid')).title()
-                    
                     if item.get('submitted_at'):
-                        # Standardized date format
                         item['date'] = item['submitted_at'].strftime('%Y-%m-%d')
                 return data
             
-       
+            # PAYMENTS  REPORT
             elif report_type in ['financial', 'system', 'revenue', 'payments']:
                 from payments.models import Payment
-                queryset = Payment.objects.all().order_by('-created_at')
+               
+                queryset = Payment.objects.select_related('user').all().order_by('-created_at')
                 
                 if date_limit:
                     queryset = queryset.filter(created_at__gte=date_limit)
                 
                
                 data = list(queryset.values(
-                    'id', 'amount', 'payment_method', 'status', 'created_at', 'description'
+                    'user__email', 'amount', 'status', 'created_at', 'description'
                 ))
                 
                 for item in data:
+                 
+                    item['email'] = item.pop('user__email', 'N/A')
                     
+                    # Formatting Amount
                     amount = item.get('amount', 0)
                     item['amount_ugx'] = f"{amount:,}"
                     
-                  
-                    item['reason'] = item.get('description', 'Membership Fee')
-                    item['txn_status'] = str(item.get('status', '')).upper()
+                    # Formatting Status
+                    item['status'] = str(item.get('status', '')).upper()
                     
+                    # Formatting Date
                     if item.get('created_at'):
                         item['date'] = item['created_at'].strftime('%Y-%m-%d')
+                    
+                   
+                    if not item.get('description'):
+                        item['description'] = 'Membership Fee'
+                        
                 return data
 
         except Exception as e:

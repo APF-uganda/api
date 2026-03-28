@@ -5,7 +5,6 @@ import uuid
 import io
 import logging
 
-
 logger = logging.getLogger(__name__)
 
 import matplotlib
@@ -123,7 +122,6 @@ class ReportGenerator:
                 dates = [row.get('joined_date') for row in data if row.get('joined_date')]
                 dates.sort()
                 
-                # Cumulative logic
                 unique_dates = sorted(list(set(dates)))
                 counts = [dates.count(d) for d in unique_dates]
                 cumulative_counts = [sum(counts[:i+1]) for i in range(len(counts))]
@@ -134,10 +132,9 @@ class ReportGenerator:
                 plt.ylabel("Total Members", fontsize=9, fontweight='bold')
                 plt.xlabel("Registration Date", fontsize=9, fontweight='bold')
             
-            #  BAR CHART FOR APPLICATIONS
+            # BAR CHART
             else:
                 headers = list(data[0].keys())
-             
                 group_col = next((h for h in headers if any(x in h.lower() for x in ['status', 'payment', 'type'])), headers[0])
                 
                 raw_values = [str(row.get(group_col, 'Unknown')).title() for row in data]
@@ -170,10 +167,14 @@ class ReportGenerator:
         if not REPORTLAB_AVAILABLE:
             return self._generate_csv(data, path)
         
-        doc = SimpleDocTemplate(path, pagesize=landscape(A4), rightMargin=25, leftMargin=25, topMargin=30, bottomMargin=30)
+        doc = SimpleDocTemplate(path, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=30, bottomMargin=30)
         elements = []
         styles = getSampleStyleSheet()
         
+        # Paragraph Styles for Table Content
+        cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontSize=7, leading=9, wordWrap='CJK')
+        header_style = ParagraphStyle('HeaderStyle', parent=styles['Normal'], fontSize=7.5, textColor=colors.whitesmoke, fontName='Helvetica-Bold')
+
         title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=22, textColor=self.brand_purple, spaceAfter=12)
         meta_style = ParagraphStyle('Meta', parent=styles['Normal'], fontSize=8, textColor=colors.grey)
 
@@ -186,12 +187,12 @@ class ReportGenerator:
                 p_code = self._get_period_code()
                 summary = analytics_coordinator.get_dashboard_summary(p_code)
                 metrics = summary.get('key_metrics', {})
-                
+
                 stats_table = Table([
                     [Paragraph("<b>TOTAL RECORDS</b>", styles['Normal']), Paragraph("<b>SYSTEM SCORE</b>", styles['Normal']), Paragraph("<b>LAST SYNC</b>", styles['Normal'])],
                     [str(len(data)), f"{metrics.get('system_health_score', 'N/A')}%", timezone.now().strftime('%H:%M')]
                 ], colWidths=[2.6*inch, 2.6*inch, 2.6*inch])
-                
+
                 stats_table.setStyle(TableStyle([
                     ('ALIGN', (0,0), (-1,-1), 'CENTER'),
                     ('BACKGROUND', (0,0), (-1,0), colors.whitesmoke),
@@ -200,7 +201,8 @@ class ReportGenerator:
                 ]))
                 elements.append(stats_table)
                 elements.append(Spacer(1, 0.4*inch))
-            except: pass
+            except Exception as e:
+                logger.warning(f"Stats table skipped: {e}")
 
             if self.report.filters_applied.get('include_visuals', True):
                 chart = self._create_visual(data)
@@ -208,37 +210,44 @@ class ReportGenerator:
                     elements.append(chart)
                     elements.append(Spacer(1, 0.4*inch))
 
+            # Table Header Processing
             headers = list(data[0].keys())
             
-            exclude = ['id', 'is_active', 'created_at', 'role', 'membership_category', 'description', 'amount', 'payment_method']
+           
+            exclude = ['id', 'is_active', 'created_at', 'membership_category', 'payment_method']
             display_headers = [h for h in headers if h not in exclude]
             
-            table_data = [[h.replace('_', ' ').upper() for h in display_headers]]
+            table_data = [[Paragraph(h.replace('_', ' ').upper(), header_style) for h in display_headers]]
+            
             for row in data[:500]:
-                table_data.append([str(row.get(h, '')) for h in display_headers])
+                row_content = []
+                for h in display_headers:
+                    val = str(row.get(h, ''))
+                    row_content.append(Paragraph(val, cell_style))
+                table_data.append(row_content)
 
            
             col_widths = []
             for h in display_headers:
                 h_low = h.lower()
-                if 'email' in h_low: col_widths.append(2.0*inch)
-                elif 'reason' in h_low: col_widths.append(1.8*inch)
-                elif 'first' in h_low or 'last' in h_low: col_widths.append(1.0*inch)
-                elif 'org' in h_low: col_widths.append(1.4*inch)
-                elif 'date' in h_low: col_widths.append(0.9*inch)
-                elif 'status' in h_low or 'payment' in h_low: col_widths.append(0.85*inch)
-                else: col_widths.append(1.0*inch)
+                if 'email' in h_low: col_widths.append(1.8*inch)
+                elif 'description' in h_low or 'reason' in h_low: col_widths.append(2.0*inch) 
+                elif 'first' in h_low or 'last' in h_low: col_widths.append(0.9*inch)
+                elif 'org' in h_low: col_widths.append(1.2*inch)
+                elif 'date' in h_low: col_widths.append(0.8*inch)
+                elif 'status' in h_low or 'payment' in h_low: col_widths.append(0.8*inch)
+                elif 'id' in h_low: col_widths.append(1.2*inch)
+                else: col_widths.append(0.8*inch)
 
             t = Table(table_data, repeatRows=1, colWidths=col_widths)
             t.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), self.brand_purple),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
                 ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0,0), (-1,-1), 7.5), 
                 ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
                 ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f5f3ff')]),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'), 
+                ('LEFTPADDING', (0,0), (-1,-1), 4),
+                ('RIGHTPADDING', (0,0), (-1,-1), 4),
             ]))
             elements.append(t)
         else:
