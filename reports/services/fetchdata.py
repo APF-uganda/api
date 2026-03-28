@@ -44,18 +44,28 @@ class ReportDataFetcher:
                 if date_limit:
                     queryset = queryset.filter(submitted_at__gte=date_limit)
                 
+                
                 data = list(queryset.values(
                     'application_id', 'first_name', 'last_name', 
-                    'organization', 'payment_status', 'status', 'submitted_at'
+                    'organization', 'payment_status', 'submitted_at',
+                    'amount', 'description'
                 ))
                 for item in data:
-                    item['status'] = str(item.get('status', 'Pending')).title()
                     item['payment'] = str(item.get('payment_status', 'Unpaid')).title()
+                    
+                   
+                    amount = item.get('amount', 0)
+                    item['amount_ugx'] = f"{amount:,}"
+                    
+                  
+                    if not item.get('description'):
+                        item['description'] = 'Application Processing'
+                        
                     if item.get('submitted_at'):
                         item['date'] = item['submitted_at'].strftime('%Y-%m-%d')
                 return data
             
-            # PAYMENTS  REPORT
+            # PAYMENTS REPORT
             elif report_type in ['financial', 'system', 'revenue', 'payments']:
                 from payments.models import Payment
                
@@ -64,27 +74,23 @@ class ReportDataFetcher:
                 if date_limit:
                     queryset = queryset.filter(created_at__gte=date_limit)
                 
-               
                 data = list(queryset.values(
                     'user__email', 'amount', 'status', 'created_at', 'description'
                 ))
                 
                 for item in data:
-                 
                     item['email'] = item.pop('user__email', 'N/A')
                     
-                    # Formatting Amount
+                    
                     amount = item.get('amount', 0)
                     item['amount_ugx'] = f"{amount:,}"
                     
-                    # Formatting Status
-                    item['status'] = str(item.get('status', '')).upper()
+                    # Standardizing status display
+                    item['status_label'] = str(item.get('status', '')).upper()
                     
-                    # Formatting Date
                     if item.get('created_at'):
                         item['date'] = item['created_at'].strftime('%Y-%m-%d')
                     
-                   
                     if not item.get('description'):
                         item['description'] = 'Membership Fee'
                         
