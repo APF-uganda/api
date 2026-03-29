@@ -26,6 +26,7 @@ TEST_MEMBERS = [
     ("bashkiko@gmail.com", "Bashkiko", "Test", "male", "APF/M/TEST01", "Test Firm A", "Partner", "FM0001", "CMTEST001"),
     ("kikomusa29@gmail.com", "Kikomusa", "Test", "male", "APF/M/TEST02", "Test Firm B", "Practitioner", "FM0002", "CMTEST002"),
     ("musbash29@gmail.com", "Musbash", "Test", "female", "APF/M/TEST03", "Test Firm C", "Managing Partner", "FM0003", "CMTEST003"),
+    ("jnanyonga926@gmail.com", "Josephine", "Test", "female", "APF/M/TEST04", "Test Firm D", "Senior Manager", "FM0004", "CMTEST004"),
 ]
 
 

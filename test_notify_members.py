@@ -37,6 +37,7 @@ TEST_MEMBERS = [
     ("bashkiko@gmail.com", "Bashkiko", "Test"),
     ("kikomusa29@gmail.com", "Kikomusa", "Test"),
     ("musbash29@gmail.com", "Musbash", "Test"),
+    ("jnanyonga926@gmail.com", "Josephine", "Test"),    
 ]
 
 
