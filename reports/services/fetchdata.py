@@ -39,9 +39,11 @@ class ReportDataFetcher:
             
          
             # APPLICATIONS REPORT
+           
             elif report_type == 'applications':
                 from applications.models import Application
-                from payments.models import Payment 
+                from django.db.models import F
+                
                 queryset = Application.objects.all().order_by('-submitted_at')
                 if date_limit:
                     queryset = queryset.filter(submitted_at__gte=date_limit)
@@ -49,26 +51,24 @@ class ReportDataFetcher:
                
                 data = list(queryset.values(
                     'application_id', 'first_name', 'last_name', 
-                    'organization', 'payment_status', 'submitted_at'
+                    'organization', 'payment_status', 'submitted_at',
+                    'payment_amount', 'payment_method'
                 ))
                 
                 for item in data:
-                    # the display values
-                    item['payment'] = str(item.get('payment_status', 'Unpaid')).title()
+                
+                    amt = item.get('payment_amount', 0)
+                    item['amount_ugx'] = f"{amt:,.2f}"
+                    
+                   
+                    item['description'] = f"Application Fee ({item.get('payment_method', 'Manual')})"
+                    
+                   
+                    item['payment'] = str(item.get('payment_status', 'Pending')).title()
+                    
+                  
                     if item.get('submitted_at'):
                         item['date'] = item['submitted_at'].strftime('%Y-%m-%d')
-
-                   
-                    app_id = item.get('application_id')
-                    related_pay = Payment.objects.filter(description__icontains=app_id).first()
-
-                    if related_pay:
-                        item['amount_ugx'] = f"{related_pay.amount:,}"
-                        item['description'] = related_pay.description
-                    else:
-                       
-                        item['amount_ugx'] = "0"
-                        item['description'] = "Application Fee"
                 
                 return data
             
