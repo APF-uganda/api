@@ -22,6 +22,7 @@ class ReportTemplate(models.Model):
         ('applications', 'Applications Report'),
         ('financial', 'Financial Report'),
         ('events', 'Events Report'),
+        ('revenue', 'Revenue Report'),
         ('compliance', 'Compliance Report'),
         ('growth', 'Growth Analysis Report'),
         ('custom', 'Custom Report'),
@@ -148,6 +149,7 @@ class AnalyticsMetric(models.Model):
         ('percentage', 'Percentage'),
         ('average', 'Average'),
         ('sum', 'Sum'),
+        ('revenue', 'Revenue'),
         ('ratio', 'Ratio'),
         ('growth_rate', 'Growth Rate'),
     ]
