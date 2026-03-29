@@ -19,7 +19,6 @@ except ImportError:
 
 from django.conf import settings
 from django.utils import timezone
-from .analytics_coordinator import analytics_coordinator
 
 # Import dependencies
 try:
@@ -41,7 +40,7 @@ class ReportGenerator:
     def __init__(self, generated_report_instance):
         self.report = generated_report_instance
         self.template = generated_report_instance.template
-        # Define brand purple
+      
         self.brand_purple = colors.HexColor('#6D28D9')
 
     def execute(self):
@@ -59,7 +58,7 @@ class ReportGenerator:
             if not data:
                 raise Exception("No records found for the selected period.")
                 
-            if "Error" in data[0]:
+            if len(data) > 0 and "Error" in data[0]:
                 raise Exception(data[0]["Error"])
 
             is_empty = (len(data) == 1 and "Message" in data[0])
@@ -101,64 +100,59 @@ class ReportGenerator:
             self.report.save()
             raise e
 
-    def _get_period_code(self):
-        filters = self.report.filters_applied or {}
-        period_label = str(filters.get('period', 'Last 30 Days'))
-        if '7' in period_label: return '7d'
-        if '90' in period_label: return '90d'
-        if '12' in period_label: return '12m'
-        return '30d'
-
     def _create_visual(self, data):
         if not MATPLOTLIB_AVAILABLE or not data or len(data) < 2:
             return None
 
         try:
             report_type = str(self.template.report_type).lower()
-            plt.figure(figsize=(7, 3.8))
+            plt.figure(figsize=(8, 3.5))
             
-            # LINE GRAPH 
-            if report_type == 'membership':
-                dates = [row.get('joined_date') for row in data if row.get('joined_date')]
-                dates.sort()
+            #  REVENUE TREND 
+            if report_type in ['revenue', 'financial']:
+               
+                plot_data = sorted([d for d in data if 'raw_amount' in d], key=lambda x: x['date'])
+                if not plot_data: return None
                 
-                unique_dates = sorted(list(set(dates)))
-                counts = [dates.count(d) for d in unique_dates]
-                cumulative_counts = [sum(counts[:i+1]) for i in range(len(counts))]
+                unique_dates = sorted(list(set([d['date'] for d in plot_data])))
+                daily_totals = [sum(float(d['raw_amount']) for d in plot_data if d['date'] == dt) for dt in unique_dates]
 
-                plt.plot(unique_dates, cumulative_counts, color='#6D28D9', marker='o', linewidth=2, markersize=4)
-                plt.fill_between(unique_dates, cumulative_counts, color='#6D28D9', alpha=0.1)
-                plt.title("Membership Growth Over Time", fontsize=11, fontweight='bold', pad=15)
-                plt.ylabel("Total Members", fontsize=9, fontweight='bold')
-                plt.xlabel("Registration Date", fontsize=9, fontweight='bold')
+                plt.plot(unique_dates, daily_totals, color='#6D28D9', marker='o', linewidth=2.5, markersize=5)
+                plt.fill_between(unique_dates, daily_totals, color='#6D28D9', alpha=0.1)
+                plt.title("Revenue Trend (UGX)", fontsize=12, fontweight='bold', pad=15)
+                plt.ylabel("Total Collected", fontsize=9)
             
-            # BAR CHART
+            #  MEMBERSHIP GROWTH 
+            elif report_type == 'membership':
+                dates = sorted([row.get('joined_date') for row in data if row.get('joined_date')])
+                unique_dates = sorted(list(set(dates)))
+                cumulative = [sum(1 for d in dates if d <= dt) for dt in unique_dates]
+
+                plt.plot(unique_dates, cumulative, color='#6D28D9', marker='o', linewidth=2)
+                plt.fill_between(unique_dates, cumulative, color='#6D28D9', alpha=0.1)
+                plt.title("Cumulative Membership Growth", fontsize=12, fontweight='bold')
+            
+            #  BAR CHART 
             else:
                 headers = list(data[0].keys())
                 group_col = next((h for h in headers if any(x in h.lower() for x in ['status', 'payment', 'type'])), headers[0])
-                
                 raw_values = [str(row.get(group_col, 'Unknown')).title() for row in data]
                 unique_vals = sorted(list(set(raw_values)))
                 counts = [raw_values.count(v) for v in unique_vals]
 
-                plt.bar(unique_vals, counts, color='#6D28D9', edgecolor='#4C1D95', linewidth=0.5, width=0.5)
-                plt.title(f"Analysis by {group_col.replace('_', ' ').title()}", fontsize=11, fontweight='bold', pad=15)
-                plt.ylabel("Count", fontsize=9, fontweight='bold')
+                plt.bar(unique_vals, counts, color='#6D28D9', width=0.5)
+                plt.title(f"Analysis by {group_col.replace('_', ' ').title()}", fontsize=12, fontweight='bold')
 
-            plt.xticks(fontsize=8, rotation=25 if report_type == 'membership' else 0)
+            plt.xticks(fontsize=8, rotation=30 if len(data) > 5 else 0)
             plt.yticks(fontsize=8)
             plt.grid(axis='y', linestyle='--', alpha=0.2)
             
-            ax = plt.gca()
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            
             buf = io.BytesIO()
-            plt.savefig(buf, format='png', bbox_inches='tight', dpi=130)
+            plt.savefig(buf, format='png', bbox_inches='tight', dpi=140)
             buf.seek(0)
             plt.close()
             
-            return Image(buf, width=5.2*inch, height=2.6*inch)
+            return Image(buf, width=5.5*inch, height=2.6*inch)
         except Exception as e:
             logger.error(f"Graph Generation Error: {e}")
             return None
@@ -167,78 +161,80 @@ class ReportGenerator:
         if not REPORTLAB_AVAILABLE:
             return self._generate_csv(data, path)
         
-        doc = SimpleDocTemplate(path, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=30, bottomMargin=30)
+        doc = SimpleDocTemplate(path, pagesize=landscape(A4), rightMargin=25, leftMargin=25, topMargin=35, bottomMargin=35)
         elements = []
         styles = getSampleStyleSheet()
         
-        cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontSize=7, leading=9)
-        header_style = ParagraphStyle('HeaderStyle', parent=styles['Normal'], fontSize=7.5, textColor=colors.whitesmoke, fontName='Helvetica-Bold')
-        title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=20, textColor=self.brand_purple, spaceAfter=12)
-        meta_style = ParagraphStyle('Meta', parent=styles['Normal'], fontSize=8, textColor=colors.grey)
+        # Styles
+        cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontSize=7.5, leading=10)
+        header_style = ParagraphStyle('HeaderStyle', parent=styles['Normal'], fontSize=8, textColor=colors.whitesmoke, fontName='Helvetica-Bold')
+        title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=22, textColor=self.brand_purple, spaceAfter=14)
+        meta_style = ParagraphStyle('Meta', parent=styles['Normal'], fontSize=9, textColor=colors.grey)
+        total_style = ParagraphStyle('Total', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold', alignment=2) # Right align
 
+        # Header
         elements.append(Paragraph(self.report.title.upper(), title_style))
-        elements.append(Paragraph(f"Period: {self.report.filters_applied.get('period', 'N/A')} | Generated on: {timezone.now().strftime('%B %d, %Y')}", meta_style))
-        elements.append(Spacer(1, 0.3*inch))
+        elements.append(Paragraph(f"Period: {self.report.filters_applied.get('period', 'All Time')} | Generated: {timezone.now().strftime('%d %b %Y, %H:%M')}", meta_style))
+        elements.append(Spacer(1, 0.4*inch))
 
         if not is_empty and len(data) > 0:
+            # Add Graph
             if self.report.filters_applied.get('include_visuals', True):
                 chart = self._create_visual(data)
                 if chart:
                     elements.append(chart)
-                    elements.append(Spacer(1, 0.4*inch))
+                    elements.append(Spacer(1, 0.5*inch))
 
+            # Table Logic
             all_keys = list(data[0].keys())
-            
-           
-            preferred_order = [
-                'application_id', 'date', 'email', 'first_name', 'last_name', 
-                'organization', 'description', 'amount_ugx', 'payment'
-            ]
-            
+            preferred_order = ['date', 'application_id', 'description', 'amount_ugx', 'payment', 'first_name', 'last_name', 'email']
             display_headers = [h for h in preferred_order if h in all_keys]
             
-            # Raw database fields to hide (already formatted in fetchdata)
-            exclude = ['id', 'submitted_at', 'created_at', 'status', 'payment_status', 'amount', 'user__email']
+            exclude = ['id', 'submitted_at', 'created_at', 'status', 'payment_status', 'amount', 'raw_amount']
             for h in all_keys:
                 if h not in display_headers and h not in exclude:
                     display_headers.append(h)
 
             table_data = [[Paragraph(h.replace('_', ' ').upper(), header_style) for h in display_headers]]
             
-            for row in data[:500]:
+            total_revenue = 0
+            for row in data:
                 row_content = []
+                if 'raw_amount' in row: total_revenue += float(row['raw_amount'])
                 for h in display_headers:
                     val = str(row.get(h, ''))
                     row_content.append(Paragraph(val, cell_style))
                 table_data.append(row_content)
 
+            
             col_widths = []
             for h in display_headers:
                 h_low = h.lower()
-                if 'description' in h_low: col_widths.append(2.2*inch)
-                elif 'email' in h_low: col_widths.append(1.6*inch)
+                if 'description' in h_low: col_widths.append(2.6*inch)
+                elif 'id' in h_low: col_widths.append(1.4*inch)
                 elif 'amount' in h_low: col_widths.append(1.0*inch)
+                elif 'email' in h_low: col_widths.append(1.6*inch)
                 elif 'date' in h_low: col_widths.append(0.8*inch)
-                elif 'id' in h_low: col_widths.append(1.1*inch)
-                elif 'payment' in h_low: col_widths.append(0.8*inch)
-                elif 'first' in h_low or 'last' in h_low: col_widths.append(0.8*inch)
-                else: col_widths.append(0.8*inch)
+                else: col_widths.append(0.9*inch)
 
             t = Table(table_data, repeatRows=1, colWidths=col_widths)
             t.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), self.brand_purple),
-                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
-                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f5f3ff')]),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8fafc')]),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('LEFTPADDING', (0,0), (-1,-1), 5),
-                ('RIGHTPADDING', (0,0), (-1,-1), 5),
-                ('TOPPADDING', (0,0), (-1,-1), 4),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                ('TOPPADDING', (0,0), (-1,-1), 6),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
             ]))
             elements.append(t)
+
+          
+            if total_revenue > 0:
+                elements.append(Spacer(1, 0.3*inch))
+                elements.append(Paragraph(f"TOTAL COLLECTED: UGX {total_revenue:,.0f}", total_style))
+
         else:
-            elements.append(Paragraph("NO DATA FOUND.", styles['Heading3']))
+            elements.append(Paragraph("NO RECORDS FOUND FOR THIS CRITERIA.", styles['Heading3']))
 
         doc.build(elements)
 
@@ -260,7 +256,7 @@ class ReportGenerator:
         
         wb = Workbook()
         ws = wb.active
-        ws.title = "Report"
+        ws.title = "Report Data"
         headers = list(data[0].keys())
         ws.append(headers)
         
