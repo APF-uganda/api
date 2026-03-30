@@ -33,11 +33,14 @@ class ReportDataFetcher:
                 
                 data = list(queryset.values('email', 'first_name', 'last_name', 'created_at'))
                 for item in data:
+                    
                     if item.get('created_at'):
                         item['joined_date'] = item['created_at'].strftime('%Y-%m-%d')
+                    else:
+                        item['joined_date'] = 'N/A'
                 return data
             
-            # APPLICATIONS REPORT 
+            # --- APPLICATIONS REPORT ---
             elif report_type == 'applications':
                 from applications.models import Application
                 
@@ -47,9 +50,9 @@ class ReportDataFetcher:
                 
                 results = []
                 for app in queryset:
-                    
+                   
                     payment_obj = app.payment_set.filter(status='completed').first()
-                    amt = payment_obj.amount if payment_obj else app.payment_amount or 0
+                    amt = payment_obj.amount if payment_obj else (app.payment_amount or 0)
                     
                     results.append({
                         'date': app.submitted_at.strftime('%Y-%m-%d') if app.submitted_at else 'N/A',
@@ -57,13 +60,13 @@ class ReportDataFetcher:
                         'name': f"{app.first_name} {app.last_name}",
                         'organization': app.organization or "N/A",
                         'description': f"Application Fee ({app.payment_method or 'Mobile Money'})",
-                        'amount_ugx': f"{amt:,.0f}",
-                        'status': str(app.payment_status).title(),
-                        'raw_amount': float(amt) 
+                        'amount_ugx': f"{float(amt):,.0f}",
+                        'status': str(app.payment_status or 'Pending').title(),
+                        'raw_amount': float(amt or 0) 
                     })
                 return results
             
-            #  REVENUE REPORT 
+            # REVENUE / FINANCIAL REPORTS 
             elif report_type in ['revenue', 'financial', 'payments']:
                 from payments.models import Payment, ManualPayment, RenewalProofOfPayment
                 
@@ -71,53 +74,56 @@ class ReportDataFetcher:
 
                 #  Automated Payments
                 auto = Payment.objects.filter(status='completed')
-                if date_limit: auto = auto.filter(created_at__gte=date_limit)
+                if date_limit: 
+                    auto = auto.filter(created_at__gte=date_limit)
                 
                 for p in auto:
-                   
-                    desc = p.description or p.payment_purpose or f"App Fee ({p.provider.upper()})"
-                    if "other services" in desc.lower():
+                    desc = p.description or p.payment_purpose or f"App Fee ({p.provider.upper() if p.provider else 'N/A'})"
+                    if desc and "other services" in desc.lower():
                         desc = "Membership Contribution"
 
                     combined_data.append({
-                        'date': p.created_at.strftime('%Y-%m-%d'),
-                        'reference_id': p.application.application_id if p.application else f"TXN-{p.transaction_reference[:10]}",
+                        'date': p.created_at.strftime('%Y-%m-%d') if p.created_at else 'N/A',
+                        'reference_id': p.application.application_id if p.application else f"TXN-{p.transaction_reference[:10] if p.transaction_reference else 'REF'}",
                         'description': desc,
-                        'amount_ugx': f"{p.amount:,.0f}",
+                        'amount_ugx': f"{float(p.amount or 0):,.0f}",
                         'payment': "Verified",
-                        'raw_amount': float(p.amount) 
+                        'raw_amount': float(p.amount or 0) 
                     })
 
-                # Manual Payments 
+                #  Manual Payments 
                 manual = ManualPayment.objects.filter(status__in=['verified', 'completed'])
-                if date_limit: manual = manual.filter(created_at__gte=date_limit)
+                if date_limit: 
+                    manual = manual.filter(created_at__gte=date_limit)
                 
                 for mp in manual:
                     desc = mp.description or mp.get_payment_type_display()
                     combined_data.append({
-                        'date': mp.created_at.strftime('%Y-%m-%d'),
+                        'date': mp.created_at.strftime('%Y-%m-%d') if mp.created_at else 'N/A',
                         'reference_id': mp.reference[:15] if mp.reference else "MANUAL-REF",
                         'description': desc, 
-                        'amount_ugx': f"{mp.amount:,.0f}",
+                        'amount_ugx': f"{float(mp.amount or 0):,.0f}",
                         'payment': "Verified",
-                        'raw_amount': float(mp.amount)
+                        'raw_amount': float(mp.amount or 0)
                     })
 
                 #  Renewals
                 renewals = RenewalProofOfPayment.objects.filter(status='approved')
-                if date_limit: renewals = renewals.filter(created_at__gte=date_limit)
+                if date_limit: 
+                    renewals = renewals.filter(created_at__gte=date_limit)
                 
                 for r in renewals:
                     combined_data.append({
-                        'date': r.created_at.strftime('%Y-%m-%d'),
+                        'date': r.created_at.strftime('%Y-%m-%d') if r.created_at else 'N/A',
                         'reference_id': r.invoice_number or "RENEWAL",
-                        'description': f"Membership Renewal ({r.get_provider_display()})",
-                        'amount_ugx': f"{r.amount:,.0f}",
+                        'description': f"Membership Renewal ({r.get_provider_display() if hasattr(r, 'get_provider_display') else 'N/A'})",
+                        'amount_ugx': f"{float(r.amount or 0):,.0f}",
                         'payment': "Approved",
-                        'raw_amount': float(r.amount)
+                        'raw_amount': float(r.amount or 0)
                     })
 
-                combined_data.sort(key=lambda x: x['date'], reverse=True)
+                # Sort by date 
+                combined_data.sort(key=lambda x: x['date'] if x['date'] != 'N/A' else '0000-00-00', reverse=True)
                 return combined_data
 
         except Exception as e:

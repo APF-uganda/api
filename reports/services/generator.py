@@ -81,9 +81,10 @@ class ReportGenerator:
             self.report.status = 'completed'
             self.report.processing_completed_at = timezone.now()
             
+            
             if self.report.processing_started_at:
                 duration = self.report.processing_completed_at - self.report.processing_started_at
-                self.report.processing_duration = duration
+                setattr(self.report, 'processing_duration', duration)
             
             self.report.save()
             return relative_path
@@ -102,29 +103,42 @@ class ReportGenerator:
         try:
             report_type = str(self.template.report_type).lower()
             plt.figure(figsize=(9, 4))
+            items_count = 0
             
-            #  REVENUE TREND WITH AXIS LABELS 
+            # LINE GRAPH
             if report_type in ['revenue', 'financial', 'payments', 'membership']:
-                plot_data = sorted([d for d in data if 'raw_amount' in d], key=lambda x: x['date'])
+               
+                plot_data = sorted([d for d in data if d.get('date') or d.get('joined_date')], 
+                                   key=lambda x: x.get('date') or x.get('joined_date'))
+                
                 if not plot_data: return None
                 
-                unique_dates = sorted(list(set([d['date'] for d in plot_data])))
-                daily_totals = [sum(float(d['raw_amount']) for d in plot_data if d['date'] == dt) for dt in unique_dates]
+                unique_dates = sorted(list(set([d.get('date') or d.get('joined_date') for d in plot_data])))
+                items_count = len(unique_dates)
+
+                if report_type == 'membership':
+                   
+                    daily_totals = [len([d for d in plot_data if (d.get('date') or d.get('joined_date')) == dt]) for dt in unique_dates]
+                    plt.ylabel("New Members", fontsize=9, labelpad=10)
+                    plt.title("Membership Growth Trend", fontsize=12, fontweight='bold', pad=15)
+                else:
+                  
+                    daily_totals = [sum(float(d.get('raw_amount', 0)) for d in plot_data if d.get('date') == dt) for dt in unique_dates]
+                    plt.ylabel("Amount Collected (UGX)", fontsize=9, labelpad=10)
+                    plt.title("Revenue Trend (UGX)", fontsize=12, fontweight='bold', pad=15)
 
                 plt.plot(unique_dates, daily_totals, color='#6D28D9', marker='o', linewidth=2, markersize=4)
                 plt.fill_between(unique_dates, daily_totals, color='#6D28D9', alpha=0.1)
-                
-                plt.title("Revenue Trend (UGX)", fontsize=12, fontweight='bold', pad=15)
                 plt.xlabel("Date", fontsize=9, labelpad=10)
-                plt.ylabel("Amount Collected (UGX)", fontsize=9, labelpad=10)
             
-            # BAR CHART FOR APPLICATIONS/MEMBERSHIP 
+            #  BAR CHART
             else:
                 headers = list(data[0].keys())
                 group_col = next((h for h in headers if any(x in h.lower() for x in ['status', 'payment', 'type'])), headers[0])
                 
                 raw_values = [str(row.get(group_col, 'Unknown')).title() for row in data]
                 unique_vals = sorted(list(set(raw_values)))
+                items_count = len(unique_vals)
                 counts = [raw_values.count(v) for v in unique_vals]
 
                 plt.bar(unique_vals, counts, color='#6D28D9', alpha=0.8, width=0.4)
@@ -132,7 +146,8 @@ class ReportGenerator:
                 plt.xlabel(group_col.replace('_', ' ').title(), fontsize=9)
                 plt.ylabel("Total Count", fontsize=9)
 
-            plt.xticks(fontsize=8, rotation=25 if len(unique_dates if 'unique_dates' in locals() else unique_vals) > 4 else 0)
+            
+            plt.xticks(fontsize=8, rotation=25 if items_count > 4 else 0)
             plt.yticks(fontsize=8)
             plt.grid(axis='y', linestyle='--', alpha=0.3)
             plt.tight_layout()
@@ -144,8 +159,8 @@ class ReportGenerator:
             return Image(buf, width=6.0*inch, height=2.8*inch)
         except Exception as e:
             logger.error(f"Graph Generation Error: {e}")
+            plt.close() 
             return None
-
     def _generate_pdf(self, data, path, is_empty):
         if not REPORTLAB_AVAILABLE: return self._generate_csv(data, path)
         
@@ -159,13 +174,13 @@ class ReportGenerator:
         title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=20, textColor=self.brand_purple, spaceAfter=10)
         meta_style = ParagraphStyle('Meta', parent=styles['Normal'], fontSize=9, textColor=colors.grey)
 
-        #  Header Sections
+        # Header Sections
         elements.append(Paragraph(self.report.title.upper(), title_style))
         elements.append(Paragraph(f"Period: {self.report.filters_applied.get('period', 'All Time')} | Generated: {timezone.now().strftime('%d %b %Y, %H:%M')}", meta_style))
         elements.append(Spacer(1, 0.3*inch))
 
         if not is_empty and len(data) > 0:
-            #  Add Visuals
+            # Add Visuals
             if self.report.filters_applied.get('include_visuals', True):
                 chart = self._create_visual(data)
                 if chart:
@@ -176,6 +191,7 @@ class ReportGenerator:
             all_keys = list(data[0].keys())
             header_mapping = {
                 'date': 'DATE',
+                'joined_date': 'DATE JOINED',
                 'reference_id': 'REF / APP ID', 
                 'application_id': 'REF / APP ID',
                 'description': 'DESCRIPTION',
@@ -185,7 +201,7 @@ class ReportGenerator:
                 'name': 'FULL NAME'
             }
 
-            preferred_order = ['date', 'reference_id', 'application_id', 'name', 'description', 'amount_ugx', 'payment', 'status']
+            preferred_order = ['date', 'joined_date', 'reference_id', 'application_id', 'name', 'description', 'amount_ugx', 'payment', 'status']
             display_headers = [h for h in preferred_order if h in all_keys]
             
             exclude = ['id', 'raw_amount', 'submitted_at', 'created_at']
@@ -198,13 +214,13 @@ class ReportGenerator:
             total_revenue = 0
             for row in data:
                 row_content = []
-                if 'raw_amount' in row: total_revenue += float(row['raw_amount'])
+                if 'raw_amount' in row: total_revenue += float(row.get('raw_amount', 0))
                 for h in display_headers:
                     val = str(row.get(h, ''))
                     row_content.append(Paragraph(val, cell_style))
                 table_data.append(row_content)
 
-            #  COLUMN WIDTHS
+            # COLUMN WIDTHS
             col_widths = []
             for h in display_headers:
                 h_low = h.lower()
