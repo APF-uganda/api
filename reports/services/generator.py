@@ -39,6 +39,8 @@ class ReportGenerator:
         self.report = generated_report_instance
         self.template = generated_report_instance.template
         self.brand_purple = colors.HexColor('#6D28D9')
+        self.brand_white = colors.HexColor('#FFFFFF')
+        self.light_bg = colors.HexColor('#F9FAFB')
 
     def execute(self):
         from .fetchdata import ReportDataFetcher
@@ -47,7 +49,6 @@ class ReportGenerator:
         self.report.save()
 
         try:
-            # Flexible filter extraction to match views.py logic
             filters = self.report.filters_applied or {}
             data_result = ReportDataFetcher.get_data(self.template, filters)
             data = list(data_result)
@@ -104,11 +105,9 @@ class ReportGenerator:
             report_type = str(self.template.report_type).lower()
             plt.figure(figsize=(9, 4))
             
-            # Filter out N/A dates for the graph to prevent plotting crashes
             plot_data = [d for d in data if (d.get('date') or d.get('joined_date')) != 'N/A']
             if not plot_data: return None
 
-            # Sort chronologically for time-series charts
             plot_data.sort(key=lambda x: x.get('date') or x.get('joined_date') or '1900-01-01')
             
             if report_type in ['revenue', 'financial', 'payments', 'membership']:
@@ -119,7 +118,6 @@ class ReportGenerator:
                     plt.ylabel("New Members", fontsize=9)
                     plt.title("Membership Growth Trend", fontsize=12, fontweight='bold')
                 else:
-                    # Robust summation loop to handle dirty raw_amount data
                     daily_totals = []
                     for dt in unique_dates:
                         day_sum = 0
@@ -138,7 +136,6 @@ class ReportGenerator:
                 plt.fill_between(unique_dates, daily_totals, color='#6D28D9', alpha=0.1)
             
             else:
-                # Grouping for Applications (Status/Payment)
                 group_col = 'status' if 'status' in plot_data[0] else 'payment'
                 raw_values = [str(row.get(group_col, 'Unknown')).title() for row in plot_data]
                 unique_vals = sorted(list(set(raw_values)))
@@ -163,32 +160,34 @@ class ReportGenerator:
     def _generate_pdf(self, data, path, is_empty):
         if not REPORTLAB_AVAILABLE: return self._generate_csv(data, path)
         
-        doc = SimpleDocTemplate(path, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=30, bottomMargin=30)
+        # Using Landscape A4 for maximum column room
+        doc = SimpleDocTemplate(path, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
         elements = []
         styles = getSampleStyleSheet()
         
-        # Heading Style
-        title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=18, textColor=self.brand_purple, spaceAfter=12)
+        # Custom Styles
+        title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=20, textColor=self.brand_purple, spaceAfter=12)
         meta_style = ParagraphStyle('Meta', parent=styles['Normal'], fontSize=9, textColor=colors.grey)
-        cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8)
+        cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=10)
+        header_text_style = ParagraphStyle('HeaderStyle', parent=styles['Normal'], fontSize=9, textColor=self.brand_white, alignment=1)
 
         elements.append(Paragraph(self.report.title or "SYSTEM REPORT", title_style))
-        elements.append(Paragraph(f"Generated on: {timezone.now().strftime('%Y-%m-%d %H:%M')} | Format: PDF", meta_style))
+        elements.append(Paragraph(f"Generated on: {timezone.now().strftime('%Y-%m-%d %H:%M')} | Scope: Unified Metrics", meta_style))
         elements.append(Spacer(1, 0.2*inch))
 
         if not is_empty and len(data) > 0:
-            # Add Graph if available
             chart = self._create_visual(data)
             if chart:
                 elements.append(chart)
                 elements.append(Spacer(1, 0.3*inch))
 
-            # Table Header Construction
+            # Column handling
             all_keys = list(data[0].keys())
             exclude = ['raw_amount', 'id', 'submitted_at', 'created_at']
             display_headers = [k for k in all_keys if k not in exclude]
             
-            header_row = [Paragraph(f"<b>{h.replace('_', ' ').upper()}</b>", styles['Normal']) for h in display_headers]
+            # Header Row
+            header_row = [Paragraph(f"<b>{h.replace('_', ' ').upper()}</b>", header_text_style) for h in display_headers]
             table_data = [header_row]
             
             total_sum = 0
@@ -200,19 +199,26 @@ class ReportGenerator:
                 formatted_row = [Paragraph(str(row.get(h, '')), cell_style) for h in display_headers]
                 table_data.append(formatted_row)
 
-            # Auto-calculate column widths
-            t = Table(table_data, repeatRows=1, hAlign='LEFT')
+            # Dynamic Width Calculation 
+            available_width = landscape(A4)[0] - 60
+            col_width = available_width / len(display_headers)
+
+            t = Table(table_data, repeatRows=1, hAlign='CENTER', colWidths=[col_width]*len(display_headers))
             t.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F3E8FF')),
+                ('BACKGROUND', (0,0), (-1,0), self.brand_purple),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('BOTTOMPADDING', (0,0), (-1,0), 8),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('BOTTOMPADDING', (0,0), (-1,0), 10),
+                ('TOPPADDING', (0,0), (-1,0), 10),
+                # Zebra Striping
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, self.light_bg]),
             ]))
             elements.append(t)
 
             if total_sum > 0:
-                elements.append(Spacer(1, 0.2*inch))
-                elements.append(Paragraph(f"<b>GRAND TOTAL: UGX {total_sum:,.0f}</b>", styles['Normal']))
+                elements.append(Spacer(1, 0.3*inch))
+                total_box_style = ParagraphStyle('Total', parent=styles['Normal'], fontSize=12, textColor=self.brand_purple, alignment=2)
+                elements.append(Paragraph(f"<b>GRAND TOTAL: UGX {total_sum:,.0f}</b>", total_box_style))
         else:
             elements.append(Paragraph("No data available for the selected criteria.", styles['Normal']))
 
