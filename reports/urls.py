@@ -10,8 +10,8 @@ from .views import (
     AnalyticsAPIView,
     ChartDataAPIView,
     DashboardSummaryAPIView,
-    AvailableChartsAPIView,
-    AnalyticsHealthCheckAPIView,
+    # AvailableChartsAPIView,  
+    # AnalyticsHealthCheckAPIView,
     CacheManagementsAPIView,
     ReportTemplateViewSet,
     GeneratedReportViewSet,
@@ -33,13 +33,11 @@ urlpatterns = [
     
     # Chart data endpoints
     path('analytics/charts/', ChartDataAPIView.as_view(), name='analytics-charts'),
-    path('analytics/charts/available/', AvailableChartsAPIView.as_view(), name='analytics-available-charts'),
     
     # Dashboard endpoints
     path('analytics/summary/', DashboardSummaryAPIView.as_view(), name='dashboard-summary'),
     
     # System endpoints
-    path('system/health/', AnalyticsHealthCheckAPIView.as_view(), name='analytics-health'),
     path('system/cache/', CacheManagementsAPIView.as_view(), name='analytics-cache'),
     
     # Report download endpoint
