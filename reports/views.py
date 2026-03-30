@@ -18,7 +18,7 @@ from .services.analytics_coordinator import analytics_coordinator
 from .services.generator import ReportGenerator
 from .serializers import ReportTemplateSerializer, GeneratedReportSerializer
 
-# DASHBOARD VIEWS
+#  DASHBOARD & ANALYTICS VIEWS 
 
 class DashboardSummaryAPIView(APIView):
     """Unified dashboard summary supporting time periods"""
@@ -27,15 +27,12 @@ class DashboardSummaryAPIView(APIView):
 
     @swagger_auto_schema(
         tags=["reports"],
-        operation_description="Get unified dashboard summary with membership, applications, and system metrics for specified time period",
+        operation_description="Get unified dashboard summary with membership, applications, and system metrics",
         manual_parameters=[
             openapi.Parameter(
-                'period',
-                openapi.IN_QUERY,
-                description="Time period for analytics (default: 30d)",
-                type=openapi.TYPE_STRING,
-                enum=['7d', '30d', '90d', '1y'],
-                default='30d'
+                'period', openapi.IN_QUERY,
+                description="Time period (7d, 30d, 90d, 1y)",
+                type=openapi.TYPE_STRING, default='30d'
             ),
         ],
         responses={200: "Dashboard summary with trends and metrics"}
@@ -44,18 +41,15 @@ class DashboardSummaryAPIView(APIView):
         period = request.query_params.get('period', '30d')
         try:
             raw_data = analytics_coordinator.get_dashboard_summary(period)
-            trends = raw_data.get('trends', {})
             metrics = raw_data.get('key_metrics', {})
+            trends = raw_data.get('trends', {})
             
             def safe_chart(key, default_labels=None):
                 chart = trends.get(key, {})
                 labels = chart.get('labels', [])
                 data = chart.get('data', [])
                 if not labels or not data:
-                    return {
-                        "labels": default_labels or [timezone.now().strftime('%b %d')],
-                        "data": [0]
-                    }
+                    return {"labels": default_labels or [timezone.now().strftime('%b %d')], "data": [0]}
                 return {"labels": labels, "data": data}
 
             return Response({
@@ -71,27 +65,10 @@ class DashboardSummaryAPIView(APIView):
                     "active_users_30d": metrics.get('active_users_30d', 0),
                     "daily_activity": safe_chart('daily_activity')
                 },
-                "key_metrics": {
-                    "total_members": metrics.get('total_members', 0),
-                    "total_applications": metrics.get('total_applications', 0),
-                    "pending_applications": metrics.get('pending_applications', 0),
-                    "active_users_30d": metrics.get('active_users_30d', 0),
-                    "total_revenue": metrics.get('total_revenue', 0),
-                    "revenue_growth_rate": metrics.get('revenue_growth_rate', 0),
-                    "pending_payments": metrics.get('pending_payments', 0)
-                }
+                "key_metrics": metrics
             })
         except Exception:
-            empty = {"labels": [timezone.now().strftime('%b %d')], "data": [0]}
-            return Response({
-                "membership": {"total_members": 0, "growth": empty},
-                "applications": {"total_applications": 0, "status_breakdown": empty},
-                "system": {"active_users_30d": 0, "daily_activity": empty},
-                "key_metrics": {
-                    "total_members": 0, "total_applications": 0, "pending_applications": 0,
-                    "active_users_30d": 0, "total_revenue": 0, "revenue_growth_rate": 0, "pending_payments": 0
-                }
-            }, status=200)
+            return Response({"error": "Failed to fetch dashboard summary"}, status=200)
 
 class ChartDataAPIView(APIView):
     authentication_classes = [JWTAuthentication]
@@ -100,13 +77,8 @@ class ChartDataAPIView(APIView):
     def get(self, request):
         chart_type = request.query_params.get('type')
         period = request.query_params.get('period', '30d')
-        try:
-            data = analytics_coordinator.get_chart_data(chart_type, period)
-            if not data or not data.get('labels'):
-                return Response({"labels": [timezone.now().strftime('%b %d')], "data": [0]})
-            return Response(data)
-        except Exception:
-            return Response({"labels": [timezone.now().strftime('%b %d')], "data": [0]})
+        data = analytics_coordinator.get_chart_data(chart_type, period)
+        return Response(data or {"labels": [timezone.now().strftime('%b %d')], "data": [0]})
 
 class AnalyticsAPIView(APIView):
     authentication_classes = [JWTAuthentication]
@@ -114,20 +86,6 @@ class AnalyticsAPIView(APIView):
     def get(self, request):
         period = request.query_params.get('period', '30d')
         return Response(analytics_coordinator.get_comprehensive_analytics(period))
-
-# 
-
-class AvailableChartsAPIView(APIView):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated, IsAdmin]
-    def get(self, request):
-        return Response(analytics_coordinator.get_available_charts())
-
-class AnalyticsHealthCheckAPIView(APIView):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated, IsAdmin]
-    def get(self, request):
-        return Response(analytics_coordinator.health_check())
 
 class CacheManagementsAPIView(APIView):
     authentication_classes = [JWTAuthentication]
@@ -137,6 +95,7 @@ class CacheManagementsAPIView(APIView):
         return Response({"message": "Cache cleared successfully"})
 
 
+#  REPORT MANAGEMENT VIEWS
 
 class ReportTemplateViewSet(viewsets.ModelViewSet):
     serializer_class = ReportTemplateSerializer
@@ -153,9 +112,31 @@ class GeneratedReportViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdmin]
     queryset = GeneratedReport.objects.all().order_by('-created_at')
 
+    def perform_create(self, serializer):
+        #  filter extraction
+        req_data = self.request.data
+        filters = req_data.get('filters') or req_data.get('filters_applied') or {}
+        
+        instance = serializer.save(
+            generated_by=self.request.user,
+            status='processing',
+            filters_applied=filters, 
+            processing_started_at=timezone.now()
+        )
+        
+        # Trigger generation
+        try:
+            generator = ReportGenerator(instance)
+          
+            generator.execute() 
+        except Exception as e:
+            instance.status = 'failed'
+            instance.error_message = str(e)
+            instance.save()
+
     @action(detail=True, methods=['delete'])
-    def delete(self, request, pk=None):
-        """Action for DELETE /api/v1/reports/generated-reports/{id}/delete/"""
+    def delete_report(self, request, pk=None):
+        """Action for DELETE /api/v1/reports/generated-reports/{id}/delete_report/"""
         report = self.get_object()
         try:
             if report.file_path:
@@ -163,27 +144,12 @@ class GeneratedReportViewSet(viewsets.ModelViewSet):
                 if os.path.exists(full_path):
                     os.remove(full_path)
             report.delete()
-            return Response({"message": "Report deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+            return Response(status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    def perform_create(self, serializer):
-        filters = self.request.data.get('filters', {})
-        instance = serializer.save(
-            generated_by=self.request.user,
-            status='processing',
-            filters_applied=filters, 
-            processing_started_at=timezone.now()
-        )
-        try:
-            generator = ReportGenerator(instance)
-            generator.execute()
-        except Exception as e:
-            instance.status = 'failed'
-            instance.error_message = str(e)
-            instance.save()
 
-#  DOWNLOAD ACTIONS 
+# DOWNLOAD & UTILITY ACTIONS
 
 class DownloadReportAPIView(APIView):
     authentication_classes = [JWTAuthentication]
@@ -193,12 +159,13 @@ class DownloadReportAPIView(APIView):
         try:
             report = GeneratedReport.objects.get(id=report_id)
             if report.status != 'completed' or not report.file_path:
-                return Response({'error': 'Report not ready'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'error': 'Report not ready or failed'}, status=400)
             
             file_path = os.path.join(settings.MEDIA_ROOT, report.file_path)
             if not os.path.exists(file_path):
-                return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
+                return Response({'error': 'File not found on server'}, status=404)
             
+            # Update analytics
             report.download_count += 1
             report.last_downloaded_at = timezone.now()
             report.save(update_fields=['download_count', 'last_downloaded_at'])
@@ -207,11 +174,11 @@ class DownloadReportAPIView(APIView):
             response['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_path)}"'
             return response
         except GeneratedReport.DoesNotExist:
-            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Report record not found'}, status=404)
 
 @api_view(['DELETE'])
 def delete_generated_report(request, report_id):
-    """Standalone fallback delete endpoint"""
+    """Standalone fallback delete endpoint for direct ID access"""
     try:
         report = GeneratedReport.objects.get(id=report_id)
         if report.file_path:
@@ -219,6 +186,6 @@ def delete_generated_report(request, report_id):
             if os.path.exists(full_path):
                 os.remove(full_path)
         report.delete()
-        return Response({"message": "Report deleted successfully"}, status=status.HTTP_200_OK)
+        return Response({"message": "Deleted successfully"}, status=200)
     except GeneratedReport.DoesNotExist:
-        return Response({"error": "Report not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"error": "Not found"}, status=404)

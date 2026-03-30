@@ -50,6 +50,7 @@ multidict==6.6.4
 mypy_extensions==1.1.0
 numpy==2.2.6
 oauthlib==3.3.1
+openpyxl==3.1.5
 packaging==26.0
 pathspec==0.12.1
 pillow==12.1.0
@@ -66,6 +67,7 @@ pycodestyle==2.14.0
 pycparser==3.0
 pyflakes==3.4.0
 Pygments==2.19.2
+pyHanko==0.25.0
 PyJWT==2.10.1
 pylint==4.0.4
 PyMySQL==1.1.2
