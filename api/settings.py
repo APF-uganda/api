@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "notifications",
     "profiles",
     "reports",
+    "news",
     "community",
     "payments",
     "events",

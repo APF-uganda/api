@@ -96,3 +96,6 @@ urllib3==2.6.3
 wheel==0.45.1
 whitenoise==6.6.0
 yarl==1.20.1
+feedparser==6.0.11
+requests
+
