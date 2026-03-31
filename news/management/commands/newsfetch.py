@@ -9,26 +9,25 @@ from datetime import datetime
 def clean_drupal_text(html_content, strip_all_tags=False):
     """
     Cleans out Drupal debug comments and template suggestions.
-    If strip_all_tags is True, it returns plain text (best for 'description').
-    If False, it keeps HTML tags but removes comments (best for 'content').
     """
     if not html_content:
         return ""
     
+    cleaned_text = re.sub(r'', '', html_content, flags=re.DOTALL)
     
     if strip_all_tags:
+      
+        cleaned_text = re.sub(r'<[^>]*>', '', cleaned_text)
        
-        plain_text = re.sub(r'<[^>]*>', '', text_no_comments)
-  
-        return " ".join(plain_text.split()).strip()
+        cleaned_text = " ".join(cleaned_text.split()).strip()
     
-    return text_no_comments.strip()
+    return cleaned_text.strip()
 
 class Command(BaseCommand):
-    help = 'Syncs cleaned news, full content, and images from ICPAU to Strapi'
+    help = 'Syncs news articles, full content, and images from ICPAU to Strapi'
 
     def handle(self, *args, **options):
-        # CONFIGURATION 
+        # --- CONFIGURATION ---
         STRAPI_BASE_URL = "http://64.225.121.230:1337" 
         STRAPI_TOKEN = "aaa2621af4b32b5d7c56ad777f99a357b97f1dd138e2e098a35f6acc9667a8529eeb5a7bc6a295078a6a21401adfd7664e06f103990f7c7570224632dfdb22ee15df6ed949c9bf039e0860753b885697685827163bcda8a682947d401d736460e0386cc01db8d0ca8d5f1d1630f9ab3f16878000ee1683e2829b54486f8a9ec6"
         RSS_URL = "https://www.icpau.co.ug/rss.xml" 
@@ -39,14 +38,14 @@ class Command(BaseCommand):
         feed = feedparser.parse(RSS_URL)
 
         if not feed.entries:
-            self.stdout.write(self.style.ERROR("No news entries found in the RSS feed."))
+            self.stdout.write(self.style.ERROR("No news entries found."))
             return
 
         for entry in feed.entries:
-            # CLEAN TITLE
+            #  CLEAN TITLE
             clean_title = clean_drupal_text(entry.title, strip_all_tags=True)
 
-            #  CHECK FOR DUPLICATES 
+            #  CHECK FOR DUPLICATES
             check_url = f"{STRAPI_BASE_URL}/api/news-articles?filters[title][$eq]={clean_title}"
             try:
                 check_res = requests.get(check_url, headers=headers)
@@ -57,7 +56,7 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"Duplicate check failed: {e}"))
                 continue
 
-            #  HANDLE IMAGES 
+            # HANDLE IMAGES
             image_id = None
             image_url = None
             if hasattr(entry, 'enclosures') and len(entry.enclosures) > 0:
@@ -69,7 +68,7 @@ class Command(BaseCommand):
                 try:
                     img_temp = requests.get(image_url, timeout=15)
                     if img_temp.status_code == 200:
-                        file_name = f"news_{now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                        file_name = f"icpau_{now().strftime('%Y%m%d_%H%M%S')}.jpg"
                         files = {'files': (file_name, io.BytesIO(img_temp.content), 'image/jpeg')}
                         upload_res = requests.post(f"{STRAPI_BASE_URL}/api/upload", headers=headers, files=files)
                         if upload_res.status_code == 200:
@@ -77,32 +76,33 @@ class Command(BaseCommand):
                 except Exception as e:
                     self.stdout.write(self.style.WARNING(f"Image sync failed for {clean_title}: {e}"))
 
-            # PREPARE CONTENT & DESCRIPTION
+            #  CONTENT MAPPING
             
             raw_html = getattr(entry, 'summary', '')
             
-            
+            # Content keeps HTML tags for 'Read More'
             rich_content = clean_drupal_text(raw_html, strip_all_tags=False)
-            
+          
             plain_description = clean_drupal_text(raw_html, strip_all_tags=True)
 
             #  PREPARE PAYLOAD
             payload = {
                 "data": {
                     "title": clean_title,
-                    "description": plain_description[:250], # Limit to 250 characters
-                    "content": rich_content, # Full text for details page
+                    "description": plain_description[:250],
+                    "content": rich_content, 
                     "author": "ICPAU",
-                    "featuredImage": [image_id] if image_id else [], # Array for 'Multiple Media'
+                    # Use an array [image_id] for Multiple Media fields
+                    "featuredImage": [image_id] if image_id else [],
                     "publishDate": datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d') if hasattr(entry, 'published_parsed') else now().strftime('%Y-%m-%d'),
-                    "publishedAt": now().isoformat() # Auto-publish
+                    "publishedAt": now().isoformat() 
                 }
             }
 
-            #  SEND TO STRAPI
+            # SEND TO STRAPI
             post_res = requests.post(f"{STRAPI_BASE_URL}/api/news-articles", json=payload, headers=headers)
             
             if post_res.status_code == 201:
                 self.stdout.write(self.style.SUCCESS(f"Successfully Synced: {clean_title}"))
             else:
-                self.stdout.write(self.style.ERROR(f"Sync Failed for {clean_title}: {post_res.text}"))
+                self.stdout.write(self.style.ERROR(f"Failed to sync {clean_title}: {post_res.text}"))
