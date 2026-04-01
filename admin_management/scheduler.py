@@ -5,28 +5,28 @@ Uses Python's built-in threading — no extra packages required.
 Fires two jobs automatically each year:
   - March 1st  → 30-day reminder emails to all members
   - March 31st → Generate invoices + send to all members
+
+Uses a daily polling loop to avoid Windows threading overflow issues
+with very large timeout values.
 """
 import threading
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 _scheduler_started = False
 
+# Check every 6 hours whether it's time to run a job
+POLL_INTERVAL_SECONDS = 6 * 60 * 60
 
-def _seconds_until(month: int, day: int, hour: int = 6) -> float:
-    """Return seconds from now until the next occurrence of month/day at hour:00."""
+
+def _is_target_date(month: int, day: int) -> bool:
     now = datetime.now()
-    target = now.replace(month=month, day=day, hour=hour, minute=0, second=0, microsecond=0)
-    if target <= now:
-        # Already passed this year — schedule for next year
-        target = target.replace(year=target.year + 1)
-    return (target - now).total_seconds()
+    return now.month == month and now.day == day
 
 
 def _run_send_reminders():
-    """Send 30-day renewal reminder emails to all active members."""
     try:
         logger.info("[Scheduler] Running March 1st renewal reminder job")
         from admin_management.membership_renewal_service import MembershipRenewalService
@@ -38,13 +38,9 @@ def _run_send_reminders():
         )
     except Exception as e:
         logger.error(f"[Scheduler] Reminder job failed: {e}")
-    finally:
-        # Re-schedule for next year
-        _schedule_reminders()
 
 
 def _run_generate_invoices():
-    """Generate annual invoices and send them to all active members."""
     try:
         logger.info("[Scheduler] Running March 31st invoice generation job")
         from django.core.management import call_command
@@ -52,35 +48,42 @@ def _run_generate_invoices():
         logger.info("[Scheduler] Invoice generation job done")
     except Exception as e:
         logger.error(f"[Scheduler] Invoice generation job failed: {e}")
-    finally:
-        # Re-schedule for next year
-        _schedule_invoices()
 
 
-def _schedule_reminders():
-    delay = _seconds_until(month=3, day=1, hour=6)
-    days = int(delay // 86400)
-    logger.info(f"[Scheduler] Next renewal reminder scheduled in {days} days (March 1st)")
-    t = threading.Timer(delay, _run_send_reminders)
-    t.daemon = True
-    t.start()
+def _poll_loop():
+    """
+    Polls every 6 hours. On the right date, fires the job once then
+    waits until the next poll cycle (avoiding double-firing on the same day).
+    """
+    reminders_fired_year = None
+    invoices_fired_year = None
 
+    while True:
+        now = datetime.now()
+        current_year = now.year
 
-def _schedule_invoices():
-    delay = _seconds_until(month=3, day=31, hour=6)
-    days = int(delay // 86400)
-    logger.info(f"[Scheduler] Next invoice generation scheduled in {days} days (March 31st)")
-    t = threading.Timer(delay, _run_generate_invoices)
-    t.daemon = True
-    t.start()
+        # March 1st — send reminder emails
+        if _is_target_date(3, 1) and reminders_fired_year != current_year:
+            reminders_fired_year = current_year
+            t = threading.Thread(target=_run_send_reminders, daemon=True)
+            t.start()
+
+        # March 31st — generate invoices
+        if _is_target_date(3, 31) and invoices_fired_year != current_year:
+            invoices_fired_year = current_year
+            t = threading.Thread(target=_run_generate_invoices, daemon=True)
+            t.start()
+
+        # Sleep 6 hours before checking again
+        threading.Event().wait(POLL_INTERVAL_SECONDS)
 
 
 def start():
-    """Start both scheduled jobs. Safe to call multiple times — only starts once."""
+    """Start the scheduler poll loop. Safe to call multiple times — only starts once."""
     global _scheduler_started
     if _scheduler_started:
         return
     _scheduler_started = True
-    logger.info("[Scheduler] Starting membership renewal scheduler")
-    _schedule_reminders()
-    _schedule_invoices()
+    logger.info("[Scheduler] Starting membership renewal scheduler (polling every 6 hours)")
+    t = threading.Thread(target=_poll_loop, daemon=True, name="renewal-scheduler")
+    t.start()
