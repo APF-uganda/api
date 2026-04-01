@@ -6,112 +6,131 @@ from django.core.management.base import BaseCommand
 from django.utils.timezone import now
 from datetime import datetime
 
+# --- HELPERS ---
 def html_to_strapi_blocks(html_content):
     """
-    Converts a simple HTML string into Strapi Blocks JSON format.
-    Strapi Blocks expect a list of objects with type and children.
+    Cleans HTML and converts it to a format Strapi's Blocks field understands.
+    Now with better line break and comment handling.
     """
     if not html_content:
         return []
     
-   
-    clean_content = re.sub(r'', '', html_content, flags=re.DOTALL)
-   
-    text_only = re.sub(r'<[^>]*>', '', clean_content).strip()
     
+    cleaned = re.sub(r'<(script|style).*?>.*?</\1>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    cleaned = re.sub(r'', '', cleaned, flags=re.DOTALL)
     
-    return [
-        {
-            "type": "paragraph",
-            "children": [
-                {
-                    "type": "text",
-                    "text": text_only
-                }
-            ]
-        }
-    ]
+    #Handle line breaks and paragraphs 
+    cleaned = re.sub(r'<br\s*/?>', '\n', cleaned)
+    cleaned = re.sub(r'</p>', '\n\n', cleaned)
+    
+   
+    text_only = re.sub(r'<[^>]*>', ' ', cleaned)
+    
+   
+    text_only = "\n".join([line.strip() for line in text_only.split('\n') if line.strip()])
+    
+    return [{"type": "paragraph", "children": [{"type": "text", "text": text_only}]}]
 
 def clean_drupal_text(html_content, strip_all_tags=False):
-    """
-    Improved cleaning to specifically target Drupal's persistent comment tags.
-    """
     if not html_content:
         return ""
-    
-    #Correctly target and remove comments
     cleaned_text = re.sub(r'', '', html_content, flags=re.DOTALL)
-    
     if strip_all_tags:
         cleaned_text = re.sub(r'<[^>]*>', '', cleaned_text)
         cleaned_text = " ".join(cleaned_text.split()).strip()
-    
     return cleaned_text.strip()
 
 class Command(BaseCommand):
-    help = 'Syncs news articles, full content, and images from ICPAU to Strapi'
+    help = 'Full Sync: Scrapes images and complete article body from ICPAU'
 
     def handle(self, *args, **options):
         STRAPI_BASE_URL = "http://64.225.121.230:1337" 
         STRAPI_TOKEN = "aaa2621af4b32b5d7c56ad777f99a357b97f1dd138e2e098a35f6acc9667a8529eeb5a7bc6a295078a6a21401adfd7664e06f103990f7c7570224632dfdb22ee15df6ed949c9bf039e0860753b885697685827163bcda8a682947d401d736460e0386cc01db8d0ca8d5f1d1630f9ab3f16878000ee1683e2829b54486f8a9ec6"
-        RSS_URL = "https://www.icpau.co.ug/rss.xml" 
-        
         headers = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
         
-        self.stdout.write("Connecting to ICPAU Feed...")
-        feed = feedparser.parse(RSS_URL)
+        self.stdout.write(self.style.MIGRATE_HEADING("🚀 Starting ICPAU Sync (Full Content)..."))
+        feed = feedparser.parse("https://www.icpau.co.ug/rss.xml")
 
         for entry in feed.entries:
-            clean_title = clean_drupal_text(entry.title, strip_all_tags=True)
-            raw_html = getattr(entry, 'summary', '')
-
-            #  IMAGE FIX
-            image_id = None
-            image_url = None
-
-            # 1. Check standard RSS media fields
-            if hasattr(entry, 'enclosures') and len(entry.enclosures) > 0:
-                image_url = entry.enclosures[0].href
-            elif 'media_content' in entry:
-                image_url = entry.media_content[0]['url']
+            clean_title = clean_drupal_text(entry.title, True)
+            article_url = getattr(entry, 'link', None)
             
-            #  Extract from HTML if the above are null
-            if not image_url:
-                img_match = re.search(r'<img [^>]*src="([^"]+)"', raw_html)
-                if img_match:
-                    image_url = img_match.group(1)
-                    if image_url.startswith('/'):
-                        image_url = "https://www.icpau.co.ug" + image_url
+            #  DATABASE CHECK 
+            existing_doc_id = None
+            try:
+                check_res = requests.get(f"{STRAPI_BASE_URL}/api/news-articles?filters[title][$eq]={clean_title}&populate=*", headers=headers)
+                check_data = check_res.json().get('data', [])
+                if check_data:
+                    existing_doc_id = check_data[0].get('documentId') or check_data[0].get('id')
+                   
+                    if check_data[0].get('featuredImage'):
+                        self.stdout.write(f"✅ Skipping: {clean_title} (Fully synced)")
+                        continue
+            except: pass
 
+
+            image_url = None
+            full_content_html = getattr(entry, 'summary', '') # Fallback to RSS summary
+            
+            if article_url:
+                try:
+                    p = requests.get(article_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+                    if p.status_code == 200:
+                        html_map = p.text
+                        
+                        # --- Find Image URL ---
+                        img_match = re.search(r'property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', html_map) or \
+                                    re.search(r'src=["\']([^"\']+/public/articles/[^"\']+)["\']', html_map)
+                        if img_match:
+                            image_url = img_match.group(1).replace('&amp;', '&')
+                            if image_url.startswith('/'):
+                                image_url = "https://www.icpau.co.ug" + image_url
+                            self.stdout.write(f"  🔍 Found Image: {image_url[-30:]}")
+
+                        
+                        body_match = re.search(r'<div[^>]*class=["\'][^"\']*(?:field-name-body|content|node__content)[^"\']*["\'][^>]*>(.*?)</div>\s*<div', html_map, re.DOTALL)
+                        if body_match:
+                            full_content_html = body_match.group(1)
+                            self.stdout.write(self.style.SUCCESS(f"  📖 Scraped Full Body ({len(full_content_html)} chars)"))
+                except Exception as e:
+                    self.stdout.write(self.style.WARNING(f"  ⚠️ Deep scrape failed: {e}"))
+
+            #  UPLOAD IMAGE 
+            image_id = None
             if image_url:
                 try:
-                    img_temp = requests.get(image_url, timeout=15)
-                    if img_temp.status_code == 200:
-                        file_name = f"icpau_{now().strftime('%Y%m%d_%H%M%S')}.jpg"
-                        files = {'files': (file_name, io.BytesIO(img_temp.content), 'image/jpeg')}
-                        upload_res = requests.post(f"{STRAPI_BASE_URL}/api/upload", headers=headers, files=files)
-                        if upload_res.status_code == 200:
-                            image_id = upload_res.json()[0]['id']
-                except Exception as e:
-                    self.stdout.write(self.style.WARNING(f"Image sync failed: {e}"))
+                    img_res = requests.get(image_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+                    if img_res.status_code == 200:
+                        files = {'files': (f"news_{now().strftime('%M%S')}.jpg", io.BytesIO(img_res.content), 'image/jpeg')}
+                        up = requests.post(f"{STRAPI_BASE_URL}/api/upload", headers=headers, files=files)
+                        
+                        if up.status_code in [200, 201]:
+                            res_json = up.json()
+                            image_id = res_json[0]['id'] if isinstance(res_json, list) else res_json.get('id')
+                            self.stdout.write(self.style.SUCCESS(f"  ✨ ID CAPTURED: {image_id}"))
+                except: pass
 
-            
-            # Convert raw HTML string into Strapi Blocks JSON
-            strapi_blocks_content = html_to_strapi_blocks(raw_html)
-            plain_description = clean_drupal_text(raw_html, strip_all_tags=True)
-
+            # FINAL SYNC 
             payload = {
                 "data": {
                     "title": clean_title,
-                    "description": plain_description[:250],
-                    "content": strapi_blocks_content,
-                    "author": "ICPAU",
-                    "featuredImage": [image_id] if image_id else [],
-                    "publishDate": datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d') if hasattr(entry, 'published_parsed') else now().strftime('%Y-%m-%d'),
-                    "publishedAt": now().isoformat() 
+                    "description": clean_drupal_text(full_content_html, True)[:250] or clean_title,
+                    "content": html_to_strapi_blocks(full_content_html),
+                    "featuredImage": image_id
                 }
             }
 
-            post_res = requests.post(f"{STRAPI_BASE_URL}/api/news-articles", json=payload, headers=headers)
-            if post_res.status_code == 201:
-                self.stdout.write(self.style.SUCCESS(f"Successfully Synced: {clean_title}"))
+            if existing_doc_id:
+                sync_res = requests.put(f"{STRAPI_BASE_URL}/api/news-articles/{existing_doc_id}", json=payload, headers=headers)
+            else:
+                payload["data"].update({
+                    "author": "ICPAU", 
+                    "publishedAt": now().isoformat(),
+                    "publishDate": datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d') if hasattr(entry, 'published_parsed') else now().strftime('%Y-%m-%d')
+                })
+                sync_res = requests.post(f"{STRAPI_BASE_URL}/api/news-articles", json=payload, headers=headers)
+
+            if sync_res.status_code in [200, 201]:
+                self.stdout.write(self.style.SUCCESS(f"DONE: Updated {clean_title}"))
+            else:
+                self.stdout.write(self.style.ERROR(f"FAIL: {sync_res.status_code}"))
