@@ -312,3 +312,55 @@ class EmailService:
             print(f"\n[EMAIL ERROR] Could not send verification to {email}: {e}")
             print(f"[FALLBACK] VERIFICATION CODE: {verification_code}\n")
             return True
+
+    @staticmethod
+    def send_temp_credentials_email(email, first_name, temp_password, login_url=None):
+        """
+        Send welcome email with temporary credentials to a bulk-registered member.
+
+        Args:
+            email: Recipient email address
+            first_name: Member's first name
+            temp_password: Generated temporary password
+            login_url: Portal login URL (defaults to FRONTEND_URL/login)
+
+        Returns:
+            Boolean indicating success or failure
+        """
+        try:
+            if not login_url:
+                frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+                login_url = f'{frontend_url}/login'
+
+            if not EmailService._is_smtp_configured():
+                print("\n" + "=" * 60)
+                print("  [DEV MODE] Bulk Registration Welcome Email")
+                print("=" * 60)
+                print(f"  To:       {email}")
+                print(f"  Name:     {first_name}")
+                print(f"  Password: {temp_password}")
+                print(f"  Login:    {login_url}")
+                print("=" * 60 + "\n")
+                logger.info(f"[DEV MODE] Temp credentials for {email} printed to console")
+                return True
+
+            context = {
+                'first_name': first_name,
+                'email': email,
+                'temp_password': temp_password,
+                'login_url': login_url,
+            }
+            html_content = render_to_string('email/bulk_registration_welcome.html', context)
+
+            email_message = EmailService._create_html_email(
+                subject="APF Portal - Your Account Has Been Created",
+                html_content=html_content,
+                to_email=email,
+            )
+            email_message.send(fail_silently=False)
+            logger.info(f"Temp credentials email sent to {email}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error sending temp credentials email to {email}: {str(e)}")
+            return False

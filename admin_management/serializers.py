@@ -18,9 +18,10 @@ class AdminMemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'full_name', 'email', 'phone_number', 
+            'id', 'full_name', 'email', 'phone_number',
             'membership_status', 'subscription_due_date', 'created_at',
-            'has_documents', 'document_count', 'last_document_upload'
+            'has_documents', 'document_count', 'last_document_upload',
+            'email_verified', 'must_change_password',
         ]
         read_only_fields = ['id', 'created_at']
     
@@ -249,3 +250,30 @@ class CreateAdminNoteSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Note text cannot be empty")
         return value.strip()
+
+
+# Bulk Registration Serializers
+
+class BulkMemberEntrySerializer(serializers.Serializer):
+    """Serializer for a single member entry in bulk registration"""
+    first_name = serializers.CharField(max_length=100)
+    last_name = serializers.CharField(max_length=100)
+    email = serializers.EmailField()
+    phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True, default='')
+
+
+class BulkMemberRegistrationSerializer(serializers.Serializer):
+    """Serializer for bulk member registration"""
+    members = BulkMemberEntrySerializer(many=True)
+
+    def validate_members(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one member is required.")
+        # Check for duplicate emails within the submitted list
+        emails = [m['email'].lower() for m in value]
+        if len(emails) != len(set(emails)):
+            raise serializers.ValidationError("Duplicate emails found in the submitted list.")
+        # Normalize emails in place
+        for m in value:
+            m['email'] = m['email'].lower()
+        return value
