@@ -6,34 +6,15 @@ from django.core.management.base import BaseCommand
 from django.utils.timezone import now
 from datetime import datetime
 
-# --- HELPERS ---
 def html_to_strapi_blocks(html_content):
-    """
-    Cleans HTML and converts it to a format Strapi's Blocks field understands.
-    Now with better line break and comment handling.
-    """
-    if not html_content:
-        return []
-    
-    
-    cleaned = re.sub(r'<(script|style).*?>.*?</\1>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
-    cleaned = re.sub(r'', '', cleaned, flags=re.DOTALL)
-    
-    #Handle line breaks and paragraphs 
-    cleaned = re.sub(r'<br\s*/?>', '\n', cleaned)
-    cleaned = re.sub(r'</p>', '\n\n', cleaned)
-    
-   
-    text_only = re.sub(r'<[^>]*>', ' ', cleaned)
-    
-   
-    text_only = "\n".join([line.strip() for line in text_only.split('\n') if line.strip()])
-    
+    if not html_content: return []
+    cleaned_text = re.sub(r'', '', html_content, flags=re.DOTALL)
+    text_only = re.sub(r'<[^>]*>', ' ', cleaned_text)
+    text_only = " ".join(text_only.split()).strip()
     return [{"type": "paragraph", "children": [{"type": "text", "text": text_only}]}]
 
 def clean_drupal_text(html_content, strip_all_tags=False):
-    if not html_content:
-        return ""
+    if not html_content: return ""
     cleaned_text = re.sub(r'', '', html_content, flags=re.DOTALL)
     if strip_all_tags:
         cleaned_text = re.sub(r'<[^>]*>', '', cleaned_text)
@@ -41,61 +22,48 @@ def clean_drupal_text(html_content, strip_all_tags=False):
     return cleaned_text.strip()
 
 class Command(BaseCommand):
-    help = 'Full Sync: Scrapes images and complete article body from ICPAU'
+    help = 'Final Sync: Forces image association by debugging the upload response'
 
     def handle(self, *args, **options):
         STRAPI_BASE_URL = "http://64.225.121.230:1337" 
         STRAPI_TOKEN = "aaa2621af4b32b5d7c56ad777f99a357b97f1dd138e2e098a35f6acc9667a8529eeb5a7bc6a295078a6a21401adfd7664e06f103990f7c7570224632dfdb22ee15df6ed949c9bf039e0860753b885697685827163bcda8a682947d401d736460e0386cc01db8d0ca8d5f1d1630f9ab3f16878000ee1683e2829b54486f8a9ec6"
         headers = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
         
-        self.stdout.write(self.style.MIGRATE_HEADING("🚀 Starting ICPAU Sync (Full Content)..."))
+        self.stdout.write(self.style.MIGRATE_HEADING("🚀 Starting ICPAU Sync..."))
         feed = feedparser.parse("https://www.icpau.co.ug/rss.xml")
 
         for entry in feed.entries:
             clean_title = clean_drupal_text(entry.title, True)
             article_url = getattr(entry, 'link', None)
             
-            #  DATABASE CHECK 
+            # DB CHECK
             existing_doc_id = None
             try:
                 check_res = requests.get(f"{STRAPI_BASE_URL}/api/news-articles?filters[title][$eq]={clean_title}&populate=*", headers=headers)
                 check_data = check_res.json().get('data', [])
                 if check_data:
                     existing_doc_id = check_data[0].get('documentId') or check_data[0].get('id')
-                   
                     if check_data[0].get('featuredImage'):
                         self.stdout.write(f"✅ Skipping: {clean_title} (Fully synced)")
                         continue
             except: pass
 
-
+           
             image_url = None
-            full_content_html = getattr(entry, 'summary', '') # Fallback to RSS summary
-            
             if article_url:
                 try:
                     p = requests.get(article_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
-                    if p.status_code == 200:
-                        html_map = p.text
-                        
-                        # --- Find Image URL ---
-                        img_match = re.search(r'property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', html_map) or \
-                                    re.search(r'src=["\']([^"\']+/public/articles/[^"\']+)["\']', html_map)
-                        if img_match:
-                            image_url = img_match.group(1).replace('&amp;', '&')
-                            if image_url.startswith('/'):
-                                image_url = "https://www.icpau.co.ug" + image_url
-                            self.stdout.write(f"  🔍 Found Image: {image_url[-30:]}")
+                    
+                    match = re.search(r'property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', p.text) or \
+                            re.search(r'src=["\']([^"\']+/public/articles/[^"\']+)["\']', p.text)
+                    
+                    if match:
+                        image_url = match.group(1).replace('&amp;', '&')
+                        if image_url.startswith('/'): image_url = "https://www.icpau.co.ug" + image_url
+                        self.stdout.write(f"  🔍 Found URL: {image_url[-40:]}")
+                except: pass
 
-                        
-                        body_match = re.search(r'<div[^>]*class=["\'][^"\']*(?:field-name-body|content|node__content)[^"\']*["\'][^>]*>(.*?)</div>\s*<div', html_map, re.DOTALL)
-                        if body_match:
-                            full_content_html = body_match.group(1)
-                            self.stdout.write(self.style.SUCCESS(f"  📖 Scraped Full Body ({len(full_content_html)} chars)"))
-                except Exception as e:
-                    self.stdout.write(self.style.WARNING(f"  ⚠️ Deep scrape failed: {e}"))
-
-            #  UPLOAD IMAGE 
+            #  UPLOAD 
             image_id = None
             if image_url:
                 try:
@@ -106,17 +74,22 @@ class Command(BaseCommand):
                         
                         if up.status_code in [200, 201]:
                             res_json = up.json()
+                            # Strapi v5 returns a list or an object
                             image_id = res_json[0]['id'] if isinstance(res_json, list) else res_json.get('id')
                             self.stdout.write(self.style.SUCCESS(f"  ✨ ID CAPTURED: {image_id}"))
-                except: pass
+                        else:
+                            self.stdout.write(self.style.ERROR(f"  ❌ Strapi Upload Failed: {up.text}"))
+                except Exception as e:
+                    self.stdout.write(self.style.ERROR(f"  ❌ Image logic error: {e}"))
 
-            # FINAL SYNC 
+            # --- 4. FINAL SYNC ---
+            summary_html = getattr(entry, 'summary', '')
             payload = {
                 "data": {
                     "title": clean_title,
-                    "description": clean_drupal_text(full_content_html, True)[:250] or clean_title,
-                    "content": html_to_strapi_blocks(full_content_html),
-                    "featuredImage": image_id
+                    "description": clean_drupal_text(summary_html, True)[:250] or clean_title,
+                    "content": html_to_strapi_blocks(summary_html),
+                    "featuredImage": image_id  
                 }
             }
 
@@ -130,7 +103,10 @@ class Command(BaseCommand):
                 })
                 sync_res = requests.post(f"{STRAPI_BASE_URL}/api/news-articles", json=payload, headers=headers)
 
+            # Verification log
             if sync_res.status_code in [200, 201]:
-                self.stdout.write(self.style.SUCCESS(f"DONE: Updated {clean_title}"))
+                final_msg = "Fixed Image" if image_id else "Still No Image (Text Only)"
+                color = self.style.SUCCESS if image_id else self.style.WARNING
+                self.stdout.write(color(f"DONE: {final_msg} - {clean_title}"))
             else:
-                self.stdout.write(self.style.ERROR(f"FAIL: {sync_res.status_code}"))
+                self.stdout.write(self.style.ERROR(f"FAIL: {sync_res.status_code} - {sync_res.text}"))
