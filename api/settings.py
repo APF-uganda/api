@@ -64,7 +64,7 @@ INSTALLED_APPS = [
     "community",
     "payments",
     "events",
-    "admin_management",
+    "admin_management.apps.AdminManagementConfig",
 ]
 
 # URL Configuration

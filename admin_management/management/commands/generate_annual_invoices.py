@@ -25,10 +25,16 @@ class Command(BaseCommand):
             action='store_true',
             help='Create invoices but do not send emails',
         )
+        parser.add_argument(
+            '--force',
+            action='store_true',
+            help='Skip date check and confirmation prompts (required for cron/automated runs)',
+        )
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
         send_email = not options['no_email']
+        force = options['force']
         
         self.stdout.write(self.style.SUCCESS('=' * 70))
         self.stdout.write(self.style.SUCCESS('ANNUAL MEMBERSHIP RENEWAL INVOICE GENERATION'))
@@ -49,10 +55,11 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(
                 f"   Current date is {today.strftime('%B %d, %Y')}"
             ))
-            response = input("\nContinue anyway? (yes/no): ")
-            if response.lower() != 'yes':
-                self.stdout.write(self.style.ERROR('Aborted.'))
-                return
+            if not force:
+                response = input("\nContinue anyway? (yes/no): ")
+                if response.lower() != 'yes':
+                    self.stdout.write(self.style.ERROR('Aborted.'))
+                    return
         
         # Get next membership year
         next_start_year, next_end_year = MembershipRenewalService.get_next_membership_year()
@@ -92,11 +99,12 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(
                 f"   Invoices will be created but NO emails will be sent"
             ))
-        
-        response = input("\nProceed? (yes/no): ")
-        if response.lower() != 'yes':
-            self.stdout.write(self.style.ERROR('Aborted.'))
-            return
+
+        if not force:
+            response = input("\nProceed? (yes/no): ")
+            if response.lower() != 'yes':
+                self.stdout.write(self.style.ERROR('Aborted.'))
+                return
         
         # Generate invoices
         self.stdout.write(self.style.SUCCESS('\n📝 Generating invoices...\n'))
