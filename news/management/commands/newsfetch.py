@@ -2,111 +2,129 @@ import feedparser
 import requests
 import io
 import re
+import time
 from django.core.management.base import BaseCommand
 from django.utils.timezone import now
 from datetime import datetime
+from bs4 import BeautifulSoup
+
+
+
+def clean_drupal_html(html_content):
+    """Strips HTML comments and excessive whitespace."""
+    if not html_content:
+        return ""
+  
+    cleaned = re.sub(r'', '', str(html_content), flags=re.DOTALL)
+    return cleaned.strip()
 
 def html_to_strapi_blocks(html_content):
-    if not html_content: return []
-    cleaned_text = re.sub(r'', '', html_content, flags=re.DOTALL)
-    text_only = re.sub(r'<[^>]*>', ' ', cleaned_text)
-    text_only = " ".join(text_only.split()).strip()
-    return [{"type": "paragraph", "children": [{"type": "text", "text": text_only}]}]
+    """Converts HTML to Strapi v5 JSON Blocks using text-density discovery."""
+    if not html_content or len(str(html_content)) < 50:
+        return []
+    
+    soup = BeautifulSoup(clean_drupal_html(html_content), 'html.parser')
+    
+    # clean 
+    for noise in soup(["script", "style", "nav", "footer", "header", "aside"]):
+        noise.decompose()
 
-def clean_drupal_text(html_content, strip_all_tags=False):
-    if not html_content: return ""
-    cleaned_text = re.sub(r'', '', html_content, flags=re.DOTALL)
-    if strip_all_tags:
-        cleaned_text = re.sub(r'<[^>]*>', '', cleaned_text)
-        cleaned_text = " ".join(cleaned_text.split()).strip()
-    return cleaned_text.strip()
+    blocks = []
+    
+    
+    potential_bodies = soup.find_all(['div', 'article', 'section'])
+    best_element = soup
+    max_p = 0
+    
+    for entry in potential_bodies:
+        p_count = len(entry.find_all('p'))
+        if p_count > max_p:
+            max_p = p_count
+            best_element = entry
+
+    # Extract paragraphs from the best element found
+    for p in best_element.find_all(['p', 'h2', 'h3', 'li']):
+        text = p.get_text().strip()
+        if len(text) > 25:
+            blocks.append({
+                "type": "paragraph",
+                "children": [{"type": "text", "text": text}]
+            })
+            
+    return blocks
 
 class Command(BaseCommand):
-    help = 'Final Sync: Forces image association by debugging the upload response'
+    help = 'Final Fail-Safe Sync for ICPAU News'
 
     def handle(self, *args, **options):
         STRAPI_BASE_URL = "http://64.225.121.230:1337" 
         STRAPI_TOKEN = "aaa2621af4b32b5d7c56ad777f99a357b97f1dd138e2e098a35f6acc9667a8529eeb5a7bc6a295078a6a21401adfd7664e06f103990f7c7570224632dfdb22ee15df6ed949c9bf039e0860753b885697685827163bcda8a682947d401d736460e0386cc01db8d0ca8d5f1d1630f9ab3f16878000ee1683e2829b54486f8a9ec6"
         headers = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
-        
-        self.stdout.write(self.style.MIGRATE_HEADING("🚀 Starting ICPAU Sync..."))
+        BOT_HEADERS = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        }
+
+        self.stdout.write(self.style.MIGRATE_HEADING("Connecting..."))
         feed = feedparser.parse("https://www.icpau.co.ug/rss.xml")
 
         for entry in feed.entries:
-            clean_title = clean_drupal_text(entry.title, True)
+            clean_title = entry.title.strip()
             article_url = getattr(entry, 'link', None)
-            
-            # DB CHECK
-            existing_doc_id = None
-            try:
-                check_res = requests.get(f"{STRAPI_BASE_URL}/api/news-articles?filters[title][$eq]={clean_title}&populate=*", headers=headers)
-                check_data = check_res.json().get('data', [])
-                if check_data:
-                    existing_doc_id = check_data[0].get('documentId') or check_data[0].get('id')
-                    if check_data[0].get('featuredImage'):
-                        self.stdout.write(f"✅ Skipping: {clean_title} (Fully synced)")
-                        continue
-            except: pass
+            p_date = datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d') if hasattr(entry, 'published_parsed') else now().strftime('%Y-%m-%d')
 
-           
+            full_page_html = ""
             image_url = None
+            
             if article_url:
                 try:
-                    p = requests.get(article_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
-                    
-                    match = re.search(r'property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', p.text) or \
-                            re.search(r'src=["\']([^"\']+/public/articles/[^"\']+)["\']', p.text)
-                    
-                    if match:
-                        image_url = match.group(1).replace('&amp;', '&')
-                        if image_url.startswith('/'): image_url = "https://www.icpau.co.ug" + image_url
-                        self.stdout.write(f"  🔍 Found URL: {image_url[-40:]}")
-                except: pass
-
-            #  UPLOAD 
-            image_id = None
-            if image_url:
-                try:
-                    img_res = requests.get(image_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
-                    if img_res.status_code == 200:
-                        files = {'files': (f"news_{now().strftime('%M%S')}.jpg", io.BytesIO(img_res.content), 'image/jpeg')}
-                        up = requests.post(f"{STRAPI_BASE_URL}/api/upload", headers=headers, files=files)
+                    time.sleep(2) # Increased delay 
+                    res = requests.get(article_url, timeout=30, headers=BOT_HEADERS)
+                    if res.status_code == 200:
+                        full_page_html = res.text
+                        soup = BeautifulSoup(res.text, 'html.parser')
                         
-                        if up.status_code in [200, 201]:
-                            res_json = up.json()
-                            # Strapi v5 returns a list or an object
-                            image_id = res_json[0]['id'] if isinstance(res_json, list) else res_json.get('id')
-                            self.stdout.write(self.style.SUCCESS(f"  ✨ ID CAPTURED: {image_id}"))
-                        else:
-                            self.stdout.write(self.style.ERROR(f"  ❌ Strapi Upload Failed: {up.text}"))
+                        # Image search
+                        og_img = soup.find("meta", property="og:image")
+                        image_url = og_img.get("content") if og_img else None
                 except Exception as e:
-                    self.stdout.write(self.style.ERROR(f"  ❌ Image logic error: {e}"))
+                    self.stdout.write(self.style.WARNING(f"⚠️ Connection error: {e}"))
 
-            # --- 4. FINAL SYNC ---
-            summary_html = getattr(entry, 'summary', '')
+            # Build Content Blocks
+            blocks = html_to_strapi_blocks(full_page_html if full_page_html else entry.get('summary', ''))
+
+            # Build Description
+            clean_desc = ""
+            if blocks:
+                clean_desc = " ".join([b['children'][0]['text'] for b in blocks[:2]])[:250] + "..."
+            else:
+                clean_desc = re.sub(r'<[^>]*>', '', entry.get('summary', clean_title))
+
             payload = {
                 "data": {
                     "title": clean_title,
-                    "description": clean_drupal_text(summary_html, True)[:250] or clean_title,
-                    "content": html_to_strapi_blocks(summary_html),
-                    "featuredImage": image_id  
+                    "description": clean_desc,
+                    "content": blocks,
+                    "author": "ICPAU",
+                    "publishDate": p_date,
+                    "publishedAt": now().isoformat()
                 }
             }
 
-            if existing_doc_id:
-                sync_res = requests.put(f"{STRAPI_BASE_URL}/api/news-articles/{existing_doc_id}", json=payload, headers=headers)
+            # Strapi Sync
+            check = requests.get(f"{STRAPI_BASE_URL}/api/news-articles?filters[title][$eq]={clean_title}", headers=headers)
+            results = check.json().get('data', [])
+            
+            if results:
+                doc_id = results[0].get('documentId') or results[0].get('id')
+                res = requests.put(f"{STRAPI_BASE_URL}/api/news-articles/{doc_id}", json=payload, headers=headers)
             else:
-                payload["data"].update({
-                    "author": "ICPAU", 
-                    "publishedAt": now().isoformat(),
-                    "publishDate": datetime(*entry.published_parsed[:3]).strftime('%Y-%m-%d') if hasattr(entry, 'published_parsed') else now().strftime('%Y-%m-%d')
-                })
-                sync_res = requests.post(f"{STRAPI_BASE_URL}/api/news-articles", json=payload, headers=headers)
+                res = requests.post(f"{STRAPI_BASE_URL}/api/news-articles", json=payload, headers=headers)
 
-            # Verification log
-            if sync_res.status_code in [200, 201]:
-                final_msg = "Fixed Image" if image_id else "Still No Image (Text Only)"
-                color = self.style.SUCCESS if image_id else self.style.WARNING
-                self.stdout.write(color(f"DONE: {final_msg} - {clean_title}"))
+            # FEEDBACK
+            block_count = len(blocks)
+            if res.status_code in [200, 201]:
+                color = self.style.SUCCESS if block_count > 0 else self.style.WARNING
+                self.stdout.write(color(f"✅ Synced: {clean_title[:30]}... | Blocks: {block_count}"))
             else:
-                self.stdout.write(self.style.ERROR(f"FAIL: {sync_res.status_code} - {sync_res.text}"))
+                self.stdout.write(self.style.ERROR(f"❌ Error: {res.text}"))
