@@ -227,3 +227,88 @@ class DocumentManagementService:
             return False, "Document not found", None
         except Exception as e:
             return False, f"Error rejecting document: {str(e)}", None
+
+
+class BulkRegistrationService:
+    """Service for bulk member registration by admin"""
+
+    @staticmethod
+    def generate_temp_password():
+        """Generate a secure temporary password"""
+        import secrets
+        import string
+        alphabet = string.ascii_letters + string.digits + "!@#$%"
+        # Ensure at least one of each required type
+        password = (
+            secrets.choice(string.ascii_uppercase) +
+            secrets.choice(string.ascii_lowercase) +
+            secrets.choice(string.digits) +
+            secrets.choice("!@#$%") +
+            ''.join(secrets.choice(alphabet) for _ in range(6))
+        )
+        # Shuffle to avoid predictable pattern
+        password_list = list(password)
+        secrets.SystemRandom().shuffle(password_list)
+        return ''.join(password_list)
+
+    @staticmethod
+    def register_members(members_data, registered_by):
+        """
+        Bulk register members and return results.
+
+        Args:
+            members_data: list of dicts with first_name, last_name, email, phone_number
+            registered_by: admin User performing the action
+
+        Returns:
+            dict with 'created', 'failed' lists
+        """
+        from authentication.models import UserRole
+        from authentication.email_service_smtp import EmailService
+
+        created = []
+        failed = []
+
+        for entry in members_data:
+            email = entry['email'].lower()
+            try:
+                if User.objects.filter(email=email).exists():
+                    failed.append({'email': email, 'reason': 'A user with this email already exists.'})
+                    continue
+
+                temp_password = BulkRegistrationService.generate_temp_password()
+
+                with transaction.atomic():
+                    user = User.objects.create_user(
+                        email=email,
+                        password=temp_password,
+                        first_name=entry['first_name'],
+                        last_name=entry['last_name'],
+                        phone_number=entry.get('phone_number', ''),
+                        role=UserRole.MEMBER,
+                        is_active=True,
+                        must_change_password=True,
+                        email_verified=False,
+                    )
+
+                # Send email outside the transaction so a send failure doesn't roll back the user
+                email_sent = EmailService.send_temp_credentials_email(
+                    email=email,
+                    first_name=entry['first_name'],
+                    temp_password=temp_password,
+                )
+
+                created.append({
+                    'id': user.id,
+                    'email': user.email,
+                    'full_name': f"{user.first_name} {user.last_name}",
+                    'temp_password': temp_password,
+                    'email_sent': email_sent,
+                })
+            except Exception as e:
+                failed.append({
+                    'email': email,
+                    'reason': str(e),
+                })
+
+        return {'created': created, 'failed': failed}

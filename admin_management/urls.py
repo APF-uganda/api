@@ -5,9 +5,11 @@ from . import views
 urlpatterns = [
     # Member management endpoints
     path('members/', views.AdminMemberListView.as_view(), name='admin-members-list'),
+    path('members/bulk-register/', views.BulkMemberRegistrationView.as_view(), name='admin-members-bulk-register'),
     path('members/export/', views.AdminMemberExportCSVView.as_view(), name='admin-members-export-csv'),
     path('members/<int:member_id>/suspend/', views.AdminMemberSuspendView.as_view(), name='admin-member-suspend'),
     path('members/<int:member_id>/reactivate/', views.AdminMemberReactivateView.as_view(), name='admin-member-reactivate'),
+    path('members/<int:member_id>/reset-password/', views.AdminResetMemberPasswordView.as_view(), name='admin-member-reset-password'),
     
     # Admin notes endpoints
     path('members/<int:member_id>/notes/', views.AdminNoteListCreateView.as_view(), name='admin-member-notes'),
