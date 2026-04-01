@@ -705,3 +705,101 @@ class AdminNoteDetailView(APIView):
             {'message': 'Note deleted successfully'},
             status=status.HTTP_204_NO_CONTENT
         )
+
+
+class BulkMemberRegistrationView(APIView):
+    """
+    Admin endpoint to register multiple members at once.
+    Accepts a list of members with name, email, and phone number.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Bulk register multiple members. Returns created members with temporary passwords.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['members'],
+            properties={
+                'members': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        required=['first_name', 'last_name', 'email'],
+                        properties={
+                            'first_name': openapi.Schema(type=openapi.TYPE_STRING),
+                            'last_name': openapi.Schema(type=openapi.TYPE_STRING),
+                            'email': openapi.Schema(type=openapi.TYPE_STRING, format='email'),
+                            'phone_number': openapi.Schema(type=openapi.TYPE_STRING),
+                        }
+                    )
+                )
+            }
+        ),
+        responses={
+            201: openapi.Response('Members registered successfully'),
+            400: 'Validation error',
+            403: 'Forbidden - Admin access required',
+        }
+    )
+    def post(self, request):
+        from .serializers import BulkMemberRegistrationSerializer
+        from .services import BulkRegistrationService
+        import logging
+        logger = logging.getLogger(__name__)
+
+        serializer = BulkMemberRegistrationSerializer(data=request.data)
+        if not serializer.is_valid():
+            logger.error(f"BulkRegister validation errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        result = BulkRegistrationService.register_members(
+            members_data=serializer.validated_data['members'],
+            registered_by=request.user,
+        )
+
+        return Response({
+            'message': f"{len(result['created'])} member(s) registered successfully.",
+            'created': result['created'],
+            'failed': result['failed'],
+        }, status=status.HTTP_201_CREATED)
+
+
+class AdminResetMemberPasswordView(APIView):
+    """
+    Admin endpoint to regenerate a temporary password for a member
+    and resend the welcome email with the new credentials.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, member_id):
+        try:
+            member = User.objects.get(id=member_id, role='2')
+        except User.DoesNotExist:
+            return Response({'error': 'Member not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        from .services import BulkRegistrationService
+        from authentication.email_service_smtp import EmailService
+        import logging
+        logger = logging.getLogger(__name__)
+
+        temp_password = BulkRegistrationService.generate_temp_password()
+        member.set_password(temp_password)
+        member.must_change_password = True
+        member.email_verified = False
+        member.save(update_fields=['password', 'must_change_password', 'email_verified'])
+
+        email_sent = EmailService.send_temp_credentials_email(
+            email=member.email,
+            first_name=member.first_name or member.email.split('@')[0],
+            temp_password=temp_password,
+        )
+
+        logger.info(f"Admin {request.user.email} reset password for member {member.email}")
+
+        return Response({
+            'email': member.email,
+            'full_name': member.full_name,
+            'temp_password': temp_password,
+            'email_sent': email_sent,
+        }, status=status.HTTP_200_OK)

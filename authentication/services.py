@@ -642,6 +642,7 @@ class UserCreationService:
             if existing_user:
                 if not existing_user.is_active:
                     existing_user.is_active = True
+                    existing_user.email_verified = True  # Re-applicants also verified during signup
                     # Re-applications should honor the latest approved password.
                     existing_user.password = password_to_store
                     if not existing_user.subscription_due_date:
@@ -663,7 +664,8 @@ class UserCreationService:
                         'last_name',
                         'phone_number',
                         'national_id_number',
-                        'icpau_registration_number'
+                        'icpau_registration_number',
+                        'email_verified',
                     ])
 
                     # Link User to Application via foreign key
@@ -704,8 +706,9 @@ class UserCreationService:
             user = User.objects.create(
                 email=application_email,
                 password=password_to_store,
-                role=UserRole.MEMBER,  # Set role to 2 (member) by default
+                role=UserRole.MEMBER,
                 is_active=True,
+                email_verified=True,  # Application members verified their email during signup
                 subscription_due_date=get_annual_renewal_date(
                     application.updated_at or application.submitted_at
                 ),
