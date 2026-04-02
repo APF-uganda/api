@@ -1,0 +1,19 @@
+{% extends "email/base_email.html" %}
+{% block content %}
+<h2>Hello {{ user_name }},</h2>
+<p>Thank you for applying to join the <strong>Accountancy Practitioners Forum (APF Uganda)</strong>. We have successfully received your application and payment.</p>
+
+<div class="badge">Application Under Review</div>
+
+<div class="info-box">
+  <strong>Application Reference:</strong> #{{ application_id }}<br>
+  <strong>Submitted:</strong> {{ submitted_at }}<br>
+  <strong>Email:</strong> {{ email }}
+</div>
+
+<p>Our team will review your application and notify you of the outcome. This process typically takes <strong>3&ndash;5 business days</strong>.</p>
+
+<p>If you have any questions in the meantime, reach out to us at <a href="mailto:info@apfuganda.org">info@apfuganda.org</a>.</p>
+
+<p>Best regards,<br><strong>APF Uganda Team</strong></p>
+{% endblock %}

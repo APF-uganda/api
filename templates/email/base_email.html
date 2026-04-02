@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <style>
+    body { margin:0; padding:0; background:#f4f4f7; font-family:Arial,sans-serif; color:#333; }
+    .wrapper { max-width:600px; margin:32px auto; background:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+    .header { background:#4A2882; padding:28px 40px; text-align:center; }
+    .content { padding:36px 40px; }
+    .content h2 { margin:0 0 16px; font-size:20px; color:#1a1a2e; }
+    .content p { margin:0 0 14px; font-size:15px; line-height:1.7; color:#444; }
+    .badge { background:#4A2882; color:#fff; font-size:14px; font-weight:bold; text-align:center; padding:14px 20px; border-radius:6px; margin:24px 0; text-transform:uppercase; letter-spacing:1px; }
+    .info-box { background:#f3eeff; border-left:4px solid #4A2882; padding:14px 16px; border-radius:0 6px 6px 0; margin:20px 0; font-size:14px; line-height:1.8; }
+    .otp-code { background:#4A2882; color:#fff; font-size:36px; font-weight:bold; text-align:center; letter-spacing:10px; padding:18px 24px; border-radius:6px; margin:24px 0; }
+    .warning-box { background:#fdf3ff; border-left:4px solid #4A2882; padding:14px 16px; border-radius:0 6px 6px 0; margin:20px 0; font-size:14px; }
+    .cta-wrap { text-align:center; margin:28px 0; }
+    .cta-button { display:inline-block; background:#4A2882; color:#ffffff !important; text-decoration:none; font-weight:bold; font-size:15px; padding:14px 36px; border-radius:6px; }
+    .divider { border:none; border-top:1px solid #eeeeee; margin:28px 0; }
+    .footer { background:#f4f4f7; padding:20px 32px; text-align:center; font-size:12px; color:#888; border-top:1px solid #eeeeee; }
+    .footer a { color:#4A2882; text-decoration:none; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+
+    <div class="header">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="vertical-align:middle;width:80px;">
+            <img src="https://i.imgur.com/p7uAkC0.png" alt="APF Uganda" style="height:60px;width:auto;display:block;" />
+          </td>
+          <td style="vertical-align:middle;padding-left:16px;">
+            <p style="margin:4px 0 0;color:#d8b4fe;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Accountancy Practitioners Forum</p>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="content">
+      {% block content %}{% endblock %}
+    </div>
+
+    <div class="footer">
+      <p>This is an automated message from APF Uganda. Please do not reply to this email.</p>
+      <p>&copy; 2026 Accountancy Practitioners Forum Uganda &nbsp;|&nbsp; <a href="mailto:info@apfuganda.org">info@apfuganda.org</a></p>
+    </div>
+
+  </div>
+</body>
+</html>

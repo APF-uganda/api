@@ -11,12 +11,48 @@ Behaviour:
 """
 
 import logging
+import base64
+import os
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives, get_connection
 from django.utils.html import strip_tags
 from django.template.loader import render_to_string
 
 logger = logging.getLogger(__name__)
+
+def _get_logo_base64() -> str:
+    """Return the APF logo as a base64 data URI (fallback only)."""
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    logo_path = os.path.join(base_dir, 'static', 'images', 'logo.png')
+    try:
+        with open(logo_path, 'rb') as f:
+            encoded = base64.b64encode(f.read()).decode('utf-8')
+        return f"data:image/png;base64,{encoded}"
+    except Exception as e:
+        logger.warning(f"Could not load logo for email: {e}")
+        return ""
+
+
+def _get_logo_url():
+    """Return the absolute public URL for the APF logo."""
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'https://apfuganda.org').rstrip('/')
+    # On production this resolves to https://apfuganda.org/static/images/logo.png
+    return f"{frontend_url}/static/images/logo.png"
+
+
+def _render_email(template_name: str, context: dict) -> str:
+    """Render an email template, injecting the logo URL.
+    
+    Uses the live hosted URL — Gmail and most clients block data: URIs.
+    Falls back to base64 only when FRONTEND_URL is localhost (dev mode).
+    """
+    if 'logo_url' not in context:
+        logo_url = _get_logo_url()
+        # On localhost the URL won't be reachable from email clients, use base64
+        if 'localhost' in logo_url or '127.0.0.1' in logo_url:
+            logo_url = _get_logo_base64() or logo_url
+        context['logo_url'] = logo_url
+    return render_to_string(template_name, context)
 
 
 class EmailService:
@@ -146,7 +182,7 @@ class EmailService:
                 'user_name': user_name,
                 'otp_code': otp_code,
             }
-            html_content = render_to_string('email/otp_email.html', context)
+            html_content = _render_email('email/otp_email.html', context)
             
             # Create and send email
             email_message = EmailService._create_html_email(
@@ -195,7 +231,7 @@ class EmailService:
                 'user_name': user_name,
                 'otp_code': otp_code,
             }
-            html_content = render_to_string('email/password_reset_email.html', context)
+            html_content = _render_email('email/password_reset_email.html', context)
             
             # Create and send email
             email_message = EmailService._create_html_email(
@@ -246,7 +282,7 @@ class EmailService:
                 'member_email': email,  # Added member_email
                 'loginUrl': login_url,  # Changed from 'login_url' to 'loginUrl'
             }
-            html_content = render_to_string('email/approval_email.html', context)
+            html_content = _render_email('email/approval_email.html', context)
             
             # Create and send email
             email_message = EmailService._create_html_email(
@@ -294,7 +330,7 @@ class EmailService:
                 'verification_code': verification_code,
                 'verification_url': verification_url,
             }
-            html_content = render_to_string('email/email_verification.html', context)
+            html_content = _render_email('email/email_verification.html', context)
             
             # Create and send email
             email_message = EmailService._create_html_email(
@@ -350,7 +386,7 @@ class EmailService:
                 'temp_password': temp_password,
                 'login_url': login_url,
             }
-            html_content = render_to_string('email/bulk_registration_welcome.html', context)
+            html_content = _render_email('email/bulk_registration_welcome.html', context)
 
             email_message = EmailService._create_html_email(
                 subject="APF Portal - Your Account Has Been Created",
@@ -363,4 +399,53 @@ class EmailService:
 
         except Exception as e:
             logger.error(f"Error sending temp credentials email to {email}: {str(e)}")
+            return False
+
+    @staticmethod
+    def send_application_confirmation_email(email, user_name=None, application_id=None, submitted_at=None):
+        """
+        Send confirmation email to applicant after successful submission.
+
+        Args:
+            email: Recipient email address
+            user_name: Applicant's name
+            application_id: Application ID for reference
+            submitted_at: Submission datetime string
+
+        Returns:
+            Boolean indicating success or failure
+        """
+        try:
+            if not user_name:
+                user_name = email.split('@')[0]
+
+            if not EmailService._is_smtp_configured():
+                print("\n" + "=" * 60)
+                print("  [DEV MODE] Application Confirmation Email")
+                print("=" * 60)
+                print(f"  To:             {email}")
+                print(f"  Name:           {user_name}")
+                print(f"  Application ID: {application_id}")
+                print("=" * 60 + "\n")
+                return True
+
+            context = {
+                'user_name': user_name,
+                'email': email,
+                'application_id': application_id or 'N/A',
+                'submitted_at': submitted_at or '',
+            }
+            html_content = _render_email('email/application_confirmation_email.html', context)
+
+            email_message = EmailService._create_html_email(
+                subject="APF Uganda – Application Received & Under Review",
+                html_content=html_content,
+                to_email=email,
+            )
+            email_message.send(fail_silently=False)
+            logger.info(f"Application confirmation email sent to {email}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error sending application confirmation email to {email}: {str(e)}")
             return False

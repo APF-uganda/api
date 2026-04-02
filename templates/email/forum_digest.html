@@ -1,62 +1,50 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forum Digest</title>
-</head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px;">
-        <h2 style="color: #2c3e50; margin-top: 0;">📊 Your {{ frequency|title }} Forum Digest</h2>
-        
-        <p style="color: #7f8c8d;">Here's what happened in the APF Community Forum:</p>
-        
-        {% if recent_posts %}
-        <div style="background-color: white; padding: 20px; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #3498db; margin-top: 0;">📝 Recent Posts ({{ post_count }})</h3>
-            
-            {% for post in recent_posts %}
-            <div style="margin: 15px 0; padding: 15px; border-bottom: 1px solid #eee;">
-                <h4 style="margin: 0 0 5px 0; color: #2c3e50;">{{ post.title }}</h4>
-                <p style="color: #7f8c8d; font-size: 13px; margin: 5px 0;">
-                    by {{ post.author.full_name|default:post.author.email }} in {{ post.category.name|default:"General" }}
-                </p>
-                <p style="margin: 10px 0; font-size: 14px;">{{ post.content|truncatewords:20 }}</p>
-                <a href="{{ forum_url }}/posts/{{ post.id }}" style="color: #3498db; text-decoration: none; font-size: 13px;">Read more →</a>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-        
-        {% if recent_comments %}
-        <div style="background-color: white; padding: 20px; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #27ae60; margin-top: 0;">💬 Recent Comments ({{ comment_count }})</h3>
-            
-            {% for comment in recent_comments %}
-            <div style="margin: 15px 0; padding: 15px; border-bottom: 1px solid #eee;">
-                <p style="color: #7f8c8d; font-size: 13px; margin: 5px 0;">
-                    <strong>{{ comment.author.full_name|default:comment.author.email }}</strong> commented on 
-                    <strong>{{ comment.post.title }}</strong>
-                </p>
-                <p style="margin: 10px 0; font-size: 14px;">{{ comment.content|truncatewords:15 }}</p>
-                <a href="{{ forum_url }}/posts/{{ comment.post.id }}" style="color: #27ae60; text-decoration: none; font-size: 13px;">View discussion →</a>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-        
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{{ forum_url }}" style="display: inline-block; background-color: #3498db; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-size: 16px;">
-                Visit Forum
-            </a>
-        </div>
-        
-        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #7f8c8d; text-align: center;">
-            <p>You're receiving this {{ frequency }} digest because you're a member of APF Community.</p>
-            <p>
-                <a href="{{ preferences_url }}" style="color: #3498db;">Manage email preferences</a>
-            </p>
-        </div>
-    </div>
-</body>
-</html>
+{% extends "email/base_email.html" %}
+{% block content %}
+<h2>Hello {{ recipient_name }},</h2>
+<p>Here is your <strong>{{ frequency|title }} Digest</strong> from the APF Uganda Community Forum.</p>
+
+{% if recent_posts %}
+<div class="info-box">
+  <strong style="color:#4A2882;font-size:15px;">Recent Posts &nbsp;({{ post_count }})</strong>
+  {% for post in recent_posts %}
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e0d6f5;">
+    <strong style="font-size:14px;color:#1a1a2e;">{{ post.title }}</strong><br>
+    <span style="font-size:12px;color:#888;">
+      by {{ post.author.full_name|default:post.author.email }}
+      &nbsp;&bull;&nbsp; {{ post.category.name|default:"General" }}
+    </span><br>
+    <span style="font-size:13px;color:#444;display:block;margin-top:6px;">{{ post.content|truncatewords:20 }}</span>
+    <a href="{{ forum_url }}/posts/{{ post.id }}" style="font-size:13px;color:#4A2882;text-decoration:none;">Read more &rarr;</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if recent_comments %}
+<div class="info-box" style="margin-top:20px;">
+  <strong style="color:#4A2882;font-size:15px;">Recent Comments &nbsp;({{ comment_count }})</strong>
+  {% for comment in recent_comments %}
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e0d6f5;">
+    <span style="font-size:13px;color:#888;">
+      <strong>{{ comment.author.full_name|default:comment.author.email }}</strong>
+      commented on <strong>{{ comment.post.title }}</strong>
+    </span><br>
+    <span style="font-size:13px;color:#444;display:block;margin-top:6px;">{{ comment.content|truncatewords:15 }}</span>
+    <a href="{{ forum_url }}/posts/{{ comment.post.id }}" style="font-size:13px;color:#4A2882;text-decoration:none;">View discussion &rarr;</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="cta-wrap" style="margin-top:28px;">
+  <a href="{{ forum_url }}" class="cta-button">Visit the Forum &rarr;</a>
+</div>
+
+<hr class="divider" />
+<p style="font-size:13px;color:#888;">
+  You are receiving this {{ frequency }} digest as a member of APF Uganda Community.
+  &nbsp;<a href="{{ preferences_url }}" style="color:#4A2882;">Manage preferences</a>
+</p>
+
+<p>Best regards,<br><strong>APF Uganda Community Team</strong></p>
+{% endblock %}
