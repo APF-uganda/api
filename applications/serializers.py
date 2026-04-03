@@ -126,8 +126,10 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
     def validate_phone_number(self, value):
         """
-        Validate phone number. Accepts +256XXXXXXXXX or 256XXXXXXXXX.
-        Strips leading + and stores as 256XXXXXXXXX.
+        Validate phone number.
+        - Uganda (+256): must be a valid MTN or Airtel number.
+        - International: must be a valid E.164 number (7-15 digits after country code).
+        Strips leading + before storing.
         """
         if not value:
             raise serializers.ValidationError("Phone number is required.")
@@ -135,12 +137,17 @@ class ApplicationSerializer(serializers.ModelSerializer):
         # Strip leading + if present
         normalised = value.lstrip('+')
 
-        # Uganda MTN (76-79) and Airtel (70, 74, 75) prefixes
-        phone_pattern = r'^256(70|74|75|76|77|78|79)\d{7}$'
-        if not re.match(phone_pattern, normalised):
-            raise serializers.ValidationError(
-                "Enter a valid Uganda mobile number (MTN or Airtel) in format 256XXXXXXXXX."
-            )
+        # Must be digits only, 7-15 chars total
+        if not re.match(r'^\d{7,15}$', normalised):
+            raise serializers.ValidationError("Enter a valid phone number.")
+
+        # Uganda-specific: enforce MTN/Airtel prefixes
+        if normalised.startswith('256'):
+            ug_pattern = r'^256(70|74|75|76|77|78|79)\d{7}$'
+            if not re.match(ug_pattern, normalised):
+                raise serializers.ValidationError(
+                    "Enter a valid Uganda mobile number (MTN: 076-079, Airtel: 070, 074, 075)."
+                )
 
         return normalised
 
