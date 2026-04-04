@@ -95,6 +95,13 @@ class UploadRenewalProofView(APIView):
         if not proof_file:
             return Response({'error': 'proof_file is required'}, status=status.HTTP_400_BAD_REQUEST)
 
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+        if proof_file.size > MAX_FILE_SIZE:
+            return Response(
+                {'error': f'File size exceeds the 10MB limit. Your file is {proof_file.size / (1024 * 1024):.1f}MB.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Validate invoice belongs to this user
         from admin_management.models import MembershipInvoice
         try:

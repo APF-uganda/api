@@ -195,6 +195,13 @@ def submit_manual_payment(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+        if proof.size > MAX_FILE_SIZE:
+            return Response(
+                {'error': f'File size exceeds the 10MB limit. Your file is {proof.size / (1024 * 1024):.1f}MB.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         amount = request.data.get('amount')
         if amount is None:
             return Response(

@@ -209,6 +209,13 @@ class DocumentViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+        if uploaded_file.size > MAX_FILE_SIZE:
+            return Response(
+                {'error': {'message': f'File size exceeds the 10MB limit. Your file is {uploaded_file.size / (1024 * 1024):.1f}MB.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         doc_type = (request.data.get('type') or request.data.get('document_type') or 'USER').upper()
 
         document = MemberDocument.objects.create(
