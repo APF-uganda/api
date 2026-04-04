@@ -85,11 +85,23 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='send-otp')
     def send_otp(self, request):
+        from authentication.models import User
         email = request.data.get('email')
         username = request.data.get('user_name', 'Applicant')
 
         if not email:
             return Response({'message': 'Email is required'}, status=400)
+
+        # Check before sending OTP — fail fast with a clear message
+        if Application.objects.filter(email__iexact=email).exclude(status='rejected').exists():
+            return Response({
+                'message': 'An application with this email already exists. Please use a different email or contact support.'
+            }, status=400)
+
+        if User.objects.filter(email__iexact=email, is_active=True).exists():
+            return Response({
+                'message': 'An account with this email already exists. Please log in instead.'
+            }, status=400)
 
         try:
             # Service returns the signed token (No DB used!)
