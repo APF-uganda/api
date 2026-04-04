@@ -259,7 +259,8 @@ class BulkMemberEntrySerializer(serializers.Serializer):
     first_name = serializers.CharField(max_length=100)
     last_name = serializers.CharField(max_length=100)
     email = serializers.EmailField()
-    phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True, default='')
+    phone_number = serializers.CharField(max_length=20, required=True, allow_blank=False)
+    icpau_registration_number = serializers.CharField(max_length=50, required=True, allow_blank=False)
 
 
 class BulkMemberRegistrationSerializer(serializers.Serializer):

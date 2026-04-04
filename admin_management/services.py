@@ -285,6 +285,7 @@ class BulkRegistrationService:
                         first_name=entry['first_name'],
                         last_name=entry['last_name'],
                         phone_number=entry.get('phone_number', ''),
+                        icpau_registration_number=entry.get('icpau_registration_number', ''),
                         role=UserRole.MEMBER,
                         is_active=True,
                         must_change_password=True,
