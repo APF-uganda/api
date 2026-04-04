@@ -1,11 +1,11 @@
 {% extends "email/base_email.html" %}
 {% block content %}
-<h2>Welcome, {{ first_name }}!</h2>
-<p>Your account on the <strong>Accountancy Practitioners Forum (APF Uganda)</strong> portal has been created by the APF administration team.</p>
+<h2>Welcome to APF Uganda, {{ first_name }}!</h2>
+<p>Your membership account on the <strong>Accountancy Practitioners Forum (APF Uganda)</strong> portal has been created by the APF administration team. You can now log in and complete your profile.</p>
 
 <div class="badge">Account Created</div>
 
-<p>Use the credentials below to log in for the first time:</p>
+<p>Use the credentials below to access your account:</p>
 
 <div class="info-box">
   <strong>Email:</strong> {{ email }}<br>
@@ -13,21 +13,23 @@
 </div>
 
 <div class="warning-box">
-  <strong>Important:</strong> This is a temporary password. Please change it immediately after your first login.
+  <strong>Important:</strong> This is a temporary password. You will be required to change it on your first login.
 </div>
-
-<p>Once logged in, please:</p>
-<p>
-  &bull; Change your password to something secure<br>
-  &bull; Complete your profile information<br>
-  &bull; Upload the required membership documents
-</p>
 
 <div class="cta-wrap">
   <a href="{{ login_url }}" class="cta-button">Login to APF Portal</a>
 </div>
 
-<p>For any questions, contact us at <a href="mailto:info@apfuganda.org">info@apfuganda.org</a>.</p>
+<p>Once logged in, please:</p>
+<p>
+  &bull; Set a new secure password<br>
+  &bull; Complete your profile information<br>
+  &bull; Upload your required membership documents
+</p>
+
+<hr class="divider" />
+
+<p style="font-size:13px;color:#888;">For any questions, contact us at <a href="mailto:info@apfuganda.org" style="color:#4A2882;">info@apfuganda.org</a>.</p>
 
 <p>Best regards,<br><strong>APF Uganda Team</strong></p>
 {% endblock %}
