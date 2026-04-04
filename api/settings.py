@@ -331,17 +331,34 @@ FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 
 # Email Configuration (for SMTP )
 # For development, use console backend to print emails to terminal
-EMAIL_BACKEND = env('EMAIL_BACKEND', default='utils.gmail_api_backend.EmailBackend')
-EMAIL_HOST = env('EMAIL_HOST', default='smtp.gmail.com')
-EMAIL_PORT = env.int('EMAIL_PORT', default=587)
-EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
-EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
-EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+# EMAIL_BACKEND = env('EMAIL_BACKEND', default='utils.gmail_api_backend.EmailBackend')
+# EMAIL_HOST = env('EMAIL_HOST', default='smtp.gmail.com')
+# EMAIL_PORT = env.int('EMAIL_PORT', default=587)
+# EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
+# EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
+# EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+# EMAIL_TIMEOUT = env.int('EMAIL_TIMEOUT', default=10)
+# DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default=f'APF Portal <{EMAIL_HOST_USER}>')
+# GMAIL_TOKEN_FILE = env('GMAIL_TOKEN_FILE', default='token.json')
+# GMAIL_USER_ID = env('GMAIL_USER_ID', default='me')
+# LOG_AUTH_TOKENS = env.bool('LOG_AUTH_TOKENS', default=False)
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+
+EMAIL_HOST = env('SMTP_HOST', default='smtp-relay.brevo.com')
+EMAIL_PORT = env.int('SMTP_PORT', default=587)
+EMAIL_HOST_USER = env('SMTP_USER', default='')
+EMAIL_HOST_PASSWORD = env('SMTP_PASS', default='')
+
+EMAIL_USE_TLS = env('SMTP_SECURE', default='TLS').upper() == 'TLS'
+EMAIL_USE_SSL = False
+
+DEFAULT_FROM_EMAIL = env(
+    'DEFAULT_FROM_EMAIL',
+    default='APF Portal <admin@apfuganda.org>'
+)
+
 EMAIL_TIMEOUT = env.int('EMAIL_TIMEOUT', default=10)
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default=f'APF Portal <{EMAIL_HOST_USER}>')
-GMAIL_TOKEN_FILE = env('GMAIL_TOKEN_FILE', default='token.json')
-GMAIL_USER_ID = env('GMAIL_USER_ID', default='me')
-LOG_AUTH_TOKENS = env.bool('LOG_AUTH_TOKENS', default=False)
 
 SERVE_MEDIA=True
 
