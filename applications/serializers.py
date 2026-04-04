@@ -24,12 +24,12 @@ class DocumentSerializer(serializers.ModelSerializer):
     Handles nested document data for application submissions.
     """
     file_url = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Document
         fields = ['id', 'file', 'file_url', 'file_name', 'file_size', 'file_type', 'document_type', 'uploaded_at']
         read_only_fields = ['id', 'uploaded_at', 'file_url']
-    
+
     def get_file_url(self, obj):
         """Return the full URL for the file"""
         if obj.file:
@@ -47,7 +47,7 @@ class ApplicationListSerializer(serializers.ModelSerializer):
     """
     name = serializers.SerializerMethodField()
     icpaCertNo = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Application
         fields = [
@@ -55,7 +55,7 @@ class ApplicationListSerializer(serializers.ModelSerializer):
             'icpau_certificate_number', 'icpaCertNo', 'status', 'payment_status', 'submitted_at', 'updated_at'
         ]
         read_only_fields = ['id', 'submitted_at', 'updated_at', 'name', 'icpaCertNo']
-    
+
     def get_name(self, obj):
         """Return concatenated full name from first_name and last_name"""
         if obj.first_name and obj.last_name:
@@ -66,7 +66,7 @@ class ApplicationListSerializer(serializers.ModelSerializer):
             return obj.last_name
         else:
             return ""
-    
+
     def get_icpaCertNo(self, obj):
         """Return ICPAU certificate number as icpaCertNo for frontend compatibility"""
         return obj.icpau_certificate_number or ""
@@ -80,7 +80,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
     documents = serializers.SerializerMethodField()
     name = serializers.SerializerMethodField()
     icpaCertNo = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Application
         fields = [
@@ -98,7 +98,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             'password_hash': {'write_only': True},
             'payment_card_cvv': {'write_only': True}  # Never return CVV
         }
-    
+
     def validate_email(self, value):
         """
         Validate email format.
@@ -107,12 +107,12 @@ class ApplicationSerializer(serializers.ModelSerializer):
         value = (value or '').strip()
         if not value:
             raise serializers.ValidationError("Email is required.")
-        
+
         # Email regex pattern
         email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         if not re.match(email_pattern, value):
             raise serializers.ValidationError("Enter a valid email address.")
-        
+
         # Enforce uniqueness only for non-rejected applications
         if Application.objects.filter(email__iexact=value).exclude(status='rejected').exists():
             raise serializers.ValidationError("Membership Application with this email already exists.")
@@ -123,21 +123,33 @@ class ApplicationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("An active account with this email already exists.")
 
         return value
-    
+
     def validate_phone_number(self, value):
         """
-        Validate phone number format (256XXXXXXXXX).
-        Requirements: 3.2, 10.4
+        Validate phone number.
+        - Uganda (+256): must be a valid MTN or Airtel number.
+        - International: must be a valid E.164 number (7-15 digits after country code).
+        Strips leading + before storing.
         """
         if not value:
             raise serializers.ValidationError("Phone number is required.")
-        
-        # Phone number pattern: 256 followed by 9 digits
-        phone_pattern = r'^256\d{9}$'
-        if not re.match(phone_pattern, value):
-            raise serializers.ValidationError("Phone number must be in format 256XXXXXXXXX.")
-        
-        return value
+
+        # Strip leading + if present
+        normalised = value.lstrip('+')
+
+        # Must be digits only, 7-15 chars total
+        if not re.match(r'^\d{7,15}$', normalised):
+            raise serializers.ValidationError("Enter a valid phone number.")
+
+        # Uganda-specific: enforce MTN/Airtel prefixes
+        if normalised.startswith('256'):
+            ug_pattern = r'^256(70|74|75|76|77|78|79)\d{7}$'
+            if not re.match(ug_pattern, normalised):
+                raise serializers.ValidationError(
+                    "Enter a valid Uganda mobile number (MTN: 076-079, Airtel: 070, 074, 075)."
+                )
+
+        return normalised
 
     def validate_username(self, value):
         if not value:
@@ -147,7 +159,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Membership Application with this username already exists.")
 
         return value
-    
+
     def validate(self, data):
         """
         Cross-field validation for payment data based on payment method.
@@ -158,7 +170,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             data['payment_status'] = 'success'
 
         payment_method = data.get('payment_method')
-        
+
         if not payment_method:
             raise serializers.ValidationError({
                 'payment_method': 'Payment method is required.'
@@ -168,35 +180,35 @@ class ApplicationSerializer(serializers.ModelSerializer):
         if payment_method == 'card':
             payment_method = 'credit_card'
             data['payment_method'] = payment_method
-        
+
         # Validate MTN Mobile Money payment
         if payment_method == 'mtn':
             self._validate_mtn_payment(data)
-        
+
         # Validate Airtel Money payment
         elif payment_method == 'airtel':
             self._validate_airtel_payment(data)
-        
+
         # Validate Credit Card payment
         elif payment_method == 'credit_card':
             self._validate_credit_card_payment(data)
-        
+
         else:
             raise serializers.ValidationError({
                 'payment_method': 'Invalid payment method. Must be mtn, airtel, or credit_card.'
             })
-        
+
         return data
-    
+
     def _validate_mtn_payment(self, data):
         """
         Validate MTN Mobile Money payment data.
         Requirements: 6.2, 10.4
         """
         errors = {}
-        
+
         payment_phone = data.get('payment_phone')
-        
+
         # Validate phone number
         if not payment_phone:
             errors['payment_phone'] = 'Phone number is required for MTN payment.'
@@ -207,19 +219,19 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
             elif not payment_phone.startswith(MTN_PREFIXES):
                 errors['payment_phone'] = 'Please enter a valid MTN number.'
-        
+
         if errors:
             raise serializers.ValidationError(errors)
-    
+
     def _validate_airtel_payment(self, data):
         """
         Validate Airtel Money payment data.
         Requirements: 7.2, 10.4
         """
         errors = {}
-        
+
         payment_phone = data.get('payment_phone')
-        
+
         # Validate phone number
         if not payment_phone:
             errors['payment_phone'] = 'Phone number is required for Airtel payment.'
@@ -230,22 +242,22 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
             elif not payment_phone.startswith(AIRTEL_PREFIXES):
                errors['payment_phone'] = 'Please enter a valid Airtel number.'
-        
+
         if errors:
             raise serializers.ValidationError(errors)
-    
+
     def _validate_credit_card_payment(self, data):
         """
         Validate Credit Card payment data.
         Requirements: 8.2, 8.3, 8.4, 10.4
         """
         errors = {}
-        
+
         payment_card_number = data.get('payment_card_number')
         payment_card_expiry = data.get('payment_card_expiry')
         payment_card_cvv = data.get('payment_card_cvv')
         payment_cardholder_name = data.get('payment_cardholder_name')
-        
+
         # Validate card number (accepts both formatted with spaces and unformatted)
         if not payment_card_number:
             errors['payment_card_number'] = 'Card number is required for Credit Card payment.'
@@ -254,7 +266,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             card_digits = payment_card_number.replace(' ', '').replace('-', '')
             if not re.match(r'^\d{13,19}$', card_digits):
                 errors['payment_card_number'] = 'Card number must be 13-19 digits.'
-        
+
         # Validate expiry date
         if not payment_card_expiry:
             errors['payment_card_expiry'] = 'Expiry date is required for Credit Card payment.'
@@ -268,14 +280,14 @@ class ApplicationSerializer(serializers.ModelSerializer):
                     month, year = payment_card_expiry.split('/')
                     expiry_month = int(month)
                     expiry_year = int('20' + year)
-                    
+
                     today = date.today()
                     # Card expires at the end of the expiry month
                     if expiry_year < today.year or (expiry_year == today.year and expiry_month < today.month):
                         errors['payment_card_expiry'] = 'Card has expired.'
                 except (ValueError, IndexError):
                     errors['payment_card_expiry'] = 'Invalid expiry date format.'
-        
+
         # Validate CVV (accepts 3-4 digits for different card types)
         if not payment_card_cvv:
             errors['payment_card_cvv'] = 'CVV is required for Credit Card payment.'
@@ -283,27 +295,27 @@ class ApplicationSerializer(serializers.ModelSerializer):
             cvv_pattern = r'^\d{3,4}$'
             if not re.match(cvv_pattern, payment_card_cvv):
                 errors['payment_card_cvv'] = 'CVV must be 3-4 digits.'
-        
+
         # Validate cardholder name
         if not payment_cardholder_name or not payment_cardholder_name.strip():
             errors['payment_cardholder_name'] = 'Cardholder name is required for Credit Card payment.'
-        
+
         if errors:
             raise serializers.ValidationError(errors)
-    
+
     def create(self, validated_data):
         """
         Override create method to hash password before saving
-        
+
         Requirements: 12.6
         """
         # Hash the password before saving
         if 'password_hash' in validated_data:
             validated_data['password_hash'] = make_password(validated_data['password_hash'])
-        
+
         # Create and return the application instance
         return super().create(validated_data)
-    
+
     def get_name(self, obj):
         """Return concatenated full name from first_name and last_name"""
         if obj.first_name and obj.last_name:
@@ -314,7 +326,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             return obj.last_name
         else:
             return ""
-    
+
     def get_icpaCertNo(self, obj):
         """Return ICPAU certificate number as icpaCertNo for frontend compatibility"""
         return obj.icpau_certificate_number or ""
@@ -329,7 +341,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
                 file_url = doc.file.url
                 if request:
                     file_url = request.build_absolute_uri(file_url)
-                
+
                 docs.append({
                     'id': doc.id,
                     'file_name': doc.file_name,
@@ -337,7 +349,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
                     'document_type': doc.document_type
                 })
 
-        # 2. Get direct file fields from Application model 
+        # 2. Get direct file fields from Application model
         file_fields = [
             ('icpau_cert_doc', 'icpau_certificate'),
             ('firm_license_doc', 'firm_license'),
@@ -350,14 +362,14 @@ class ApplicationSerializer(serializers.ModelSerializer):
                 file_url = file_obj.url
                 if request:
                     file_url = request.build_absolute_uri(file_url)
-                
+
                 docs.append({
                     'id': f"{obj.id}_{field_name}",
                     'file_name': os.path.basename(file_obj.name),
                     'file_url': file_url,
                     'document_type': doc_type
                 })
-        
+
         return docs
-            
+
        

@@ -1,0 +1,33 @@
+{% extends "email/base_email.html" %}
+{% block content %}
+<h2>Welcome, {{ first_name }}!</h2>
+<p>Your account on the <strong>Accountancy Practitioners Forum (APF Uganda)</strong> portal has been created by the APF administration team.</p>
+
+<div class="badge">Account Created</div>
+
+<p>Use the credentials below to log in for the first time:</p>
+
+<div class="info-box">
+  <strong>Email:</strong> {{ email }}<br>
+  <strong>Temporary Password:</strong> {{ temp_password }}
+</div>
+
+<div class="warning-box">
+  <strong>Important:</strong> This is a temporary password. Please change it immediately after your first login.
+</div>
+
+<p>Once logged in, please:</p>
+<p>
+  &bull; Change your password to something secure<br>
+  &bull; Complete your profile information<br>
+  &bull; Upload the required membership documents
+</p>
+
+<div class="cta-wrap">
+  <a href="{{ login_url }}" class="cta-button">Login to APF Portal</a>
+</div>
+
+<p>For any questions, contact us at <a href="mailto:info@apfuganda.org">info@apfuganda.org</a>.</p>
+
+<p>Best regards,<br><strong>APF Uganda Team</strong></p>
+{% endblock %}

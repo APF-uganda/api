@@ -1,144 +1,26 @@
-<html>
+{% extends "email/base_email.html" %}
+{% block content %}
+<h2>Hello {{ user_name }},</h2>
+<p>Welcome to the <strong>Accountancy Practitioners Forum (APF Uganda)</strong>. Your member account has been created successfully.</p>
 
-<head>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+<div class="badge">Account Created</div>
 
-        .header {
-            background-color: #4A2882;
-            color: white;
-            padding: 20px;
-            text-align: center;
-            border-radius: 5px 5px 0 0;
-        }
+<p>Use the credentials below to log in for the first time:</p>
 
-        .content {
-            background-color: #f9f9f9;
-            padding: 30px;
-            border: 1px solid #ddd;
-            border-top: none;
-        }
+<div class="info-box">
+  <strong>Email:</strong> {{ email }}<br>
+  <strong>Temporary Password:</strong> {{ password }}
+</div>
 
-        .status-badge {
-            background-color: #4A2882;
-            color: white;
-            font-size: 20px;
-            font-weight: bold;
-            padding: 15px;
-            text-align: center;
-            border-radius: 5px;
-            margin: 20px 0;
-            text-transform: uppercase;
-        }
+<div class="warning-box">
+  <strong>Important:</strong> Please change your password immediately after your first login. Go to Profile &rarr; Change Password.
+</div>
 
-        .cta-button {
-            display: inline-block;
-            background-color: #4A2882;
-            color: white !important;
-            padding: 12px 30px;
-            text-decoration: none;
-            font-weight: bold;
-            border-radius: 5px;
-            margin: 20px 0;
-        }
+<div class="cta-wrap">
+  <a href="{{ login_url }}" class="cta-button">Login to APF Portal</a>
+</div>
 
-        .credentials-box {
-            background-color: #FFF8E1;
-            border-left: 4px solid #F59E0B;
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 0 5px 5px 0;
-        }
+<p>If you need any assistance, contact us at <a href="mailto:info@apfuganda.org">info@apfuganda.org</a>.</p>
 
-        .credentials-box strong {
-            display: block;
-            margin-bottom: 8px;
-        }
-
-        .credentials-box .field {
-            margin: 6px 0;
-        }
-
-        .warning-box {
-            background-color: #FEF2F2;
-            border-left: 4px solid #EF4444;
-            padding: 12px;
-            margin: 20px 0;
-            border-radius: 0 5px 5px 0;
-        }
-
-        .info-box {
-            background-color: #EEF2FF;
-            border-left: 4px solid #4F46E5;
-            padding: 12px;
-            margin: 20px 0;
-        }
-
-        .footer {
-            text-align: center;
-            color: #666;
-            font-size: 12px;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-        }
-    </style>
-</head>
-
-<body>
-    <div class="header">
-        <h1>APF Portal</h1>
-    </div>
-    <div class="content">
-        <h2>Hello {{ user_name }},</h2>
-
-        <p>Welcome to the <strong>Accountancy Practitioners Forum (APF)</strong> Portal. Your member account has been created successfully.</p>
-
-        <div class="status-badge">
-            Account Created
-        </div>
-
-        <p>Please use the following credentials to log in to your account:</p>
-
-        <div class="credentials-box">
-            <strong>Your Login Credentials:</strong>
-            <div class="field"><strong>Email:</strong> {{ email }}</div>
-            <div class="field"><strong>Temporary Password:</strong> {{ password }}</div>
-        </div>
-
-        <div class="warning-box">
-            <strong>Important:</strong> For your security, please change your password immediately after your first login. Go to your profile settings to update your password.
-        </div>
-
-        <div style="text-align: center;">
-            <a href="{{ login_url }}" class="cta-button">Login to APF Portal</a>
-        </div>
-
-        <div class="info-box">
-            <strong>How to change your password:</strong><br>
-            1. Log in using the credentials above<br>
-            2. Navigate to your Profile Settings<br>
-            3. Select "Change Password"<br>
-            4. Enter your current password and set a new one
-        </div>
-
-        <p>If you have any questions or need assistance, please contact our support team.</p>
-
-        <p>Best regards,<br>
-            <strong>APF Uganda Team</strong>
-        </p>
-    </div>
-    <div class="footer">
-        <p>This is an automated message from APF Portal. Please do not reply to this email.</p>
-        <p>&copy; 2026 Accountancy Practitioners Forum. All rights reserved.</p>
-    </div>
-</body>
-
-</html>
+<p>Best regards,<br><strong>APF Uganda Team</strong></p>
+{% endblock %}

@@ -60,10 +60,11 @@ INSTALLED_APPS = [
     "notifications",
     "profiles",
     "reports",
+    "news",
     "community",
     "payments",
     "events",
-    "admin_management",
+    "admin_management.apps.AdminManagementConfig",
 ]
 
 # URL Configuration
@@ -191,6 +192,7 @@ USE_TZ = True  # Keep timezone-aware datetimes (recommended)
 
 STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+STATICFILES_DIRS = [os.path.join(BASE_DIR, "static")]
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Media files (User uploads)

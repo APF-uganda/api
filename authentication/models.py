@@ -130,6 +130,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     failed_login_attempts = models.PositiveIntegerField(default=0, help_text='Number of consecutive failed login attempts')
     account_locked_until = models.DateTimeField(null=True, blank=True, help_text='Account locked until this time')
     last_failed_login = models.DateTimeField(null=True, blank=True, help_text='Timestamp of last failed login attempt')
+
+    # Email verification & first-login tracking
+    email_verified = models.BooleanField(default=False, help_text='True after member logs in and changes their temporary password')
+    must_change_password = models.BooleanField(default=False, help_text='Forces password change on next login (set for bulk-registered members)')
     
     objects = UserManager()
     

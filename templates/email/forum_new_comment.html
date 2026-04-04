@@ -1,36 +1,28 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Comment</title>
-</head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px;">
-        <h2 style="color: #2c3e50; margin-top: 0;">💬 New Comment on Forum Post</h2>
-        
-        <div style="background-color: white; padding: 20px; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #37046d; margin-top: 0;">{{ post_title }}</h3>
-            
-            <p style="color: #7f8c8d; font-size: 14px;">
-                <strong>{{ commenter_name }}</strong> {% if is_reply %}replied to a comment{% else %}commented on this post{% endif %}
-            </p>
-            
-            <div style="margin: 15px 0; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #27ae60;">
-                {{ comment_content }}
-            </div>
-            
-            <a href="{{ post_url }}" style="display: inline-block; background-color: #27ae60; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin-top: 15px;">
-                View Comment
-            </a>
-        </div>
-        
-        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #7f8c8d;">
-            <p>You're receiving this email because you're participating in this discussion.</p>
-            <p>
-                <a href="{{ forum_url }}" style="color: #3498db;">Visit Forum</a>
-            </p>
-        </div>
-    </div>
-</body>
-</html>
+{% extends "email/base_email.html" %}
+{% block content %}
+<h2>Hello {{ recipient_name }},</h2>
+<p>
+  {% if is_reply %}
+    <strong>{{ commenter_name }}</strong> replied to a comment on a post you are following.
+  {% else %}
+    <strong>{{ commenter_name }}</strong> commented on a post you are following.
+  {% endif %}
+</p>
+
+<div class="info-box">
+  <strong style="color:#4A2882;">{{ post_title }}</strong><br><br>
+  <span style="font-size:14px;color:#444;">{{ comment_content }}</span>
+</div>
+
+<div class="cta-wrap">
+  <a href="{{ post_url }}" class="cta-button">View Comment &rarr;</a>
+</div>
+
+<hr class="divider" />
+<p style="font-size:13px;color:#888;">
+  You are receiving this because you are participating in this discussion.
+  &nbsp;<a href="{{ forum_url }}" style="color:#4A2882;">Visit Forum</a>
+</p>
+
+<p>Best regards,<br><strong>APF Uganda Community Team</strong></p>
+{% endblock %}

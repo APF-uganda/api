@@ -3,6 +3,7 @@ import logging
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import DataError, IntegrityError
+from django.utils import timezone
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status, viewsets
@@ -13,6 +14,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from authentication.email_service_smtp import EmailService
 from authentication.permissions import (
     AllowPublicApplicationSubmission,
     IsAdmin,
@@ -571,6 +573,25 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                         "payment_id": str(payment.id)
                     }
                 )
+
+            # Send confirmation email to applicant
+            try:
+                applicant_email = application.email or (application.user.email if application.user else None)
+                if applicant_email:
+                    user_name = (
+                        application.first_name
+                        or (application.user.first_name if application.user else None)
+                        or applicant_email.split('@')[0]
+                    )
+                    submitted_at = timezone.now().strftime('%d %B %Y, %H:%M')
+                    EmailService.send_application_confirmation_email(
+                        email=applicant_email,
+                        user_name=user_name,
+                        application_id=application.id,
+                        submitted_at=submitted_at,
+                    )
+            except Exception:
+                logger.exception("Failed to send application confirmation email for application %s", application.id)
             
             response_serializer = self.get_serializer(application)
             return Response({
