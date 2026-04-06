@@ -307,17 +307,27 @@ SIMPLE_JWT = {
 }
 
 # Redis Cache Configuration for Rate Limiting
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': env('REDIS_URL', default='redis://127.0.0.1:6379/1'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        },
-        'KEY_PREFIX': 'apf_portal',
-        'TIMEOUT': 900,  # 15 minutes default timeout
+_redis_url = env('REDIS_URL', default='')
+if _redis_url:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': _redis_url,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'SOCKET_CONNECT_TIMEOUT': 5,
+                'SOCKET_TIMEOUT': 5,
+            },
+            'KEY_PREFIX': 'apf_portal',
+            'TIMEOUT': 900,
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
 
 # Rate Limiting Configuration
 RATE_LIMIT_ATTEMPTS = 5
