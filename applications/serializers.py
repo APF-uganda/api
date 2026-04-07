@@ -181,6 +181,10 @@ class ApplicationSerializer(serializers.ModelSerializer):
             payment_method = 'credit_card'
             data['payment_method'] = payment_method
 
+        # bank / manual payment — no extra validation needed
+        if payment_method == 'bank':
+            return data
+
         # Validate MTN Mobile Money payment
         if payment_method == 'mtn':
             self._validate_mtn_payment(data)
@@ -195,7 +199,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
         else:
             raise serializers.ValidationError({
-                'payment_method': 'Invalid payment method. Must be mtn, airtel, or credit_card.'
+                'payment_method': 'Invalid payment method. Must be mtn, airtel, bank, or credit_card.'
             })
 
         return data

@@ -16,6 +16,12 @@ class Application(models.Model):
     ]
       
     AGE_RANGE_CHOICES = [
+       ('18-25', '18-25'),
+       ('26-35', '26-35'),
+       ('36-45', '36-45'),
+       ('46-55', '46-55'),
+       ('56+', '56+'),
+       # Legacy values kept for existing records
        ('18 – 24', '18 – 24'),
        ('25 – 34', '25 – 34'),
        ('35 – 44', '35 – 44'),
@@ -39,10 +45,7 @@ class Application(models.Model):
     # Personal Information
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    age_range = models.CharField(
-    max_length=10,
-    choices=AGE_RANGE_CHOICES
-    )
+    age_range = models.CharField(max_length=20)
     phone_number = models.CharField(max_length=20)
     address = models.TextField()
     national_id_number = models.CharField(max_length=20, blank=True)

@@ -383,7 +383,6 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 application = serializer.save()
             except IntegrityError as exc:
                 logger.exception("Database integrity error while creating application")
-                message = str(exc) if settings.DEBUG else "Application conflicts with existing data."
                 return Response(
                     {"errors": {"non_field_errors": [message]}},
                     status=status.HTTP_409_CONFLICT
@@ -420,6 +419,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
             return Response(response_data, status=status.HTTP_201_CREATED)
         except ValidationError as exc:
+            logger.warning(f"[Application] Validation conflict for {request.data.get('email')} / {request.data.get('username')}: {exc.detail}")
             return Response(
                 {"errors": exc.detail},
                 status=status.HTTP_409_CONFLICT
