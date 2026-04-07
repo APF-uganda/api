@@ -36,8 +36,7 @@ def _get_logo_base64() -> str:
 def _get_logo_url():
     """Return the absolute public URL for the APF logo."""
     frontend_url = getattr(settings, 'FRONTEND_URL', 'https://apfuganda.org').rstrip('/')
-    # On production this resolves to https://apfuganda.org/static/images/logo.png
-    return f"{frontend_url}/static/images/logo.png"
+    return f"{frontend_url}/media/logo.png"
 
 
 def _render_email(template_name: str, context: dict) -> str:
@@ -269,7 +268,7 @@ class EmailService:
             
             if not login_url:
                 # Use FRONTEND_URL from settings with /login path
-                frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+                frontend_url = getattr(settings, 'FRONTEND_URL')
                 login_url = f'{frontend_url}/login'
 
             if not EmailService._is_smtp_configured():
