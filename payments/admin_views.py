@@ -278,6 +278,11 @@ def submit_manual_payment(request):
         else:
             description = user_description or 'Payment'
 
+        # Read file into memory before first save — temp file is deleted after first use
+        from django.core.files.base import ContentFile
+        original_name = getattr(proof, 'name', '') or 'receipt'
+        proof_content = proof.read()
+
         payment = ManualPayment.objects.create(
             application=application,
             user=request.user,
@@ -288,25 +293,25 @@ def submit_manual_payment(request):
             payment_type=payment_type,
             invoice_number=invoice_number,
             application_reference=application_reference,
-            proof_of_payment=proof,
+            proof_of_payment=ContentFile(proof_content, name=original_name),
             status=ManualPayment.STATUS_PENDING
         )
 
-        # Also register this receipt in member documents so it appears
-        # under "documents pending review" in the admin document workflow.
-        if hasattr(proof, 'seek'):
-            proof.seek(0)
-        original_name = getattr(proof, 'name', '') or 'receipt'
-        member_document = MemberDocument.objects.create(
-            user=request.user,
-            file=proof,
-            file_name=f"Renewal Receipt - {reference} - {original_name}",
-            file_size=getattr(proof, 'size', 0) or 0,
-            file_type=getattr(proof, 'content_type', '') or '',
-            document_type=f"PAYMENT_RECEIPT_{payment.id}",
-            status='pending',
-            admin_feedback=''
-        )
+        # Also register this receipt in member documents
+        try:
+            member_document = MemberDocument.objects.create(
+                user=request.user,
+                file=ContentFile(proof_content, name=original_name),
+                file_name=f"Renewal Receipt - {reference} - {original_name}",
+                file_size=len(proof_content),
+                file_type=getattr(proof, 'content_type', '') or '',
+                document_type=f"PAYMENT_RECEIPT_{payment.id}",
+                status='pending',
+                admin_feedback=''
+            )
+        except Exception as doc_err:
+            logger.warning(f"[ManualPayment] Could not create member document for payment {payment.id}: {doc_err}")
+            member_document = None
 
         # Notify admins about the new proof of payment
         try:
