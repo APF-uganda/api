@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 def _get_logo_base64() -> str:
     """Return the APF logo as a base64 data URI (fallback only)."""
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    logo_path = os.path.join(base_dir, 'static', 'images', 'logo.png')
+    logo_path = os.path.join(base_dir, 'media', 'logo.png')
     try:
         with open(logo_path, 'rb') as f:
             encoded = base64.b64encode(f.read()).decode('utf-8')
