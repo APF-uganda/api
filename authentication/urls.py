@@ -37,6 +37,7 @@ urlpatterns = [
         'patch': 'privacy_settings',
     }), name='profile-privacy-settings'),
     path('profile/notification-preferences/', UserProfileViewSet.as_view({
+        'get': 'notification_preferences',
         'put': 'notification_preferences',
         'patch': 'notification_preferences',
     }), name='profile-notification-preferences'),

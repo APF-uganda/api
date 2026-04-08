@@ -194,18 +194,33 @@ class UserProfileViewSet(viewsets.ViewSet):
         methods=['put', 'patch'],
         responses={200: openapi.Response(description="Notification preferences updated successfully")}
     )
-    @action(detail=False, methods=['put', 'patch'])
+    @action(detail=False, methods=['get', 'put', 'patch'])
     def notification_preferences(self, request):
-        """Update notification preferences - Using email notification fields"""
+        """Get or update forum notification preferences"""
         user = request.user
+
+        if request.method == 'GET':
+            return Response({
+                'email_notifications_enabled': user.email_notifications_enabled,
+                'email_new_posts': user.email_new_posts,
+                'email_new_comments': user.email_new_comments,
+                'email_post_replies': user.email_post_replies,
+                'email_digest_frequency': user.email_digest_frequency,
+            })
+
+        # PUT / PATCH
         data = request.data
-        
-        # Only update fields that exist in the database
-        notification_fields = ['email_notifications_enabled', 'email_new_posts', 'email_new_comments', 'email_post_replies', 'email_digest_frequency']
+        notification_fields = [
+            'email_notifications_enabled',
+            'email_new_posts',
+            'email_new_comments',
+            'email_post_replies',
+            'email_digest_frequency',
+        ]
         for field in notification_fields:
             if field in data:
                 setattr(user, field, data[field])
-        
+
         user.save()
         return Response({'message': 'Notification preferences updated successfully'})
 
