@@ -292,9 +292,60 @@ class ManualPayment(models.Model):
         self.verified_at = timezone.now()
         self.save()
         
-        # Update application payment status
-        self.application.payment_status = 'success'
-        self.application.save()
+        # Update application payment status if linked
+        if self.application_id:
+            try:
+                self.application.payment_status = 'success'
+                self.application.save()
+            except Exception:
+                pass
+
+        # Auto-reactivate suspended member if this is a renewal payment
+        if self.payment_type == 'membership_renewal' and self.user_id:
+            try:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                user = User.objects.get(pk=self.user_id)
+
+                if not user.is_active:
+                    user.is_active = True
+                    user.save(update_fields=['is_active'])
+
+                    # Clear suspension record
+                    from admin_management.models import SuspendedMember
+                    from django.utils import timezone as tz
+                    SuspendedMember.objects.filter(
+                        user=user,
+                        reactivated_at__isnull=True
+                    ).update(reactivated_at=tz.now())
+
+                    # In-app notification
+                    from notifications.models import UserNotification
+                    UserNotification.objects.create(
+                        user=user,
+                        title="Account Reactivated",
+                        message="Your membership renewal payment has been verified. Your account is now active.",
+                        notification_type='success',
+                        priority='high',
+                    )
+
+                    # Email notification
+                    try:
+                        from authentication.email_service_smtp import EmailService
+                        from django.conf import settings
+                        frontend_url = getattr(settings, 'FRONTEND_URL', 'https://apfuganda.org').rstrip('/')
+                        EmailService.send_reactivation_email(
+                            email=user.email,
+                            user_name=user.first_name or user.email.split('@')[0],
+                            dashboard_url=f"{frontend_url}/dashboard",
+                        )
+                    except Exception as email_err:
+                        import logging
+                        logging.getLogger(__name__).warning(f"Reactivation email failed for {user.email}: {email_err}")
+
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Auto-reactivation failed for user {self.user_id}: {e}")
     
     def reject(self, admin_user, notes=''):
         """Mark payment as rejected by admin."""

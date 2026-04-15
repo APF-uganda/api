@@ -448,3 +448,134 @@ class EmailService:
         except Exception as e:
             logger.error(f"Error sending application confirmation email to {email}: {str(e)}")
             return False
+
+    @staticmethod
+    def send_renewal_reminder_email(email, user_name=None, due_date=None, days_remaining=0, renewal_url=None):
+        """Send membership renewal reminder email."""
+        try:
+            if not user_name:
+                user_name = email.split('@')[0]
+            if not renewal_url:
+                frontend_url = getattr(settings, 'FRONTEND_URL', 'https://apfuganda.org').rstrip('/')
+                renewal_url = f"{frontend_url}/payments"
+
+            if not EmailService._is_smtp_configured():
+                print(f"\n[DEV MODE] Renewal reminder to {email} — {days_remaining} days remaining\n")
+                return True
+
+            context = {
+                'user_name': user_name,
+                'email': email,
+                'due_date': due_date or '',
+                'days_remaining': days_remaining,
+                'renewal_url': renewal_url,
+            }
+            html_content = _render_email('email/renewal_reminder_email.html', context)
+            subject = (
+                f"APF Uganda – Membership Renewal Due in {days_remaining} Day{'s' if days_remaining != 1 else ''}"
+                if days_remaining > 0
+                else "APF Uganda – Membership Renewal Overdue"
+            )
+            email_message = EmailService._create_html_email(subject, html_content, email)
+            email_message.send(fail_silently=False)
+            logger.info(f"Renewal reminder sent to {email} ({days_remaining} days remaining)")
+            return True
+        except Exception as e:
+            logger.error(f"Error sending renewal reminder to {email}: {str(e)}")
+            return False
+
+    @staticmethod
+    def send_suspension_email(email, user_name=None, reason=None, suspended_at=None, renewal_url=None):
+        """Send account suspension notification email with renewal link."""
+        try:
+            if not user_name:
+                user_name = email.split('@')[0]
+            if not renewal_url:
+                frontend_url = getattr(settings, 'FRONTEND_URL', 'https://apfuganda.org').rstrip('/')
+                renewal_url = f"{frontend_url}/payments"
+
+            if not EmailService._is_smtp_configured():
+                print(f"\n[DEV MODE] Suspension email to {email} — reason: {reason}\n")
+                return True
+
+            context = {
+                'user_name': user_name,
+                'email': email,
+                'reason': reason or 'Non-payment of annual subscription fee',
+                'suspended_at': suspended_at or '',
+                'renewal_url': renewal_url,
+            }
+            html_content = _render_email('email/suspension_email.html', context)
+            email_message = EmailService._create_html_email(
+                "APF Uganda – Your Account Has Been Suspended",
+                html_content,
+                email,
+            )
+            email_message.send(fail_silently=False)
+            logger.info(f"Suspension email sent to {email}")
+            return True
+        except Exception as e:
+            logger.error(f"Error sending suspension email to {email}: {str(e)}")
+            return False
+
+    @staticmethod
+    def send_non_payment_suspension_email(email, user_name=None, reason=None, suspended_at=None, renewal_url=None):
+        """Send non-payment suspension email with clear renewal CTA."""
+        try:
+            if not user_name:
+                user_name = email.split('@')[0]
+            if not renewal_url:
+                frontend_url = getattr(settings, 'FRONTEND_URL', 'https://apfuganda.org').rstrip('/')
+                renewal_url = f"{frontend_url}/payments"
+
+            if not EmailService._is_smtp_configured():
+                print(f"\n[DEV MODE] Non-payment suspension email to {email}\n")
+                return True
+
+            context = {
+                'user_name': user_name,
+                'email': email,
+                'reason': reason or 'Non-payment of annual subscription fee',
+                'suspended_at': suspended_at or '',
+                'renewal_url': renewal_url,
+            }
+            html_content = _render_email('email/suspension_non_payment_email.html', context)
+            email_message = EmailService._create_html_email(
+                "APF Uganda – Account Suspended: Renew to Reactivate",
+                html_content,
+                email,
+            )
+            email_message.send(fail_silently=False)
+            logger.info(f"Non-payment suspension email sent to {email}")
+            return True
+        except Exception as e:
+            logger.error(f"Error sending non-payment suspension email to {email}: {str(e)}")
+            return False
+
+    @staticmethod
+    def send_reactivation_email(email, user_name=None, dashboard_url=None):
+        """Send account reactivation confirmation email."""
+        try:
+            if not user_name:
+                user_name = email.split('@')[0]
+            if not dashboard_url:
+                frontend_url = getattr(settings, 'FRONTEND_URL', 'https://apfuganda.org').rstrip('/')
+                dashboard_url = f"{frontend_url}/dashboard"
+
+            if not EmailService._is_smtp_configured():
+                print(f"\n[DEV MODE] Reactivation email to {email}\n")
+                return True
+
+            context = {'user_name': user_name, 'email': email, 'dashboard_url': dashboard_url}
+            html_content = _render_email('email/reactivation_email.html', context)
+            email_message = EmailService._create_html_email(
+                "APF Uganda – Your Account Has Been Reactivated",
+                html_content,
+                email,
+            )
+            email_message.send(fail_silently=False)
+            logger.info(f"Reactivation email sent to {email}")
+            return True
+        except Exception as e:
+            logger.error(f"Error sending reactivation email to {email}: {str(e)}")
+            return False

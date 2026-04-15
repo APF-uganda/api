@@ -1,0 +1,39 @@
+{% extends "email/base_email.html" %}
+{% block content %}
+<h2>Hello {{ user_name }},</h2>
+
+{% if days_remaining > 0 %}
+<p>This is a reminder that your APF Uganda membership subscription is due in <strong>{{ days_remaining }} day{{ days_remaining|pluralize }}</strong>.</p>
+{% else %}
+<p>Your APF Uganda membership subscription was <strong>due on {{ due_date }}</strong> and has not yet been renewed.</p>
+<p>Please renew your membership as soon as possible to avoid account suspension.</p>
+{% endif %}
+
+<div class="badge" style="background:#F59E0B;">
+  {% if days_remaining > 0 %}
+    Renewal Due in {{ days_remaining }} Day{{ days_remaining|pluralize }}
+  {% else %}
+    Membership Overdue
+  {% endif %}
+</div>
+
+<div class="info-box">
+  <strong>Renewal Due Date:</strong> {{ due_date }}<br>
+  <strong>Annual Fee:</strong> UGX 150,000<br>
+  <strong>Member:</strong> {{ email }}
+</div>
+
+<p>To renew your membership, log in to your portal and navigate to <strong>Payments &amp; Billing</strong> to submit your renewal payment.</p>
+
+<div class="cta-wrap">
+  <a href="{{ renewal_url }}" class="cta-button">Renew My Membership</a>
+</div>
+
+<div class="warning-box">
+  <strong>Note:</strong> Failure to renew your membership may result in account suspension and loss of access to APF Uganda services.
+</div>
+
+<p>If you have already made payment, please ensure your proof of payment has been submitted via the portal for verification.</p>
+
+<p>Best regards,<br><strong>APF Uganda Team</strong></p>
+{% endblock %}

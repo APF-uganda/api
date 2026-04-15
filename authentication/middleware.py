@@ -69,18 +69,32 @@ class JWTAuthenticationMiddleware(MiddlewareMixin):
                 request.auth = token
                 logger.debug(f"User {user.email} authenticated via JWT")
             else:
-                # No token provided - will be handled by view permissions
                 logger.debug("No JWT token provided in request")
                 
         except (InvalidToken, TokenError) as e:
-            # Token is invalid or expired
             logger.warning(f"JWT authentication failed: {str(e)}")
-            # Don't return error here - let view permissions handle it
             pass
         except Exception as e:
-            # Unexpected error
-            logger.error(f"Unexpected error in JWT middleware: {str(e)}")
-            pass
+            # Check if this is a suspended/inactive user — extract user from token manually
+            error_str = str(e)
+            if 'user_inactive' in error_str or 'User is inactive' in error_str:
+                try:
+                    from rest_framework_simplejwt.tokens import UntypedToken
+                    from rest_framework_simplejwt.settings import api_settings
+                    from django.contrib.auth import get_user_model
+                    raw_token = jwt_auth.get_raw_token(jwt_auth.get_header(request))
+                    if raw_token:
+                        validated = jwt_auth.get_validated_token(raw_token)
+                        User = get_user_model()
+                        user_id = validated.get(api_settings.USER_ID_CLAIM)
+                        user = User.objects.get(**{api_settings.USER_ID_FIELD: user_id})
+                        request.user = user
+                        request.auth = validated
+                        logger.debug(f"Inactive user {user.email} attached to request for suspension check")
+                except Exception as inner:
+                    logger.error(f"Could not attach inactive user to request: {inner}")
+            else:
+                logger.error(f"Unexpected error in JWT middleware: {str(e)}")
         
         return None
     

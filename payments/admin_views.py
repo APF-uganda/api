@@ -2,15 +2,17 @@
 Admin views for manual payment management.
 """
 import logging
+import traceback
 
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated, BasePermission
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.decorators import parser_classes
 from django.db.models import Sum, Q
 from django.contrib.auth import get_user_model
+from authentication.profile_views import JWTAuthenticationAllowInactive
 
 from .models import ManualPayment
 from .serializers import ManualPaymentSerializer
@@ -182,6 +184,7 @@ def list_manual_payments(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@authentication_classes([JWTAuthenticationAllowInactive])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
 def submit_manual_payment(request):
     """

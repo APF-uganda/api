@@ -255,9 +255,10 @@ class AdminMemberSuspendView(APIView):
             )
         
         reason = serializer.validated_data.get('reason')
+        suspension_type = serializer.validated_data.get('suspension_type', 'non_payment')
         
         success, message, suspended_member = MemberManagementService.suspend_member(
-            member_id, reason, request.user
+            member_id, reason, request.user, suspension_type
         )
         
         if success:

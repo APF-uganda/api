@@ -14,6 +14,7 @@ class AdminMemberSerializer(serializers.ModelSerializer):
     has_documents = serializers.SerializerMethodField()
     document_count = serializers.SerializerMethodField()
     last_document_upload = serializers.SerializerMethodField()
+    renewal_status = serializers.SerializerMethodField()
     
     class Meta:
         model = User
@@ -21,13 +22,78 @@ class AdminMemberSerializer(serializers.ModelSerializer):
             'id', 'full_name', 'email', 'phone_number',
             'membership_status', 'subscription_due_date', 'created_at',
             'has_documents', 'document_count', 'last_document_upload',
-            'email_verified', 'must_change_password',
+            'email_verified', 'must_change_password', 'renewal_status',
         ]
         read_only_fields = ['id', 'created_at']
     
     def get_full_name(self, obj):
         return obj.full_name
-    
+
+    def get_renewal_status(self, obj):
+        """
+        Renewal logic:
+        - Due date is always March 31st of the current/next year
+        - If joined before April 1st of current year → due date is March 31st this year
+          → if that date has passed and no verified payment → overdue
+        - If joined after April 1st of current year → first renewal is March 31st next year
+          → no renewal status yet (unknown)
+        - 'renewed'  : has a verified payment for the current membership year
+        - 'overdue'  : due date has passed, no verified payment
+        - 'due_soon' : due within 14 days, no verified payment
+        - 'unknown'  : joined this membership year, first renewal not yet due
+        """
+        from django.utils import timezone
+        from applications.signals import get_annual_renewal_date
+
+        today = timezone.now().date()
+        current_year_april_1 = today.replace(month=4, day=1, year=today.year if today.month >= 4 else today.year)
+
+        # Use stored due date or derive from created_at
+        due_date = obj.subscription_due_date
+        if not due_date and obj.created_at:
+            join_date = obj.created_at.date() if hasattr(obj.created_at, 'date') else obj.created_at
+            due_date = get_annual_renewal_date(join_date)
+            try:
+                obj.__class__.objects.filter(pk=obj.pk).update(subscription_due_date=due_date)
+            except Exception:
+                pass
+
+        if not due_date:
+            return 'unknown'
+
+        # If joined after April 1st of the current membership year,
+        # their first renewal hasn't come yet
+        join_date = obj.created_at.date() if hasattr(obj.created_at, 'date') else obj.created_at
+        membership_year_start = today.replace(month=4, day=1) if today.month >= 4 else today.replace(month=4, day=1, year=today.year - 1)
+        if join_date >= membership_year_start and due_date > today:
+            return 'unknown'
+
+        # Check for verified payment in the current membership year
+        try:
+            from payments.models import ManualPayment
+            # Current membership year runs April 1 to March 31
+            year_start = membership_year_start
+            year_end = year_start.replace(year=year_start.year + 1, month=3, day=31)
+            has_paid = ManualPayment.objects.filter(
+                user=obj,
+                payment_type='membership_renewal',
+                status='verified',
+                created_at__date__gte=year_start,
+                created_at__date__lte=year_end,
+            ).exists()
+            if has_paid:
+                return 'renewed'
+        except Exception:
+            pass
+
+        days_remaining = (due_date - today).days
+        if days_remaining < 0:
+            return 'overdue'
+        elif days_remaining <= 14:
+            return 'due_soon'
+        # Due date is in the future but no payment yet — still overdue from last year
+        return 'overdue'
+
     def get_membership_status(self, obj):
         # Check if user is suspended by checking if they're inactive or have an active suspension record
         try:
@@ -88,9 +154,11 @@ class SuspendMemberSerializer(serializers.Serializer):
         max_length=500,
         help_text="Reason for suspending the member"
     )
-    
-    class Meta:
-        fields = ['reason']
+    suspension_type = serializers.ChoiceField(
+        choices=['non_payment', 'policy_violation'],
+        default='non_payment',
+        help_text="Type of suspension: non_payment or policy_violation"
+    )
 
 
 class ReactivateMemberSerializer(serializers.Serializer):

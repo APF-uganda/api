@@ -24,6 +24,14 @@ class SuspendedMember(models.Model):
     """
     Tracks suspended members with reasons and timestamps
     """
+    SUSPENSION_TYPE_NON_PAYMENT = 'non_payment'
+    SUSPENSION_TYPE_POLICY = 'policy_violation'
+
+    SUSPENSION_TYPE_CHOICES = [
+        (SUSPENSION_TYPE_NON_PAYMENT, 'Non-Payment'),
+        (SUSPENSION_TYPE_POLICY, 'Policy Violation'),
+    ]
+
     user = models.OneToOneField(
         AuthUser,
         on_delete=models.CASCADE,
@@ -31,6 +39,12 @@ class SuspendedMember(models.Model):
     )
     suspension_reason = models.TextField(
         help_text="Reason for suspending the member"
+    )
+    suspension_type = models.CharField(
+        max_length=20,
+        choices=SUSPENSION_TYPE_CHOICES,
+        default=SUSPENSION_TYPE_NON_PAYMENT,
+        help_text="Type of suspension"
     )
     suspended_at = models.DateTimeField(
         auto_now_add=True,

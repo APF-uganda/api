@@ -2,12 +2,12 @@
 Membership renewal scheduler.
 Uses Python's built-in threading — no extra packages required.
 
-Fires two jobs automatically each year:
-  - March 1st  → 30-day reminder emails to all members
-  - March 31st → Generate invoices + send to all members
+Fires jobs automatically:
+  - Daily        → Send renewal reminders (14d, 7d, 1d before due, daily after)
+  - March 1st    → 30-day reminder emails to all members
+  - March 31st   → Generate invoices + send to all members
 
-Uses a daily polling loop to avoid Windows threading overflow issues
-with very large timeout values.
+Uses a daily polling loop to avoid Windows threading overflow issues.
 """
 import threading
 import logging
@@ -17,13 +17,24 @@ logger = logging.getLogger(__name__)
 
 _scheduler_started = False
 
-# Check every 6 hours whether it's time to run a job
-POLL_INTERVAL_SECONDS = 6 * 60 * 60
+# Check every 24 hours
+POLL_INTERVAL_SECONDS = 24 * 60 * 60
 
 
 def _is_target_date(month: int, day: int) -> bool:
     now = datetime.now()
     return now.month == month and now.day == day
+
+
+def _run_daily_renewal_reminders():
+    """Run every day — sends reminders at 14d, 7d, 1d before due and daily after."""
+    try:
+        logger.info("[Scheduler] Running daily renewal reminders")
+        from django.core.management import call_command
+        call_command("send_renewal_reminders")
+        logger.info("[Scheduler] Daily renewal reminders done")
+    except Exception as e:
+        logger.error(f"[Scheduler] Daily renewal reminders failed: {e}")
 
 
 def _run_send_reminders():
@@ -52,17 +63,25 @@ def _run_generate_invoices():
 
 def _poll_loop():
     """
-    Polls every 6 hours. On the right date, fires the job once then
-    waits until the next poll cycle (avoiding double-firing on the same day).
+    Polls every 24 hours. Fires daily reminders every day, and
+    annual jobs on their specific dates.
     """
     reminders_fired_year = None
     invoices_fired_year = None
+    daily_reminder_fired_date = None
 
     while True:
         now = datetime.now()
         current_year = now.year
+        today = now.date()
 
-        # March 1st — send reminder emails
+        # Daily — renewal reminders
+        if daily_reminder_fired_date != today:
+            daily_reminder_fired_date = today
+            t = threading.Thread(target=_run_daily_renewal_reminders, daemon=True)
+            t.start()
+
+        # March 1st — bulk invoice reminder emails
         if _is_target_date(3, 1) and reminders_fired_year != current_year:
             reminders_fired_year = current_year
             t = threading.Thread(target=_run_send_reminders, daemon=True)
@@ -74,7 +93,7 @@ def _poll_loop():
             t = threading.Thread(target=_run_generate_invoices, daemon=True)
             t.start()
 
-        # Sleep 6 hours before checking again
+        # Sleep 24 hours before checking again
         threading.Event().wait(POLL_INTERVAL_SECONDS)
 
 
@@ -84,6 +103,6 @@ def start():
     if _scheduler_started:
         return
     _scheduler_started = True
-    logger.info("[Scheduler] Starting membership renewal scheduler (polling every 6 hours)")
+    logger.info("[Scheduler] Starting membership renewal scheduler (polling every 24 hours)")
     t = threading.Thread(target=_poll_loop, daemon=True, name="renewal-scheduler")
     t.start()

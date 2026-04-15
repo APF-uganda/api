@@ -1,10 +1,31 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, BasePermission
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
+
+class JWTAuthenticationAllowInactive(JWTAuthentication):
+    """JWT authentication that allows inactive (suspended) users through."""
+    def get_user(self, validated_token):
+        from django.contrib.auth import get_user_model
+        from rest_framework_simplejwt.settings import api_settings
+        User = get_user_model()
+        try:
+            user_id = validated_token[api_settings.USER_ID_CLAIM]
+            user = User.objects.get(**{api_settings.USER_ID_FIELD: user_id})
+            return user  # Return user regardless of is_active
+        except Exception:
+            return None
+
+
+class IsAuthenticatedOrSuspended(BasePermission):
+    """Allow access to authenticated users including suspended (inactive) ones."""
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.pk)
 
 
 class UserProfileViewSet(viewsets.ViewSet):
@@ -12,7 +33,8 @@ class UserProfileViewSet(viewsets.ViewSet):
     ViewSet for user profile management (consolidated from profiles app)
     Handles profile operations for the authenticated user
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrSuspended]
+    authentication_classes = [JWTAuthenticationAllowInactive]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def _get_profile_picture_url(self, request, user):
@@ -26,6 +48,22 @@ class UserProfileViewSet(viewsets.ViewSet):
 
     def _serialize_user(self, request, user):
         picture_url = self._get_profile_picture_url(request, user)
+
+        # Suspension info
+        suspension_info = None
+        if not user.is_active:
+            try:
+                rec = user.suspension_record
+                if rec.reactivated_at is None:
+                    suspension_info = {
+                        'is_suspended': True,
+                        'suspension_type': rec.suspension_type,
+                        'reason': rec.suspension_reason,
+                        'suspended_at': rec.suspended_at.strftime('%d %B %Y') if rec.suspended_at else '',
+                    }
+            except Exception:
+                suspension_info = {'is_suspended': True, 'suspension_type': 'non_payment', 'reason': '', 'suspended_at': ''}
+
         return {
             'id': user.id,
             'email': user.email,
@@ -35,6 +73,8 @@ class UserProfileViewSet(viewsets.ViewSet):
             'profile_picture': picture_url,
             'user_role': str(user.role),
             'role': str(user.role),
+            'is_active': user.is_active,
+            'suspension': suspension_info,
             'date_joined': user.created_at,
             'first_name': user.first_name,
             'last_name': user.last_name,

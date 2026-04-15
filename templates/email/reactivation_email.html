@@ -1,0 +1,26 @@
+{% extends "email/base_email.html" %}
+{% block content %}
+<h2>Hello {{ user_name }},</h2>
+
+<p>Great news! Your APF Uganda membership renewal payment has been <strong>verified and approved</strong>.</p>
+
+<div class="badge">&#10003; Account Reactivated</div>
+
+<p>Your account is now fully active and you have regained access to all APF Uganda member services including:</p>
+
+<div class="info-box">
+  &bull; Member dashboard and profile<br>
+  &bull; CPD events and registrations<br>
+  &bull; Community forum<br>
+  &bull; Documents and resources<br>
+  &bull; Payment history and receipts
+</div>
+
+<div class="cta-wrap">
+  <a href="{{ dashboard_url }}" class="cta-button">Go to My Dashboard</a>
+</div>
+
+<p>Thank you for renewing your APF Uganda membership. We look forward to your continued participation in the profession.</p>
+
+<p>Best regards,<br><strong>APF Uganda Team</strong></p>
+{% endblock %}

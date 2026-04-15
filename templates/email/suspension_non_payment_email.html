@@ -1,0 +1,37 @@
+{% extends "email/base_email.html" %}
+{% block content %}
+<h2>Hello {{ user_name }},</h2>
+
+<p>Your APF Uganda membership account has been <strong>suspended due to non-payment</strong> of your annual subscription fee.</p>
+
+<div class="badge" style="background:#DC2626;">Account Suspended – Non-Payment</div>
+
+<div class="info-box">
+  <strong>Member:</strong> {{ email }}<br>
+  <strong>Suspended On:</strong> {{ suspended_at }}<br>
+  <strong>Reason:</strong> {{ reason }}
+</div>
+
+<p>To reactivate your account immediately, please pay your annual membership subscription of <strong>UGX 150,000</strong> using the button below.</p>
+
+<div class="cta-wrap">
+  <a href="{{ renewal_url }}" class="cta-button">Pay Now &amp; Reactivate Account</a>
+</div>
+
+<p>Once your payment is submitted and verified by our team, your account will be reactivated and you will regain full access to all APF Uganda services.</p>
+
+<div class="warning-box">
+  <strong>How to pay:</strong><br>
+  1. Click the button above to go to the payments page<br>
+  2. Select <strong>Membership Renewal</strong> as the payment type<br>
+  3. Choose your preferred payment method (MTN, Airtel, or Bank Transfer)<br>
+  4. Upload your proof of payment<br>
+  5. Our team will verify and reactivate your account within 24 hours
+</div>
+
+<p>If you have already made payment, please ensure your proof of payment has been submitted for verification.</p>
+
+<p>For assistance, contact us at <a href="mailto:info@apfuganda.org">info@apfuganda.org</a>.</p>
+
+<p>Best regards,<br><strong>APF Uganda Team</strong></p>
+{% endblock %}

@@ -1,3 +1,4 @@
+import logging
 from django.db import transaction
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -6,7 +7,7 @@ from notifications.models import UserNotification
 from .models import SuspendedMember, ProcessedDocument, MembershipStatus, DocumentStatus
 from payments.models import ManualPayment
 
-
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
@@ -26,42 +27,62 @@ class MemberManagementService:
     
     @staticmethod
     @transaction.atomic
-    def suspend_member(member_id, reason, admin_user):
+    def suspend_member(member_id, reason, admin_user, suspension_type='non_payment'):
         """
-        Suspend a member for non-payment of annual subscription
-        
-        Args:
-            member_id (int): ID of the member to suspend
-            reason (str): Reason for suspension
-            admin_user: Admin user performing the action
-            
-        Returns:
-            tuple: (success: bool, message: str, suspended_member: SuspendedMember or None)
+        Suspend a member.
+        suspension_type: 'non_payment' or 'policy_violation'
         """
         try:
-            member = User.objects.get(id=member_id, role='2')  # Ensure it's a member, not admin
+            member = User.objects.get(id=member_id, role='2')
             
-            # Set user as inactive
             member.is_active = False
             member.save(update_fields=['is_active'])
             
-            # Create/update suspension record
             suspended_member, created = SuspendedMember.objects.update_or_create(
                 user=member,
                 defaults={
                     'suspension_reason': reason,
-                    'reactivated_at': None,  # Clear any previous reactivation
+                    'suspension_type': suspension_type,
+                    'reactivated_at': None,
                 }
             )
             
-            # Send notification to member
+            # In-app notification
             UserNotification.objects.create(
                 user=member,
                 title="Account Suspended",
-                message=f"Your account has been suspended. Reason: {reason}. Please pay your annual subscription fee to reactivate your account.",
+                message=f"Your account has been suspended. Reason: {reason}.",
                 notification_type='system',
                 priority='high'
             )
+
+            # Email — different template per type
+            try:
+                from authentication.email_service_smtp import EmailService
+                from django.conf import settings
+                frontend_url = getattr(settings, 'FRONTEND_URL', 'https://apfuganda.org').rstrip('/')
+                renewal_url = f"{frontend_url}/payments"
+                user_name = member.first_name or member.email.split('@')[0]
+                suspended_at = timezone.now().strftime('%d %B %Y')
+
+                if suspension_type == 'non_payment':
+                    EmailService.send_non_payment_suspension_email(
+                        email=member.email,
+                        user_name=user_name,
+                        reason=reason,
+                        suspended_at=suspended_at,
+                        renewal_url=renewal_url,
+                    )
+                else:
+                    EmailService.send_suspension_email(
+                        email=member.email,
+                        user_name=user_name,
+                        reason=reason,
+                        suspended_at=suspended_at,
+                        renewal_url=renewal_url,
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to send suspension email to {member.email}: {e}")
             
             return True, "Member suspended successfully", suspended_member
             

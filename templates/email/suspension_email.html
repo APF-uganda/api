@@ -1,0 +1,26 @@
+{% extends "email/base_email.html" %}
+{% block content %}
+<h2>Hello {{ user_name }},</h2>
+
+<p>We regret to inform you that your APF Uganda membership account has been <strong>suspended</strong>.</p>
+
+<div class="badge" style="background:#DC2626;">Account Suspended</div>
+
+<div class="info-box">
+  <strong>Member:</strong> {{ email }}<br>
+  <strong>Suspended On:</strong> {{ suspended_at }}<br>
+  <strong>Reason:</strong> {{ reason }}
+</div>
+
+<p>To reactivate your account, please renew your membership by submitting your annual subscription payment of <strong>UGX 150,000</strong>.</p>
+
+<div class="cta-wrap" >
+  <a href="{{ renewal_url }}" class="cta-button">Renew &amp; Reactivate Account</a>
+</div>
+
+<p>Once your payment is verified by our team, your account will be reactivated and you will regain full access to APF Uganda services.</p>
+
+<p>If you believe this suspension is in error or need assistance, please contact us at <a href="mailto:admin@apfuganda.org">admin@apfuganda.org</a>.</p>
+
+<p>Best regards,<br><strong>APF Uganda Team</strong></p>
+{% endblock %}
