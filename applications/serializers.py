@@ -213,6 +213,11 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
         payment_phone = data.get('payment_phone')
 
+        # Normalize: strip leading + if present
+        if payment_phone:
+            payment_phone = payment_phone.lstrip('+')
+            data['payment_phone'] = payment_phone
+
         # Validate phone number
         if not payment_phone:
             errors['payment_phone'] = 'Phone number is required for MTN payment.'
@@ -235,6 +240,11 @@ class ApplicationSerializer(serializers.ModelSerializer):
         errors = {}
 
         payment_phone = data.get('payment_phone')
+
+        # Normalize: strip leading + if present
+        if payment_phone:
+            payment_phone = payment_phone.lstrip('+')
+            data['payment_phone'] = payment_phone
 
         # Validate phone number
         if not payment_phone:
