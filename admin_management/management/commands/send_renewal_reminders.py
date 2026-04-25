@@ -2,7 +2,7 @@
 Management command: send_renewal_reminders
 
 Sends in-app and email renewal reminders to members whose subscription
-is due in 14 days, 7 days, 1 day, or is already overdue (daily after due date).
+is due in 14 days, 7 days, 1 day, or is already overdue (weekly after due date).
 
 Usage:
     python manage.py send_renewal_reminders
@@ -52,8 +52,14 @@ class Command(BaseCommand):
             due_date = member.subscription_due_date
             days_remaining = (due_date - today).days
 
-            # Determine if we should notify today
-            should_notify = days_remaining in REMINDER_DAYS or days_remaining < 0
+            # Determine if we should notify today.
+            # For upcoming: notify at exactly 14, 7, and 1 day(s) before due.
+            # For overdue: notify once a week (every 7 days after the due date).
+            if days_remaining >= 0:
+                should_notify = days_remaining in REMINDER_DAYS
+            else:
+                overdue_days = abs(days_remaining)
+                should_notify = overdue_days % 7 == 0
 
             if not should_notify:
                 skipped += 1

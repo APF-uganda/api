@@ -84,7 +84,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Application
         fields = [
-            'id', 'username', 'email', 'password_hash', 'first_name', 'last_name', 'name',
+            'id', 'application_id', 'username', 'email', 'password_hash', 'first_name', 'last_name', 'name',
             'age_range', 'phone_number', 'address', 'national_id_number', 'icpau_certificate_number',
             'organization', 'icpaCertNo',
             'payment_method', 'payment_phone',
@@ -96,7 +96,8 @@ class ApplicationSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'status', 'submitted_at', 'updated_at', 'name', 'icpaCertNo']
         extra_kwargs = {
             'password_hash': {'write_only': True},
-            'payment_card_cvv': {'write_only': True}  # Never return CVV
+            'payment_card_cvv': {'write_only': True},  # Never return CVV
+            'application_id': {'required': False},  # Optional — backend generates one if not supplied
         }
 
     def validate_email(self, value):
@@ -319,13 +320,21 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """
-        Override create method to hash password before saving
+        Override create method to hash password before saving.
+        If a pre-generated application_id is supplied by the frontend, use it.
+        The model's save() will generate one automatically if it's not set.
 
         Requirements: 12.6
         """
         # Hash the password before saving
         if 'password_hash' in validated_data:
             validated_data['password_hash'] = make_password(validated_data['password_hash'])
+
+        # If a pre-supplied application_id already exists in the DB, clear it so
+        # the model generates a fresh unique one (handles unlikely race conditions).
+        supplied_id = validated_data.get('application_id')
+        if supplied_id and Application.objects.filter(application_id=supplied_id).exists():
+            validated_data.pop('application_id')
 
         # Create and return the application instance
         return super().create(validated_data)

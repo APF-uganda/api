@@ -3,7 +3,7 @@ Membership renewal scheduler.
 Uses Python's built-in threading — no extra packages required.
 
 Fires jobs automatically:
-  - Daily        → Send renewal reminders (14d, 7d, 1d before due, daily after)
+  - Daily        → Send renewal reminders (14d, 7d, 1d before due, weekly after)
   - March 1st    → 30-day reminder emails to all members
   - March 31st   → Generate invoices + send to all members
 
@@ -27,7 +27,7 @@ def _is_target_date(month: int, day: int) -> bool:
 
 
 def _run_daily_renewal_reminders():
-    """Run every day — sends reminders at 14d, 7d, 1d before due and daily after."""
+    """Run every day — sends reminders at 14d, 7d, 1d before due and weekly after."""
     try:
         logger.info("[Scheduler] Running daily renewal reminders")
         from django.core.management import call_command
@@ -75,7 +75,7 @@ def _poll_loop():
         current_year = now.year
         today = now.date()
 
-        # Daily — renewal reminders
+        # Daily — renewal reminders (upcoming: 14d/7d/1d; overdue: weekly)
         if daily_reminder_fired_date != today:
             daily_reminder_fired_date = today
             t = threading.Thread(target=_run_daily_renewal_reminders, daemon=True)

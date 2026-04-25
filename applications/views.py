@@ -410,6 +410,20 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 logger.warning(f"[Application] Failed to notify admins: {e}")
 
+            # Send confirmation email to the applicant
+            try:
+                user_name = application.first_name or application.username or application.email.split('@')[0]
+                submitted_at_str = application.submitted_at.strftime('%d %B %Y, %I:%M %p') if application.submitted_at else ''
+                EmailService.send_application_confirmation_email(
+                    email=application.email,
+                    user_name=user_name,
+                    application_id=application.application_id,
+                    submitted_at=submitted_at_str,
+                )
+                logger.info(f"[Application] Confirmation email sent to {application.email}")
+            except Exception as e:
+                logger.warning(f"[Application] Failed to send confirmation email: {e}")
+
             try:
                 response_serializer = self.get_serializer(application)
                 response_data = response_serializer.data

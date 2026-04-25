@@ -1,19 +1,22 @@
 {% extends "email/base_email.html" %}
 {% block content %}
-<h2>Hello {{ user_name }},</h2>
-<p>Thank you for applying to join the <strong>Accountancy Practitioners Forum (APF Uganda)</strong>. We have successfully received your application and payment.</p>
+<h2 style="font-size:22px;color:#1a1a2e;margin:0 0 6px;">Thank you, {{ user_name }}!</h2>
+<p style="font-size:17px;font-weight:bold;color:#4A2882;margin:0 0 20px;">Your Application is Under Review</p>
 
-<div class="badge">Application Under Review</div>
+<p>We have successfully received your membership application and payment. Your professional journey with the <strong>APF Uganda</strong> is soon beginning.</p>
+
+<p>To maintain the highest standards of our community, our administration team verifies all documents and qualifications.</p>
 
 <div class="info-box">
-  <strong>Application Reference:</strong> #{{ application_id }}<br>
+  <strong>Application Reference:</strong> {{ application_id }}<br>
   <strong>Submitted:</strong> {{ submitted_at }}<br>
   <strong>Email:</strong> {{ email }}
 </div>
 
-<p>Our team will review your application and notify you of the outcome. This process typically takes <strong>3&ndash;5 business days</strong>.</p>
+<p>We will notify you by email once a decision has been made. This typically takes <strong>3&ndash;5 business days</strong>.</p>
 
 <p>If you have any questions in the meantime, reach out to us at <a href="mailto:info@apfuganda.org">info@apfuganda.org</a>.</p>
 
-<p>Best regards,<br><strong>APF Uganda Team</strong></p>
+<hr class="divider" />
+<p style="font-size:13px;color:#888;">Best regards,<br><strong>APF Uganda Team</strong></p>
 {% endblock %}
