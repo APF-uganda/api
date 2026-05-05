@@ -3,9 +3,9 @@ Membership renewal scheduler.
 Uses Python's built-in threading — no extra packages required.
 
 Fires jobs automatically:
-  - Daily        → Send renewal reminders (14d, 7d, 1d before due, weekly after)
-  - March 1st    → 30-day reminder emails to all members
-  - March 31st   → Generate invoices + send to all members
+  - Monday & Thursday → Fetch ICPAU news from RSS feed
+  - March 1st         → 30-day reminder emails to all members
+  - March 31st        → Generate invoices + send to all members
 
 Uses a daily polling loop to avoid Windows threading overflow issues.
 """
@@ -26,15 +26,21 @@ def _is_target_date(month: int, day: int) -> bool:
     return now.month == month and now.day == day
 
 
-def _run_daily_renewal_reminders():
-    """Run every day — sends reminders at 14d, 7d, 1d before due and weekly after."""
+def _is_target_weekday(weekday: int) -> bool:
+    """Check if today is a specific weekday (0=Monday, 6=Sunday)"""
+    now = datetime.now()
+    return now.weekday() == weekday
+
+
+def _run_news_fetch():
+    """Fetch ICPAU news from RSS feed"""
     try:
-        logger.info("[Scheduler] Running daily renewal reminders")
+        logger.info("[Scheduler] Running ICPAU news fetch")
         from django.core.management import call_command
-        call_command("send_renewal_reminders")
-        logger.info("[Scheduler] Daily renewal reminders done")
+        call_command("newsfetch")
+        logger.info("[Scheduler] ICPAU news fetch completed")
     except Exception as e:
-        logger.error(f"[Scheduler] Daily renewal reminders failed: {e}")
+        logger.error(f"[Scheduler] ICPAU news fetch failed: {e}")
 
 
 def _run_send_reminders():
@@ -63,22 +69,22 @@ def _run_generate_invoices():
 
 def _poll_loop():
     """
-    Polls every 24 hours. Fires daily reminders every day, and
-    annual jobs on their specific dates.
+    Polls every 24 hours. Fires scheduled jobs on their specific dates/days.
     """
     reminders_fired_year = None
     invoices_fired_year = None
-    daily_reminder_fired_date = None
+    news_fetch_fired_date = None
 
     while True:
         now = datetime.now()
         current_year = now.year
         today = now.date()
 
-        # Daily — renewal reminders (upcoming: 14d/7d/1d; overdue: weekly)
-        if daily_reminder_fired_date != today:
-            daily_reminder_fired_date = today
-            t = threading.Thread(target=_run_daily_renewal_reminders, daemon=True)
+        # Monday (0) and Thursday (3) — Fetch ICPAU news
+        if ((_is_target_weekday(0) or _is_target_weekday(3)) and 
+            news_fetch_fired_date != today):
+            news_fetch_fired_date = today
+            t = threading.Thread(target=_run_news_fetch, daemon=True)
             t.start()
 
         # March 1st — bulk invoice reminder emails
