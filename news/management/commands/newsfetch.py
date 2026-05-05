@@ -101,9 +101,38 @@ class Command(BaseCommand):
                         full_page_html = res.text
                         soup = BeautifulSoup(res.text, 'html.parser')
                         
-                        # Image Search
+                        # Image Search - Try multiple methods
+                        # 1. Try Open Graph image (most reliable)
                         og_img = soup.find("meta", property="og:image")
-                        image_url = og_img.get("content") if og_img else None
+                        if og_img:
+                            image_url = og_img.get("content")
+                        
+                        # 2. Try Twitter card image
+                        if not image_url:
+                            twitter_img = soup.find("meta", attrs={"name": "twitter:image"})
+                            if twitter_img:
+                                image_url = twitter_img.get("content")
+                        
+                        # 3. Try first article image
+                        if not image_url:
+                            article_img = soup.find("article")
+                            if article_img:
+                                img_tag = article_img.find("img")
+                                if img_tag:
+                                    image_url = img_tag.get("src")
+                        
+                        # 4. Try any image in content area
+                        if not image_url:
+                            content_img = soup.find("div", class_="field--name-body")
+                            if content_img:
+                                img_tag = content_img.find("img")
+                                if img_tag:
+                                    image_url = img_tag.get("src")
+                        
+                        # Make sure image URL is absolute
+                        if image_url and not image_url.startswith('http'):
+                            image_url = f"https://www.icpau.co.ug{image_url}"
+                            
                 except Exception as e:
                     self.stdout.write(self.style.WARNING(f"⚠️ Connection error: {e}"))
 
@@ -126,7 +155,8 @@ class Command(BaseCommand):
                     "content": blocks,
                     "author": "ICPAU",
                     "publishDate": p_date,
-                    "publishedAt": now().isoformat()
+                    "publishedAt": now().isoformat(),
+                    "coverImage": image_url  # Add the image URL
                 }
             }
 
@@ -144,6 +174,7 @@ class Command(BaseCommand):
             block_count = len(blocks)
             if res.status_code in [200, 201]:
                 status_color = self.style.SUCCESS if block_count > 2 else self.style.WARNING
-                self.stdout.write(status_color(f"✅ Synced: {clean_title[:30]}... | Blocks: {block_count}"))
+                image_status = "🖼️" if image_url else "📄"
+                self.stdout.write(status_color(f"✅ Synced: {clean_title[:30]}... | Blocks: {block_count} {image_status}"))
             else:
                 self.stdout.write(self.style.ERROR(f"❌ Strapi Error: {res.text}"))
