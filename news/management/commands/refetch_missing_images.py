@@ -24,9 +24,8 @@ HEADERS = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
 
 def _fetch_all_articles_without_images():
     """
-    Pages through all Strapi articles, populating coverImage, and returns
-    only those where coverImage is null/missing.
-    Each item: {"id": ..., "documentId": ..., "title": ...}
+    Pages through all Strapi articles and returns those where coverImage is null/missing.
+    Uses minimal query params to avoid Strapi rejecting the request.
     """
     articles_without_images = []
     page = 1
@@ -37,9 +36,7 @@ def _fetch_all_articles_without_images():
             f"{STRAPI_BASE_URL}/api/news-articles",
             headers=HEADERS,
             params={
-                "fields[0]": "title",
-                "fields[1]": "documentId",
-                "populate[coverImage][fields][0]": "id",
+                "populate": "coverImage",
                 "pagination[page]": page,
                 "pagination[pageSize]": page_size,
             },
@@ -53,7 +50,6 @@ def _fetch_all_articles_without_images():
             # Handle both Strapi v4 (attributes) and v5 (flat) response shapes
             if "attributes" in article:
                 cover = article["attributes"].get("coverImage", {})
-                # In v4, a null relation comes back as {"data": null}
                 has_image = cover.get("data") is not None
             else:
                 cover = article.get("coverImage")
@@ -85,6 +81,27 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
 
         self.stdout.write(self.style.MIGRATE_HEADING("🔍 Fetching articles without cover images from Strapi..."))
+
+        # First, probe Strapi with a minimal request to catch config/token issues early
+        try:
+            probe = requests.get(
+                f"{STRAPI_BASE_URL}/api/news-articles",
+                headers=HEADERS,
+                params={"pagination[pageSize]": 1},
+                timeout=15,
+            )
+            if probe.status_code == 401:
+                self.stdout.write(self.style.ERROR("❌ Strapi returned 401 — STRAPI_TOKEN is missing or invalid."))
+                return
+            if probe.status_code == 400:
+                self.stdout.write(self.style.ERROR(f"❌ Strapi returned 400 even on a plain request: {probe.text[:300]}"))
+                self.stdout.write(self.style.WARNING("Check that the news-articles content type exists and the token has read permission."))
+                return
+            probe.raise_for_status()
+            self.stdout.write(self.style.SUCCESS(f"✅ Strapi reachable. Sample response keys: {list(probe.json().keys())}"))
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"❌ Could not reach Strapi: {e}"))
+            return
 
         try:
             articles = _fetch_all_articles_without_images()
