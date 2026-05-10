@@ -3,6 +3,7 @@ import requests
 import io
 import re
 import time
+from urllib.parse import urlparse
 from django.core.management.base import BaseCommand
 from django.utils.timezone import now
 from datetime import datetime
@@ -72,10 +73,59 @@ def html_to_strapi_blocks(html_content):
 class Command(BaseCommand):
     help = 'Final Fail-Safe Sync for ICPAU News with Noise Exclusion'
 
+    def _make_absolute_url(self, url, base="https://www.icpau.co.ug"):
+        """Normalise relative, protocol-relative, and absolute image URLs."""
+        if not url:
+            return None
+        url = url.strip()
+        if url.startswith("//"):
+            return "https:" + url
+        if not url.startswith("http"):
+            return base.rstrip("/") + "/" + url.lstrip("/")
+        return url
+
+    def _upload_image_to_strapi(self, image_url, strapi_base_url, headers, bot_headers):
+        """
+        Download the image from image_url and upload it to Strapi's media library.
+        Returns the Strapi media ID on success, or None on failure.
+        """
+        try:
+            img_res = requests.get(image_url, timeout=20, headers=bot_headers)
+            if img_res.status_code != 200:
+                self.stdout.write(self.style.WARNING(f"  ⚠️ Could not download image ({img_res.status_code}): {image_url}"))
+                return None
+
+            # Derive a filename from the URL
+            parsed_path = urlparse(image_url).path
+            filename = parsed_path.split("/")[-1] or "cover.jpg"
+            # Strip query strings from filename
+            filename = filename.split("?")[0]
+
+            content_type = img_res.headers.get("Content-Type", "image/jpeg").split(";")[0]
+
+            upload_res = requests.post(
+                f"{strapi_base_url}/api/upload",
+                headers={"Authorization": headers["Authorization"]},
+                files={"files": (filename, io.BytesIO(img_res.content), content_type)},
+            )
+
+            if upload_res.status_code in [200, 201]:
+                uploaded = upload_res.json()
+                # Strapi returns a list when uploading via /api/upload
+                media_id = uploaded[0].get("id") if isinstance(uploaded, list) else uploaded.get("id")
+                return media_id
+            else:
+                self.stdout.write(self.style.WARNING(f"  ⚠️ Strapi upload failed ({upload_res.status_code}): {upload_res.text[:200]}"))
+                return None
+
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"  ⚠️ Image upload error: {e}"))
+            return None
+
     def handle(self, *args, **options):
-        # Configuration
-        STRAPI_BASE_URL = "http://64.225.121.230:1337" 
-        STRAPI_TOKEN = "aaa2621af4b32b5d7c56ad777f99a357b97f1dd138e2e098a35f6acc9667a8529eeb5a7bc6a295078a6a21401adfd7664e06f103990f7c7570224632dfdb22ee15df6ed949c9bf039e0860753b885697685827163bcda8a682947d401d736460e0386cc01db8d0ca8d5f1d1630f9ab3f16878000ee1683e2829b54486f8a9ec6"
+        from django.conf import settings
+        STRAPI_BASE_URL = getattr(settings, "STRAPI_BASE_URL", "http://64.225.121.230:1337")
+        STRAPI_TOKEN = getattr(settings, "STRAPI_TOKEN", "")
         headers = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
         BOT_HEADERS = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -129,9 +179,8 @@ class Command(BaseCommand):
                                 if img_tag:
                                     image_url = img_tag.get("src")
                         
-                        # Make sure image URL is absolute
-                        if image_url and not image_url.startswith('http'):
-                            image_url = f"https://www.icpau.co.ug{image_url}"
+                        # Normalise to absolute URL (handles relative, protocol-relative, absolute)
+                        image_url = self._make_absolute_url(image_url)
                             
                 except Exception as e:
                     self.stdout.write(self.style.WARNING(f"⚠️ Connection error: {e}"))
@@ -148,6 +197,11 @@ class Command(BaseCommand):
             else:
                 clean_desc = re.sub(r'<[^>]*>', '', entry.get('summary', clean_title))
 
+            # Upload image to Strapi media library and get the media ID
+            cover_image_id = None
+            if image_url:
+                cover_image_id = self._upload_image_to_strapi(image_url, STRAPI_BASE_URL, headers, BOT_HEADERS)
+
             payload = {
                 "data": {
                     "title": clean_title,
@@ -156,9 +210,12 @@ class Command(BaseCommand):
                     "author": "ICPAU",
                     "publishDate": p_date,
                     "publishedAt": now().isoformat(),
-                    "coverImage": image_url  # Add the image URL
                 }
             }
+
+            # Only set coverImage if we successfully uploaded one
+            if cover_image_id:
+                payload["data"]["coverImage"] = cover_image_id
 
             # Strapi update, create
             check = requests.get(f"{STRAPI_BASE_URL}/api/news-articles?filters[title][$eq]={clean_title}", headers=headers)
@@ -174,7 +231,7 @@ class Command(BaseCommand):
             block_count = len(blocks)
             if res.status_code in [200, 201]:
                 status_color = self.style.SUCCESS if block_count > 2 else self.style.WARNING
-                image_status = "🖼️" if image_url else "📄"
+                image_status = "🖼️" if cover_image_id else ("🔗" if image_url else "📄")
                 self.stdout.write(status_color(f"✅ Synced: {clean_title[:30]}... | Blocks: {block_count} {image_status}"))
             else:
                 self.stdout.write(self.style.ERROR(f"❌ Strapi Error: {res.text}"))
