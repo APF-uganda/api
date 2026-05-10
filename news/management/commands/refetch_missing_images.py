@@ -24,10 +24,11 @@ HEADERS = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
 
 def _fetch_all_articles_without_images():
     """
-    Pages through Strapi and returns a list of articles where coverImage is null.
+    Pages through all Strapi articles, populating coverImage, and returns
+    only those where coverImage is null/missing.
     Each item: {"id": ..., "documentId": ..., "title": ...}
     """
-    articles = []
+    articles_without_images = []
     page = 1
     page_size = 100
 
@@ -36,9 +37,9 @@ def _fetch_all_articles_without_images():
             f"{STRAPI_BASE_URL}/api/news-articles",
             headers=HEADERS,
             params={
-                "filters[coverImage][$null]": "true",
                 "fields[0]": "title",
                 "fields[1]": "documentId",
+                "populate[coverImage][fields][0]": "id",
                 "pagination[page]": page,
                 "pagination[pageSize]": page_size,
             },
@@ -47,7 +48,19 @@ def _fetch_all_articles_without_images():
         resp.raise_for_status()
         data = resp.json()
         batch = data.get("data", [])
-        articles.extend(batch)
+
+        for article in batch:
+            # Handle both Strapi v4 (attributes) and v5 (flat) response shapes
+            if "attributes" in article:
+                cover = article["attributes"].get("coverImage", {})
+                # In v4, a null relation comes back as {"data": null}
+                has_image = cover.get("data") is not None
+            else:
+                cover = article.get("coverImage")
+                has_image = cover is not None
+
+            if not has_image:
+                articles_without_images.append(article)
 
         meta = data.get("meta", {}).get("pagination", {})
         total_pages = meta.get("pageCount", 1)
@@ -55,7 +68,7 @@ def _fetch_all_articles_without_images():
             break
         page += 1
 
-    return articles
+    return articles_without_images
 
 
 class Command(BaseCommand):
@@ -85,7 +98,10 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.WARNING(f"Found {len(articles)} article(s) without a cover image:"))
         for article in articles:
-            title = article.get("title") or article.get("attributes", {}).get("title", "(no title)")
+            title = (
+                article.get("title")
+                or article.get("attributes", {}).get("title", "(no title)")
+            )
             doc_id = article.get("documentId") or article.get("id")
             self.stdout.write(f"  • [{doc_id}] {title}")
 
