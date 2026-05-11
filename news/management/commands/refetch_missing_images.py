@@ -1,7 +1,7 @@
 """
 Management command: refetch_missing_images
 
-Finds all news articles in Strapi that have no coverImage, deletes them,
+Finds all news articles in Strapi that have no featuredImage, deletes them,
 then re-runs newsfetch so they get re-created with images.
 
 Usage:
@@ -24,8 +24,7 @@ HEADERS = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
 
 def _fetch_all_articles_without_images():
     """
-    Pages through all Strapi articles and returns those where coverImage is null/missing.
-    Uses minimal query params to avoid Strapi rejecting the request.
+    Pages through all Strapi articles and returns those where featuredImage is null/missing.
     """
     articles_without_images = []
     page = 1
@@ -36,7 +35,6 @@ def _fetch_all_articles_without_images():
             f"{STRAPI_BASE_URL}/api/news-articles",
             headers=HEADERS,
             params={
-                "populate": "coverImage",
                 "pagination[page]": page,
                 "pagination[pageSize]": page_size,
             },
@@ -49,11 +47,12 @@ def _fetch_all_articles_without_images():
         for article in batch:
             # Handle both Strapi v4 (attributes) and v5 (flat) response shapes
             if "attributes" in article:
-                cover = article["attributes"].get("coverImage", {})
+                cover = article["attributes"].get("featuredImage", {})
                 has_image = cover.get("data") is not None
             else:
-                cover = article.get("coverImage")
-                has_image = cover is not None
+                cover = article.get("featuredImage")
+                # featuredImage is multiple=true, so it's a list when populated
+                has_image = bool(cover)
 
             if not has_image:
                 articles_without_images.append(article)

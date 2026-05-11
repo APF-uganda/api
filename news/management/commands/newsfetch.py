@@ -19,8 +19,12 @@ def clean_drupal_html(html_content):
     cleaned = re.sub(r'', '', str(html_content), flags=re.DOTALL)
     return cleaned.strip()
 
-def html_to_strapi_blocks(html_content):
-    """Surgical conversion: Targets main body and cuts off related news lists."""
+def html_to_strapi_blocks(html_content, upload_image_fn=None):
+    """Surgical conversion: Targets main body and cuts off related news lists.
+    
+    If upload_image_fn is provided, inline images in the body will be uploaded
+    to Strapi and included as image blocks between paragraphs.
+    """
     if not html_content or len(str(html_content)) < 50:
         return []
     
@@ -56,10 +60,46 @@ def html_to_strapi_blocks(html_content):
    
     source = content_area if content_area else soup
 
-    for el in source.find_all(['p', 'h2', 'h3', 'li']):
+    for el in source.find_all(['p', 'h2', 'h3', 'li', 'img']):
+
+        # Handle inline images
+        if el.name == 'img':
+            if upload_image_fn:
+                img_src = el.get('src') or el.get('data-src')
+                img_alt = el.get('alt', '')
+                if img_src:
+                    media_id = upload_image_fn(img_src)
+                    if media_id:
+                        blocks.append({
+                            "type": "image",
+                            "image": {
+                                "id": media_id,
+                                "alternativeText": img_alt,
+                            },
+                            "children": [{"type": "text", "text": ""}],
+                        })
+            continue
+
+        # Also check for img tags nested inside paragraphs
+        if upload_image_fn:
+            for img in el.find_all('img'):
+                img_src = img.get('src') or img.get('data-src')
+                img_alt = img.get('alt', '')
+                if img_src:
+                    media_id = upload_image_fn(img_src)
+                    if media_id:
+                        blocks.append({
+                            "type": "image",
+                            "image": {
+                                "id": media_id,
+                                "alternativeText": img_alt,
+                            },
+                            "children": [{"type": "text", "text": ""}],
+                        })
+
         text = el.get_text().strip()
         
-        # Filter out  noise
+        # Filter out noise
         if len(text) > 45 and "Drag" not in text: 
             
             if not re.match(r'^\d{1,2}\s[A-Za-z]{3}\s\d{2}$', text):
@@ -185,8 +225,17 @@ class Command(BaseCommand):
                 except Exception as e:
                     self.stdout.write(self.style.WARNING(f"⚠️ Connection error: {e}"))
 
-            # Build Content Blocks
-            blocks = html_to_strapi_blocks(full_page_html if full_page_html else entry.get('summary', ''))
+            # Build Content Blocks — pass upload function so body images get uploaded too
+            def upload_body_image(img_src):
+                abs_url = self._make_absolute_url(img_src)
+                if abs_url:
+                    return self._upload_image_to_strapi(abs_url, STRAPI_BASE_URL, headers, BOT_HEADERS)
+                return None
+
+            blocks = html_to_strapi_blocks(
+                full_page_html if full_page_html else entry.get('summary', ''),
+                upload_image_fn=upload_body_image,
+            )
 
             # Build Description 
             clean_desc = ""
@@ -213,9 +262,10 @@ class Command(BaseCommand):
                 }
             }
 
-            # Only set coverImage if we successfully uploaded one
+            # Only set featuredImage if we successfully uploaded one
+            # featuredImage is a multiple media field — Strapi expects a list of IDs
             if cover_image_id:
-                payload["data"]["coverImage"] = cover_image_id
+                payload["data"]["featuredImage"] = [cover_image_id]
 
             # Strapi update, create
             check = requests.get(f"{STRAPI_BASE_URL}/api/news-articles?filters[title][$eq]={clean_title}", headers=headers)
