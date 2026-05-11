@@ -31,26 +31,26 @@ app.conf.beat_schedule = {
     
     # Payment polling - every 10 seconds
     'poll-pending-payments': {
-        'task': 'payments.tasks.poll_pending_payments',
+        'task': 'payments.poll_pending_payments',
         'schedule': 10.0,  # Every 10 seconds
     },
     
     # Check timeout payments - every 5 minutes
     'check-timeout-payments': {
-        'task': 'payments.tasks.check_timeout_payments',
+        'task': 'payments.check_timeout_payments',
         'schedule': crontab(minute='*/5'),
     },
     
     # Cleanup old webhook notifications - daily at 2:00 AM
     'cleanup-webhook-notifications': {
-        'task': 'payments.tasks.cleanup_old_webhook_notifications',
+        'task': 'payments.cleanup_old_webhook_notifications',
         'schedule': crontab(hour=2, minute=0),
         'kwargs': {'days': 30}
     },
     
     # Generate webhook stats - every hour
     'generate-webhook-stats': {
-        'task': 'payments.tasks.generate_webhook_stats',
+        'task': 'payments.generate_webhook_stats',
         'schedule': crontab(minute=0),
     },
 }

@@ -62,7 +62,7 @@ jobs:
             echo "=== Verifying all migrations are applied ==="
             dc run --rm backend python manage.py migrate --check
             dc run --rm backend python manage.py check
-            dc up -d backend
+            dc up -d backend celery-worker celery-beat
             sleep 5
             docker inspect -f '{{.State.Running}}' apf_backend | grep -qx "true"
             RAW_DEP_HOST="${{ secrets.DEP_HOST }}"

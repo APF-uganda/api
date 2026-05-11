@@ -259,6 +259,7 @@ class Command(BaseCommand):
                     "author": "ICPAU",
                     "publishDate": p_date,
                     "publishedAt": now().isoformat(),
+                    "status": "published",
                 }
             }
 
