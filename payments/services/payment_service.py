@@ -7,6 +7,7 @@ import logging
 from decimal import Decimal
 from typing import Tuple, Optional, Dict, Any
 from django.contrib.auth import get_user_model
+from django.db import close_old_connections
 from django.utils import timezone
 
 from payments.models import Payment, PaymentConfig
@@ -309,7 +310,15 @@ class PaymentService(PerformanceLoggingMixin):
                 else:
                     # Provider returned error
                     error_msg = result.get('message', 'Payment request failed')
-                    payment.mark_failed(error_msg, result)
+                    try:
+                        payment.mark_failed(error_msg, result)
+                    except Exception as db_err:
+                        # Handle stale database connections (e.g., Neon idle timeout)
+                        close_old_connections()
+                        try:
+                            payment.mark_failed(error_msg, result)
+                        except Exception:
+                            logger.error(f"Failed to save payment status: {db_err}")
                     
                     logger.error(
                         f"Provider rejected payment request",
@@ -335,7 +344,14 @@ class PaymentService(PerformanceLoggingMixin):
         
             except ValueError as e:
                 # Provider not supported
-                payment.mark_failed(str(e))
+                try:
+                    payment.mark_failed(str(e))
+                except Exception:
+                    close_old_connections()
+                    try:
+                        payment.mark_failed(str(e))
+                    except Exception:
+                        pass
                 logger.error(
                     f"Unsupported provider",
                     extra={
@@ -349,7 +365,14 @@ class PaymentService(PerformanceLoggingMixin):
             except Exception as e:
                 # Unexpected error during provider call
                 error_msg = f"Payment initiation failed: {str(e)}"
-                payment.mark_failed(error_msg)
+                try:
+                    payment.mark_failed(error_msg)
+                except Exception:
+                    close_old_connections()
+                    try:
+                        payment.mark_failed(error_msg)
+                    except Exception:
+                        pass
                 
                 logger.error(
                     f"Payment initiation exception",

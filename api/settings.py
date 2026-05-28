@@ -148,6 +148,8 @@ else:
             "HOST": env("DB_HOST"),  # Required: Neon host or 127.0.0.1
             "PORT": env("DB_PORT", default="5432"),
             "OPTIONS": db_options,
+            "CONN_MAX_AGE": 600,
+            "CONN_HEALTH_CHECKS": True,
         }
     }
 
