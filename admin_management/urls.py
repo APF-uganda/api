@@ -10,6 +10,14 @@ urlpatterns = [
     path('members/<int:member_id>/suspend/', views.AdminMemberSuspendView.as_view(), name='admin-member-suspend'),
     path('members/<int:member_id>/reactivate/', views.AdminMemberReactivateView.as_view(), name='admin-member-reactivate'),
     path('members/<int:member_id>/reset-password/', views.AdminResetMemberPasswordView.as_view(), name='admin-member-reset-password'),
+    path('members/<int:member_id>/apf-number/', views.AdminAssignApfNumberView.as_view(), name='admin-member-apf-number'),
+    path('members/<int:member_id>/delete/', views.AdminDeleteMemberView.as_view(), name='admin-member-delete'),
+
+    # Application delete endpoint
+    path('applications/<int:application_id>/delete/', views.AdminDeleteApplicationView.as_view(), name='admin-application-delete'),
+
+    # Payment delete endpoint
+    path('payments/<int:payment_id>/delete/', views.AdminDeletePaymentView.as_view(), name='admin-payment-delete'),
     
     # Admin notes endpoints
     path('members/<int:member_id>/notes/', views.AdminNoteListCreateView.as_view(), name='admin-member-notes'),

@@ -11,6 +11,14 @@
   <strong>Registered Email:</strong> {{ member_email }}
 </div>
 
+{% if apf_membership_number %}
+<div class="info-box" style="margin-top:10px; background-color:#f3eefb; border-left: 4px solid #5E2590;">
+  <strong>APF Membership Number:</strong>&nbsp;
+  <span style="font-family: monospace; font-size: 1.1em; color: #5E2590; font-weight: bold;">{{ apf_membership_number }}</span>
+  <br><small style="color:#666;">Please keep this number for your records. You will need it for correspondence with APF Uganda.</small>
+</div>
+{% endif %}
+
 <p>You now have full access to practitioner toolkits, technical updates, CPD events, and exclusive networking forums.</p>
 
 <div class="cta-wrap">

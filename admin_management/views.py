@@ -14,7 +14,8 @@ from .serializers import (
     AdminMemberSerializer, SuspendMemberSerializer, 
     ReactivateMemberSerializer, AdminDocumentSerializer, 
     ApproveDocumentSerializer, RejectDocumentSerializer,
-    AdminNoteSerializer, CreateAdminNoteSerializer
+    AdminNoteSerializer, CreateAdminNoteSerializer,
+    AssignApfNumberSerializer,
 )
 from .services import MemberManagementService, DocumentManagementService
 from .models import MembershipStatus, DocumentStatus, AdminNote
@@ -167,6 +168,7 @@ class AdminMemberExportCSVView(APIView):
         # Write header row
         writer.writerow([
             'Member ID',
+            'APF Membership Number',
             'Email',
             'First Name',
             'Last Name',
@@ -202,6 +204,7 @@ class AdminMemberExportCSVView(APIView):
             
             writer.writerow([
                 member.id,
+                member.apf_membership_number or '',
                 member.email,
                 member.first_name or '',
                 member.last_name or '',
@@ -706,6 +709,224 @@ class AdminNoteDetailView(APIView):
             {'message': 'Note deleted successfully'},
             status=status.HTTP_204_NO_CONTENT
         )
+
+
+class AdminDeleteMemberView(APIView):
+    """
+    Permanently delete a member and ALL their associated data.
+    Also removes/rejects their linked applications so the email
+    is freed for re-registration.
+    Admins (role=1) are protected and cannot be deleted via this endpoint.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description=(
+            "Permanently delete a member and all their data. "
+            "Their application is also rejected so the email can be reused for re-registration. "
+            "Admins cannot be deleted."
+        ),
+        responses={
+            200: 'Member deleted successfully',
+            400: 'Cannot delete admin accounts',
+            403: 'Forbidden',
+            404: 'Member not found',
+        }
+    )
+    def delete(self, request, member_id):
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            member = User.objects.get(id=member_id)
+        except User.DoesNotExist:
+            return Response({'error': 'Member not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if member.role == '1':
+            return Response(
+                {'error': 'Admin accounts cannot be deleted via this endpoint.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        email = member.email
+
+        # Reject all non-rejected applications for this email so the
+        # email is freed for re-registration (constraint is NOT rejected)
+        try:
+            from applications.models import Application
+            freed = Application.objects.filter(
+                email__iexact=email
+            ).exclude(status='rejected').update(status='rejected')
+            if freed:
+                logger.info(
+                    f"Freed {freed} application(s) for {email} by marking as rejected"
+                )
+        except Exception as e:
+            logger.warning(f"Could not free applications for {email}: {e}")
+
+        logger.warning(
+            f"Admin {request.user.email} permanently deleted member {email} (id={member_id})"
+        )
+        member.delete()
+
+        return Response(
+            {'message': f'Member {email} deleted. Their email is now available for re-registration.'},
+            status=status.HTTP_200_OK
+        )
+
+
+class AdminDeleteApplicationView(APIView):
+    """
+    Permanently delete an application and its linked user/payments/documents.
+    Marks the application as rejected first (freeing the email for re-registration),
+    then deletes the linked user account if present.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description=(
+            "Permanently delete an application. "
+            "The email is freed for re-registration. "
+            "If a member account is linked, it is also deleted."
+        ),
+        responses={
+            200: 'Application deleted successfully',
+            403: 'Forbidden',
+            404: 'Application not found',
+        }
+    )
+    def delete(self, request, application_id):
+        from applications.models import Application
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            application = Application.objects.select_related('user').get(id=application_id)
+        except Application.DoesNotExist:
+            return Response({'error': 'Application not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        app_id_str = application.application_id
+        email = application.email
+        deleted_user_email = None
+
+        # Mark as rejected BEFORE deleting so the unique constraint is released,
+        # freeing the email for re-registration even if we only delete the user.
+        application.status = 'rejected'
+        application.save(update_fields=['status'])
+
+        # If there's a linked user (and they're not an admin), delete them
+        linked_user = application.user
+        if linked_user and linked_user.role != '1':
+            deleted_user_email = linked_user.email
+            logger.warning(
+                f"Admin {request.user.email} deleting application {app_id_str} "
+                f"and linked member {deleted_user_email}"
+            )
+            # Also reject any other applications for this email
+            Application.objects.filter(
+                email__iexact=email
+            ).exclude(status='rejected').update(status='rejected')
+            linked_user.delete()  # cascades to payments, docs, notifications etc.
+        else:
+            logger.warning(
+                f"Admin {request.user.email} deleting application {app_id_str} "
+                f"(email={email}, no linked user)"
+            )
+            application.delete()
+
+        msg = f'Application {app_id_str} deleted. Email {email} is now available for re-registration.'
+        if deleted_user_email:
+            msg += f' Linked member account ({deleted_user_email}) and all associated data also deleted.'
+
+        return Response({'message': msg}, status=status.HTTP_200_OK)
+
+
+class AdminDeletePaymentView(APIView):
+    """
+    Permanently delete a single manual payment record.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Permanently delete a manual payment record.",
+        responses={
+            200: 'Payment deleted successfully',
+            403: 'Forbidden',
+            404: 'Payment not found',
+        }
+    )
+    def delete(self, request, payment_id):
+        from payments.models import ManualPayment
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            payment = ManualPayment.objects.select_related('user', 'application').get(id=payment_id)
+        except ManualPayment.DoesNotExist:
+            return Response({'error': 'Payment record not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        ref = payment.reference or str(payment_id)
+        member_email = payment.user.email if payment.user else 'unknown'
+        logger.warning(
+            f"Admin {request.user.email} deleted ManualPayment {payment_id} "
+            f"(ref={ref}, member={member_email})"
+        )
+        payment.delete()
+
+        return Response(
+            {'message': f'Payment record {ref} deleted successfully.'},
+            status=status.HTTP_200_OK
+        )
+
+
+class AdminAssignApfNumberView(APIView):
+    """
+    Admin endpoint to assign or update an APF membership number for a member.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    @swagger_auto_schema(
+        tags=["admin-management"],
+        operation_description="Assign or update the APF membership number for a member (format: APF/M/***)",
+        request_body=AssignApfNumberSerializer,
+        responses={
+            200: openapi.Response('APF number assigned successfully'),
+            400: 'Invalid format or number already in use',
+            401: 'Unauthorized',
+            403: 'Forbidden - Admin access required',
+            404: 'Member not found',
+        }
+    )
+    def patch(self, request, member_id):
+        try:
+            member = User.objects.get(id=member_id, role='2')
+        except User.DoesNotExist:
+            return Response({'error': 'Member not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = AssignApfNumberSerializer(
+            data=request.data,
+            context={'member_id': member_id}
+        )
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        apf_number = serializer.validated_data['apf_membership_number']
+        member.apf_membership_number = apf_number
+        member.save(update_fields=['apf_membership_number'])
+
+        import logging
+        logging.getLogger(__name__).info(
+            f"Admin {request.user.email} assigned APF number {apf_number} to member {member.email}"
+        )
+
+        return Response({
+            'message': f'APF membership number {apf_number} assigned to {member.email}.',
+            'apf_membership_number': apf_number,
+            'member_id': member.id,
+        }, status=status.HTTP_200_OK)
 
 
 class BulkMemberRegistrationView(APIView):

@@ -93,6 +93,7 @@ class UserProfileViewSet(viewsets.ViewSet):
             'organization': user.organization,
             'department': user.department,
             'icpau_registration_number': user.icpau_registration_number,
+            'apf_membership_number': user.apf_membership_number,
             'years_of_experience': user.years_of_experience,
             'specializations': user.specializations,
             'created_at': user.created_at,

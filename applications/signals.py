@@ -112,7 +112,8 @@ def create_user_on_approval(sender, instance, created, **kwargs):
                 
                 email_sent = EmailService.send_approval_email(
                     email=user.email,
-                    user_name=user_name
+                    user_name=user_name,
+                    apf_membership_number=user.apf_membership_number or None,
                 )
                 if email_sent:
                     logger.info(f"Approval email sent successfully to {user.email} with username: {user_name}")
@@ -214,7 +215,8 @@ def send_welcome_notification_on_status_change(sender, instance, **kwargs):
                     
                     email_sent = EmailService.send_approval_email(
                         email=instance.user.email,
-                        user_name=user_name
+                        user_name=user_name,
+                        apf_membership_number=instance.user.apf_membership_number or None,
                     )
                     if email_sent:
                         logger.info(f"Approval email sent successfully to {instance.user.email} with username: {user_name}")

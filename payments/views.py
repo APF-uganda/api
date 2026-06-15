@@ -964,11 +964,14 @@ class PaymentHistoryView(APIView):
         applications = Application.objects.filter(user=request.user, status='approved').order_by('-submitted_at')
         application_data = []
         for app in applications:
+            # Normalise payment_status — backend uses both 'success' and 'completed'
+            raw_status = app.payment_status or 'idle'
+            normalised_status = 'completed' if raw_status in ('success', 'completed') else raw_status
             application_data.append({
                 'id': str(app.id),
                 'application_id': app.application_id,
                 'amount': str(app.payment_amount),
-                'status': app.payment_status,
+                'status': normalised_status,
                 'submitted_at': app.submitted_at.isoformat(),
                 'type': 'application',
                 'description': 'Application Fee',

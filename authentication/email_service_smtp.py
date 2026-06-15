@@ -250,15 +250,16 @@ class EmailService:
             return True
     
     @staticmethod
-    def send_approval_email(email, user_name=None, login_url=None):
+    def send_approval_email(email, user_name=None, login_url=None, apf_membership_number=None):
         """
         Send member approval email using SMTP
-        
+
         Args:
             email: Recipient email address
             user_name: Optional user name for personalization
             login_url: Optional login URL (defaults to FRONTEND_URL/login from settings)
-            
+            apf_membership_number: Optional APF membership number to include in the email
+
         Returns:
             Boolean indicating success or failure
         """
@@ -267,7 +268,6 @@ class EmailService:
                 user_name = email.split('@')[0]
             
             if not login_url:
-                # Use FRONTEND_URL from settings with /login path
                 frontend_url = getattr(settings, 'FRONTEND_URL')
                 login_url = f'{frontend_url}/login'
 
@@ -275,15 +275,14 @@ class EmailService:
                 EmailService._dev_log("Approval Email", email, f"login_url={login_url}", user_name)
                 return True
             
-            # Render HTML template with correct variable names
             context = {
-                'username': user_name,  # Changed from 'user_name' to 'username'
-                'member_email': email,  # Added member_email
-                'loginUrl': login_url,  # Changed from 'login_url' to 'loginUrl'
+                'username': user_name,
+                'member_email': email,
+                'loginUrl': login_url,
+                'apf_membership_number': apf_membership_number or '',
             }
             html_content = _render_email('email/approval_email.html', context)
             
-            # Create and send email
             email_message = EmailService._create_html_email(
                 subject="APF Portal - Membership Approved!",
                 html_content=html_content,

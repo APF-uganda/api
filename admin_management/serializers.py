@@ -23,6 +23,7 @@ class AdminMemberSerializer(serializers.ModelSerializer):
             'membership_status', 'subscription_due_date', 'created_at',
             'has_documents', 'document_count', 'last_document_upload',
             'email_verified', 'must_change_password', 'renewal_status',
+            'apf_membership_number',
         ]
         read_only_fields = ['id', 'created_at']
     
@@ -70,17 +71,29 @@ class AdminMemberSerializer(serializers.ModelSerializer):
 
         # Check for verified payment in the current membership year
         try:
-            from payments.models import ManualPayment
+            from payments.models import ManualPayment, RenewalProofOfPayment
             # Current membership year runs April 1 to March 31
             year_start = membership_year_start
             year_end = year_start.replace(year=year_start.year + 1, month=3, day=31)
+
+            # Check ManualPayment renewals
             has_paid = ManualPayment.objects.filter(
                 user=obj,
                 payment_type='membership_renewal',
-                status='verified',
+                status=ManualPayment.STATUS_VERIFIED,
                 created_at__date__gte=year_start,
                 created_at__date__lte=year_end,
             ).exists()
+
+            # Also check RenewalProofOfPayment (approved proofs)
+            if not has_paid:
+                has_paid = RenewalProofOfPayment.objects.filter(
+                    user=obj,
+                    status=RenewalProofOfPayment.STATUS_APPROVED,
+                    created_at__date__gte=year_start,
+                    created_at__date__lte=year_end,
+                ).exists()
+
             if has_paid:
                 return 'renewed'
         except Exception:
@@ -345,4 +358,28 @@ class BulkMemberRegistrationSerializer(serializers.Serializer):
         # Normalize emails in place
         for m in value:
             m['email'] = m['email'].lower()
+        return value
+
+
+class AssignApfNumberSerializer(serializers.Serializer):
+    """Serializer for admin assigning an APF membership number to a member."""
+    apf_membership_number = serializers.RegexField(
+        regex=r'^APF/M/\d+$',
+        max_length=20,
+        error_messages={
+            'invalid': 'APF membership number must be in the format APF/M/*** (e.g. APF/M/001).'
+        },
+        help_text='APF membership number in format APF/M/*** (e.g. APF/M/001)'
+    )
+
+    def validate_apf_membership_number(self, value):
+        # Check uniqueness — exclude the current member being updated
+        member_id = self.context.get('member_id')
+        qs = User.objects.filter(apf_membership_number=value)
+        if member_id:
+            qs = qs.exclude(id=member_id)
+        if qs.exists():
+            raise serializers.ValidationError(
+                f'APF membership number {value} is already assigned to another member.'
+            )
         return value

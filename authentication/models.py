@@ -111,6 +111,16 @@ class User(AbstractBaseUser, PermissionsMixin):
         help_text='User profile picture'
     )
 
+    # APF Membership Number (manually assigned by admin after approval)
+    apf_membership_number = models.CharField(
+        max_length=20,
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text='APF membership number in format APF/M/*** (assigned by admin on approval)'
+    )
+
     # Subscription management
     subscription_due_date = models.DateField(null=True, blank=True, help_text='Annual subscription renewal date')
     
@@ -202,19 +212,22 @@ class User(AbstractBaseUser, PermissionsMixin):
         """Override save to handle profile picture processing and completion tracking."""
         profile_picture = getattr(self, "profile_picture", None)
 
-        # Check if profile_picture field references a non-existent file
-        if profile_picture and not hasattr(profile_picture, 'file'):
+        # Check if profile_picture field references a non-existent file.
+        # Wrap the hasattr check itself in try/except because accessing
+        # profile_picture.file opens the file from storage and raises
+        # FileNotFoundError if the physical file is missing.
+        if profile_picture:
             try:
-                if hasattr(profile_picture, 'path'):
-                    file_path = profile_picture.path
-                    if not os.path.exists(file_path):
-                        print(f"Warning: Profile picture file not found: {file_path}. Clearing field.")
-                        if hasattr(self, "profile_picture"):
+                has_file = hasattr(profile_picture, 'file')
+                if not has_file:
+                    if hasattr(profile_picture, 'path'):
+                        file_path = profile_picture.path
+                        if not os.path.exists(file_path):
+                            print(f"Warning: Profile picture file not found: {file_path}. Clearing field.")
                             self.profile_picture = None
-            except (ValueError, AttributeError, FileNotFoundError) as e:
+            except (ValueError, AttributeError, FileNotFoundError, OSError) as e:
                 print(f"Warning: Issue with profile picture: {e}. Clearing field.")
-                if hasattr(self, "profile_picture"):
-                    self.profile_picture = None
+                self.profile_picture = None
         
         # Process profile picture only if it's a new file upload
         profile_picture = getattr(self, "profile_picture", None)

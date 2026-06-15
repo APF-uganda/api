@@ -355,9 +355,25 @@ def submit_manual_payment(request):
 def list_member_manual_payments(request):
     """
     List current member's manual payments (renewals + application-linked records).
+    Handles both user-linked payments and application-linked payments where
+    the user FK may not be set (older records).
     """
     try:
-        payments = ManualPayment.objects.select_related('application').filter(user=request.user).order_by('-created_at')
+        from applications.models import Application
+        from django.db.models import Q
+
+        # Find all applications belonging to this user
+        user_app_ids = Application.objects.filter(user=request.user).values_list('id', flat=True)
+
+        # Fetch payments linked by user OR by application
+        payments = (
+            ManualPayment.objects
+            .select_related('application')
+            .filter(Q(user=request.user) | Q(application_id__in=user_app_ids))
+            .order_by('-created_at')
+            .distinct()
+        )
+
         payment_data = [
             {
                 'id': payment.id,
@@ -368,7 +384,10 @@ def list_member_manual_payments(request):
                 'currency': payment.currency,
                 'status': payment.status,
                 'invoice_number': payment.invoice_number,
-                'application_reference': payment.application_reference or (payment.application.application_id if payment.application else None),
+                'application_reference': (
+                    payment.application_reference
+                    or (payment.application.application_id if payment.application else None)
+                ),
                 'proof_of_payment': payment.proof_of_payment.url if payment.proof_of_payment else None,
                 'created_at': payment.created_at.isoformat(),
                 'verified_at': payment.verified_at.isoformat() if payment.verified_at else None,
