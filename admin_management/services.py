@@ -313,6 +313,33 @@ class BulkRegistrationService:
                         email_verified=False,
                     )
 
+                    # Admin-registered members have already paid — create a verified
+                    # application fee payment record automatically.
+                    from payments.models import ManualPayment
+                    from applications.models import Application
+                    from decimal import Decimal
+
+                    # Get their application if it exists, otherwise use a stub
+                    application = Application.objects.filter(
+                        email__iexact=email
+                    ).order_by('-submitted_at').first()
+
+                    if application:
+                        ManualPayment.objects.create(
+                            application=application,
+                            user=user,
+                            amount=Decimal('50000.00'),
+                            currency='UGX',
+                            reference=application.application_id,
+                            description='Application Fee',
+                            payment_type='membership_renewal',
+                            status=ManualPayment.STATUS_VERIFIED,
+                            verified_by=registered_by,
+                            verified_at=timezone.now(),
+                            verification_notes=f'Auto-verified on bulk registration by {registered_by.email}',
+                            proof_of_payment='',
+                        )
+
                 # Send email outside the transaction so a send failure doesn't roll back the user
                 email_sent = EmailService.send_temp_credentials_email(
                     email=email,
