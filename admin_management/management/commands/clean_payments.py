@@ -80,9 +80,12 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--dry-run', action='store_true',
             help='Preview what will be deleted — no changes made')
+        parser.add_argument('--confirm', action='store_true',
+            help='Actually execute the deletion (required to apply changes)')
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
+        confirm = options['confirm']
         from payments.models import ManualPayment
 
         if dry_run:
@@ -143,17 +146,15 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING(
                 f'\n  DRY RUN — {delete_count} record(s) would be deleted. '
-                'Remove --dry-run to apply.'
+                'Run with --confirm to apply.'
             ))
             return
 
-        # Confirm
-        self.stdout.write(self.style.ERROR(
-            f'\n  ⚠️  About to permanently delete {delete_count} payment record(s).'
-        ))
-        confirm = input('  Type "DELETE" to confirm: ').strip()
-        if confirm != 'DELETE':
-            self.stdout.write(self.style.WARNING('Aborted — no changes made.'))
+        if not confirm:
+            self.stdout.write(self.style.WARNING(
+                f'\n  Add --confirm to actually delete these {delete_count} record(s).\n'
+                '  Example: python manage.py clean_payments --confirm'
+            ))
             return
 
         with transaction.atomic():
