@@ -33,21 +33,17 @@ class AdminMemberSerializer(serializers.ModelSerializer):
     def get_renewal_status(self, obj):
         """
         Renewal logic:
-        - Due date is always March 31st of the current/next year
-        - If joined before April 1st of current year → due date is March 31st this year
-          → if that date has passed and no verified payment → overdue
-        - If joined after April 1st of current year → first renewal is March 31st next year
-          → no renewal status yet (unknown)
-        - 'renewed'  : has a verified payment for the current membership year
+        - Due date is always December 31st of the current/next year
+        - Membership year runs January 1 to December 31
+        - 'renewed'  : has a verified payment for the current calendar year
         - 'overdue'  : due date has passed, no verified payment
-        - 'due_soon' : due within 14 days, no verified payment
-        - 'unknown'  : joined this membership year, first renewal not yet due
+        - 'due_soon' : due within 30 days, no verified payment
+        - 'unknown'  : joined this calendar year, first renewal not yet due
         """
         from django.utils import timezone
         from applications.signals import get_annual_renewal_date
 
         today = timezone.now().date()
-        current_year_april_1 = today.replace(month=4, day=1, year=today.year if today.month >= 4 else today.year)
 
         # Use stored due date or derive from created_at
         due_date = obj.subscription_due_date
@@ -62,21 +58,19 @@ class AdminMemberSerializer(serializers.ModelSerializer):
         if not due_date:
             return 'unknown'
 
-        # If joined after April 1st of the current membership year,
-        # their first renewal hasn't come yet
+        # Membership year = calendar year (Jan 1 – Dec 31)
+        year_start = today.replace(month=1, day=1)
+        year_end   = today.replace(month=12, day=31)
+
+        # If joined this calendar year and due date is still in the future → unknown
         join_date = obj.created_at.date() if hasattr(obj.created_at, 'date') else obj.created_at
-        membership_year_start = today.replace(month=4, day=1) if today.month >= 4 else today.replace(month=4, day=1, year=today.year - 1)
-        if join_date >= membership_year_start and due_date > today:
+        if join_date >= year_start and due_date > today:
             return 'unknown'
 
-        # Check for verified payment in the current membership year
+        # Check for verified payment in the current calendar year
         try:
             from payments.models import ManualPayment, RenewalProofOfPayment
-            # Current membership year runs April 1 to March 31
-            year_start = membership_year_start
-            year_end = year_start.replace(year=year_start.year + 1, month=3, day=31)
 
-            # Check ManualPayment renewals
             has_paid = ManualPayment.objects.filter(
                 user=obj,
                 payment_type='membership_renewal',
@@ -85,7 +79,6 @@ class AdminMemberSerializer(serializers.ModelSerializer):
                 created_at__date__lte=year_end,
             ).exists()
 
-            # Also check RenewalProofOfPayment (approved proofs)
             if not has_paid:
                 has_paid = RenewalProofOfPayment.objects.filter(
                     user=obj,
@@ -102,9 +95,8 @@ class AdminMemberSerializer(serializers.ModelSerializer):
         days_remaining = (due_date - today).days
         if days_remaining < 0:
             return 'overdue'
-        elif days_remaining <= 14:
+        elif days_remaining <= 30:
             return 'due_soon'
-        # Due date is in the future but no payment yet — still overdue from last year
         return 'overdue'
 
     def get_membership_status(self, obj):
